@@ -21,16 +21,16 @@ Axum is a modular and composable web framework built on top of Tokio. It provide
 ### Service Details
 
 **Location**: `/home/cevor/github/bare_metal_demo/rust-backend`
-**Language**: Rust (Edition 2021)
+**Language**: Rust (Edition 2024)
 **Runtime**: Tokio (async)
 **Default Port**: 3000
 
 ### Dependencies
 
 ```toml
-axum = "0.7"              # Web framework
+axum = "0.8"              # Web framework
 tokio = "1"               # Async runtime
-sqlx = "0.7"              # Database driver with compile-time checking
+sqlx = "0.8"              # Database driver with compile-time checking
 serde = "1.0"             # Serialization
 tower-http = "0.5"        # Middleware (CORS, tracing)
 dotenv = "0.15"           # Environment configuration
@@ -42,7 +42,7 @@ log/env_logger            # Logging
 ### Running the Service
 
 #### Prerequisites
-- Rust 1.70+ installed
+- Rust 1.95+ installed
 - PostgreSQL running on port 5432 (or configure via env var)
 
 #### Development
@@ -208,7 +208,7 @@ FastAPI is a modern, fast (high-performance) web framework for building APIs wit
 ### Service Details
 
 **Location**: `/home/cevor/github/bare_metal_demo/python-services`
-**Language**: Python 3.12
+**Language**: Python 3.14
 **Framework**: FastAPI
 **ASGI Server**: uvicorn
 **Default Port**: 8001
@@ -227,7 +227,7 @@ python-dotenv = ">=1.0.0"       # Environment configuration
 ### Running the Service
 
 #### Prerequisites
-- Python 3.12 installed
+- Python 3.14 installed
 - UV or pip
 - PostgreSQL running on port 5433 (or configure via env var)
 

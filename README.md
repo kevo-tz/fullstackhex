@@ -30,21 +30,25 @@ A full-stack application demonstrating a complete development setup with a **Rus
 
 ### **Rust Backend** (`rust-backend/`)
 - **Framework:** Actix Web
-- **Database:** PostgreSQL (port 5432)
+- **Database:** PostgreSQL (shared, port 5432)
+- **Cache:** Redis (port 6379)
 - **Port:** 8001
 - **Files:**
   - `Cargo.toml` - Project manifest
-  - `src/main.rs` - Entry point
+  - `src/main.rs` - Entry point with Redis integration
+  - `src/cache.rs` - Redis caching utilities
   - `migrations/` - Database migration files
 
 ### **Python Services** (`python-services/`)
 - **Framework:** FastAPI
-- **Database:** PostgreSQL (port 5433)
+- **Database:** PostgreSQL (shared, port 5432)
+- **Cache:** Redis (port 6379)
 - **Port:** 8000
 - **Files:**
   - `pyproject.toml` - Project configuration with uv package manager
   - `uv.lock` - Dependency lock file
-  - `src/main.py` - Entry point
+  - `src/main.py` - Entry point with Redis integration
+  - `src/cache.py` - Redis caching utilities
 
 ### **TypeScript Frontend** (`typescript-frontend/`)
 - **Runtime:** Bun
@@ -58,8 +62,8 @@ A full-stack application demonstrating a complete development setup with a **Rus
   - `src/index.ts` - Entry point
 
 ### **Infrastructure** (`docker-compose.yml`)
-- **Postgres (Rust):** postgres:16-alpine → localhost:5432
-- **Postgres (Python):** postgres:16-alpine → localhost:5433
+- **PostgreSQL (Unified):** postgres:16-alpine → localhost:5432
+- **Redis:** redis:7-alpine → localhost:6379
 - **RustFS (S3-compatible):** rustfs/rustfs:latest → localhost:9000
 
 ## Quick Start
@@ -133,8 +137,8 @@ cp .env.example .env
 ```
 
 Key variables:
-- `RUST_SERVICE_DB_URL` - Rust service database connection
-- `PYTHON_SERVICE_DB_URL` - Python service database connection
+- `DATABASE_URL` - Shared PostgreSQL database connection
+- `REDIS_URL` - Redis cache connection
 - `RUSTFS_ENDPOINT` - S3-compatible storage endpoint
 - `NODE_ENV` - Frontend environment (development/production)
 
@@ -174,7 +178,8 @@ bare_metal_demo/
 | Backend | Rust, Actix Web |
 | Services | Python, FastAPI |
 | Frontend | TypeScript, Bun, React, TailwindCSS |
-| Databases | PostgreSQL 16 |
+| Databases | PostgreSQL 16 (unified) |
+| Cache | Redis 7 |
 | Storage | RustFS (MinIO-compatible S3) |
 | Orchestration | Docker Compose |
 

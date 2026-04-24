@@ -1,0 +1,15 @@
+[build]
+root = "src"
+publicDir = "public"
+
+[loader]
+".ts" = "tsx"
+".tsx" = "tsx"
+
+[env]
+# Load environment variables from .env file
+files = [".env"]
+
+[root]
+# Project root directory
+publicDir = "public"

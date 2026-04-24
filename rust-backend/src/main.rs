@@ -1,6 +1,5 @@
 use axum::{
     extract::State,
-    http::StatusCode,
     response::IntoResponse,
     routing::get,
     Json, Router,
@@ -13,6 +12,13 @@ use tower_http::cors::CorsLayer;
 #[derive(Clone)]
 struct AppState {
     db_pool: Arc<sqlx::PgPool>,
+}
+
+#[allow(dead_code)]
+impl AppState {
+    fn db(&self) -> &sqlx::PgPool {
+        &self.db_pool
+    }
 }
 
 #[tokio::main]

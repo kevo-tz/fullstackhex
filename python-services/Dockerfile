@@ -1,4 +1,4 @@
-FROM python:3.11-slim AS builder
+FROM python:3.14-slim AS builder
 
 WORKDIR /app
 COPY pyproject.toml uv.lock* ./
@@ -6,9 +6,9 @@ RUN pip install uv && uv pip install --system -e .
 
 COPY src/ ./src/
 
-FROM python:3.11-slim
+FROM python:3.14-slim
 WORKDIR /app
-COPY --from=builder /usr/local/lib/python3.11/site-packages ./site-packages
+COPY --from=builder /usr/local/lib/python3.14/site-packages ./site-packages
 COPY --from=builder /app/src ./src
 COPY --from=builder /app/pyproject.toml .
 

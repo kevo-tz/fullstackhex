@@ -44,3 +44,7 @@ Thumbs.db
 # Misc
 .env.local
 .env.*.local
+
+# LeanKg
+.leankg/
+leankg.yaml

@@ -1,0 +1,46 @@
+# Rust
+target/
+*.rs.bk
+Cargo.lock
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info
+*.egg
+.venv
+venv/
+env/
+.env
+
+# Node/Bun
+node_modules/
+.bun
+dist/
+build/
+*.tsbuildinfo
+
+# Docker
+.dockerignore
+docker-compose.override.yml
+
+# OS files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Misc
+.env.local
+.env.*.local

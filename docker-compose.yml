@@ -1,0 +1,58 @@
+version: '3.9'
+
+services:
+  rust-db:
+    image: postgres:16-alpine
+    container_name: bare_metal_rust_db
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: rust_user
+      POSTGRES_PASSWORD: rust_pass
+      POSTGRES_DB: rust_service
+    volumes:
+      - rust_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U rust_user -d rust_service"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    profiles:
+      - manual
+
+  python-db:
+    image: postgres:16-alpine
+    container_name: bare_metal_python_db
+    ports:
+      - "5433:5432"
+    environment:
+      POSTGRES_USER: python_user
+      POSTGRES_PASSWORD: python_pass
+      POSTGRES_DB: python_service
+    volumes:
+      - python_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U python_user -d python_service"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    profiles:
+      - manual
+
+  s3-storage:
+    image: rustfs/rustfs:latest
+    container_name: bare_metal_rustfs
+    ports:
+      - "9000:9000"
+    environment:
+      RUSTFS_ROOT_USER: minioadmin
+      RUSTFS_ROOT_PASSWORD: minioadmin
+    volumes:
+      - rustfs_data:/data
+    profiles:
+      - manual
+
+volumes:
+  rust_db_data:
+  python_db_data:
+  rustfs_data:

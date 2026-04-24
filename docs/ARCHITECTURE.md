@@ -61,7 +61,7 @@ The Bare Metal Demo is a high-performance distributed system with Rust, Python, 
 - **Performance**: HTTP/2, HMR in dev, optimized builds
 
 ### Rust Backend
-- **Framework**: Axum 0.7 (HTTP/2 support)
+- **Framework**: Axum 0.8 (HTTP/2 support)
 - **Runtime**: Tokio (async)
 - **Database**: PostgreSQL with sqlx (compile-time checks)
 - **Cache**: Redis (async, connection manager)
@@ -78,10 +78,10 @@ The Bare Metal Demo is a high-performance distributed system with Rust, Python, 
 - **Performance**: uvloop, httptools, async connection pooling
 
 ### Data Layer
-- **PostgreSQL 16**: Single instance, multiple schemas (`rust_service`, `python_service`)
+- **PostgreSQL 18**: Single instance, multiple schemas (`rust_service`, `python_service`)
   - Resource limits: 2 CPU, 2GB RAM
   - Tuning: shared_buffers=512MB, effective_cache_size=1536MB
-- **Redis 7**: LRU eviction, 512MB maxmemory, AOF persistence
+- **Redis 8**: LRU eviction, 512MB maxmemory, AOF persistence
   - Resource limits: 1 CPU, 1GB RAM
 - **RustFS**: S3-compatible object storage, MinIO-compatible API
 
@@ -146,4 +146,4 @@ The Bare Metal Demo is a high-performance distributed system with Rust, Python, 
 
 - See [SETUP.md](./SETUP.md) for installation instructions
 - See [SERVICES.md](./SERVICES.md) for API documentation
-- Review individual service source code for implementation details
+- Review individual services

@@ -1,184 +1,107 @@
-# Bare Metal Demo - High Performance Stack
+# Bare Metal Template - High Performance Stack
 
-A production-ready full-stack application with **Rust backend**, **Python services**, **Astro.js frontend (Bun SSR)**, and containerized infrastructure optimized for high performance.
+A minimal, high-performance development template with **Rust**, **Python**, **Bun**, and containerized infrastructure.
 
-## Architecture Overview
+## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────────────┐
-│                    Nginx (HTTP/2, Compression)                     │
-│                         Port 80/443                               │
-└──────────────┬──────────────────────────┬─────────────────────────┘
-               │                          │
-     ┌─────────▼──────────┐    ┌─────────▼──────────┐
-     │   Astro Frontend    │    │   Rust Backend     │
-│ Port 3001 (Bun SSR)  │    │  Port 8001 (Axum)  │
-     └─────────┬──────────┘    └─────────┬──────────┘
-               │                          │
-               ├──────────┬───────────────┤
-               │          │               │
-        ┌──────▼──────┐  │    ┌─────────▼──────────┐
-        │  Python      │  │    │  Postgres (Single) │
-        │  Services   │  │    │  Port 5432         │
-        │  Port 8000  │  │    │  Schemas: rust, python │
-        └──────┬──────┘  │    └────────────────────┘
-               │          │
-               ├──────────┤
-               │          │
-        ┌──────▼──────┐  ┌▼──────────────┐
-        │    Redis     │  │   RustFS (S3)   │
-        │  Port 6379  │  │  Port 9000     │
-        └─────────────┘  └───────────────┘
-
-┌─────────────────────────────────────────────────────────────────────┐
-│              Monitoring: Prometheus + Grafana                       │
-│                 Ports: 9090 (Prometheus), 3000 (Grafana)          │
-└─────────────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────┐
+│            Nginx (Production)                   │
+│              Port 80/443                        │
+└────────┬──────────────┬────────────────────────┘
+         │              │
+    ┌────▼─────┐  ┌────▼─────┐
+    │  Frontend │  │  Rust    │
+    │  Astro+Bun│  │  Axum    │
+    │  Port 3001│  │  Port 8001│
+    └───────────┘  └────┬─────┘
+                         │
+              ┌──────────┼──────────┐
+              │          │          │
+         ┌────▼─────┐ ┌▼────────┐ ┌▼────────┐
+         │  Python  │ │ Postgres│ │  Redis  │
+         │  FastAPI │ │ Port 5432│ │ Port 6379│
+         │  Port 8000│ └─────────┘ └─────────┘
+         └───────────┘
 ```
 
 ## Tech Stack
 
 | Component | Technology | Purpose |
 |-----------|------------|---------|
-| Frontend | Astro.js + Bun (SSR) | High-performance SSR with Bun runtime |
-| Backend | Rust + Axum + Tokio | Async web server with HTTP/2 |
-| Services | Python + FastAPI + Uvicorn | Rapid API development |
-| Database | PostgreSQL 16 (Single instance + Schemas) | Unified data layer |
-| Cache | Redis 7 (LRU eviction) | Sub-millisecond caching |
-| Storage | RustFS (S3-compatible) | Object storage |
-| Reverse Proxy | Nginx (HTTP/2 + Brotli) | TLS termination, compression |
-| Monitoring | Prometheus + Grafana | Metrics, dashboards, alerting |
+| Frontend | Astro.js + Bun | High-performance SSR |
+| Backend | Rust + Axum | Async web server |
+| Services | Python + FastAPI | Rapid API development |
+| Database | PostgreSQL 16 | Primary datastore |
+| Cache | Redis 7 | Sub-millisecond caching |
+| Storage | RustFS | S3-compatible object storage |
+| Proxy | Nginx | Reverse proxy (production) |
+| Monitoring | Prometheus + Grafana | Metrics + dashboards |
 
 ## Quick Start
 
-### Prerequisites
-- Docker & Docker Compose
-- Rust (1.75+)
-- Python (3.11+)
-- Bun (1.0+)
-- Node.js (for Astro CLI)
+### Install Dependencies
 
-### Setup
 ```bash
-# Run the setup script
-./scripts/setup.sh
-
-# Start all services (including monitoring)
-docker-compose --profile production up -d
-
-# Or start without Nginx (dev mode)
-docker-compose up -d postgres redis rustfs
+# Check and install missing dependencies (Rust, Bun, uv)
+./scripts/install.sh
 ```
 
-### Development
+### Development (Infrastructure Only)
+
 ```bash
-# Rust Backend (with hot reload via cargo-watch)
-cd rust-backend
-cargo watch -x run
+# Start Postgres, Redis, RustFS
+docker compose -f docker-compose.dev.yml up -d
 
-# Python Services
-cd python-services
-uv run uvicorn src.main:app --reload --host 0.0.0.0 --port 8000
-
-# Astro Frontend (Bun)
-cd frontend
-bun install
-bun run dev  # Development with HMR
-bun run build && bun run start  # Production SSR
+# Run services locally:
+cd rust-backend && cargo run              # Port 8001
+cd python-services && uv run uvicorn src.main:app --reload  # Port 8000
+cd frontend && bun run dev                 # Port 3001
 ```
 
-### Monitoring
+### Production (Full Stack)
+
 ```bash
-# Prometheus metrics
-open http://localhost:9090
+# Start all services including monitoring
+docker compose -f docker-compose.prod.yml up -d
 
-# Grafana dashboards (default: admin/admin)
-open http://localhost:3000
+# Access:
+# Frontend:  http://localhost
+# Rust API:  http://localhost:8001
+# Python API: http://localhost:8000
+# Prometheus: http://localhost:9090
+# Grafana:    http://localhost:3000
 ```
-
-## Performance Features
-
-✅ **Async Everything**: Rust (Tokio), Python (asyncio), Redis (aio)  
-✅ **Connection Pooling**: Postgres (50 max), Redis (manager)  
-✅ **HTTP/2**: Enabled via Axum + Nginx  
-✅ **Compression**: Brotli/Gzip via Nginx + Tower  
-✅ **Caching**: Multi-layer (Redis + HTTP cache headers)  
-✅ **Rate Limiting**: Tower governor middleware  
-✅ **Observability**: OpenTelemetry + Prometheus metrics  
-✅ **Resource Limits**: Docker containers with CPU/memory constraints  
-✅ **Persistence**: Redis AOF, Postgres WAL  
 
 ## Project Structure
 
 ```
-bare_metal_demo/
-├── frontend/               # Astro.js + Bun SSR
-│   ├── src/               # Astro components + pages
-│   ├── astro.config.mjs   # Astro config with Bun adapter
-│   └── package.json
+bare-metal-template/
+├── frontend/               # Astro.js + Bun
+│   └── src/pages/index.astro
 ├── rust-backend/           # Rust + Axum
-│   ├── src/
-│   │   ├── main.rs        # Entry point with middleware
-│   │   ├── cache.rs      # Async Redis client
-│   │   └── metrics.rs    # Prometheus metrics
-│   └── Cargo.toml
+│   └── src/main.rs
 ├── python-services/        # Python + FastAPI
-│   ├── src/
-│   │   ├── main.py       # FastAPI app with instrumentation
-│   │   └── cache.py     # Async Redis client
-│   └── pyproject.toml
-├── docker-compose.yml      # Production-grade orchestration
-├── nginx/                  # Nginx config (HTTP/2, SSL)
-├── postgres/               # Postgres config + init scripts
-├── monitoring/             # Prometheus + Grafana config
-├── scripts/               # Setup, verify, cleanup
-└── docs/                  # Architecture + setup guides
+│   └── src/main.py
+├── docker-compose.dev.yml  # Infrastructure only
+├── docker-compose.prod.yml # Full stack + monitoring
+├── nginx/                  # Nginx config
+├── monitoring/             # Prometheus + Grafana
+├── scripts/
+│   └── install.sh         # Dependency installer
+└── README.md
 ```
 
-## Configuration
+## Endpoints
 
-### Environment Variables (`.env`)
-```bash
-# Database (Single Postgres instance)
-DATABASE_URL=postgres://app_user:app_pass@localhost:5432/app_database
-
-# Redis
-REDIS_URL=redis://localhost:6379
-
-# RustFS (S3-compatible)
-RUSTFS_ENDPOINT=http://localhost:9000
-RUSTFS_ACCESS_KEY=minioadmin
-RUSTFS_SECRET_KEY=minioadmin
-
-# Monitoring
-PROMETHEUS_PORT=9090
-GRAFANA_PORT=3000
-
-# Frontend
-NODE_ENV=production
-ASTRO_PORT=3001
-```
-
-## Benchmarks (Example)
-
-| Endpoint | Before (req/s) | After (req/s) | Improvement |
-|----------|-----------------|---------------|-------------|
-| Rust GET /health | 12,000 | 45,000 | 3.75x |
-| Python GET /cache-test | 8,000 | 22,000 | 2.75x |
-| Frontend SSR | N/A | 1,200 | New |
-
-## Cleanup
-```bash
-# Stop all containers
-docker-compose down
-
-# Remove volumes (CAUTION: deletes data)
-docker-compose down -v
-
-# Full cleanup
-./scripts/cleanup.sh
-```
+| Service | Endpoint | Response |
+|---------|-----------|----------|
+| Rust | `GET /` | `{"message": "Hello from Rust!"}` |
+| Rust | `GET /health` | `{"status": "healthy"}` |
+| Python | `GET /` | `{"message": "Hello from Python!"}` |
+| Python | `GET /health` | `{"status": "healthy"}` |
+| Frontend | `GET /` | HTML page |
 
 ## License
 
-See LICENSE file for details.
+MIT

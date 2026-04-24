@@ -1,70 +1,9 @@
 version: '3.9'
 
+include:
+  - docker-compose.dev.yml
+
 services:
-  postgres:
-    image: postgres:16-alpine
-    container_name: bare_metal_db
-    ports:
-      - "5432:5432"
-    environment:
-      POSTGRES_USER: app_user
-      POSTGRES_PASSWORD: app_pass
-      POSTGRES_DB: app_database
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-      - ./postgres/init-schemas.sql:/docker-entrypoint-initdb.d/init-schemas.sql
-      - ./postgres/postgres.conf:/etc/postgresql/postgresql.conf
-    command: postgres -c config_file=/etc/postgresql/postgresql.conf
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U app_user -d app_database"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    deploy:
-      resources:
-        limits:
-          cpus: '2'
-          memory: 2G
-        reservations:
-          cpus: '1'
-          memory: 1G
-
-  redis:
-    image: redis:7-alpine
-    container_name: bare_metal_redis
-    ports:
-      - "6379:6379"
-    command: redis-server --maxmemory 512mb --maxmemory-policy allkeys-lru --appendonly yes
-    volumes:
-      - redis_data:/data
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    deploy:
-      resources:
-        limits:
-          cpus: '1'
-          memory: 1G
-
-  rustfs:
-    image: rustfs/rustfs:latest
-    container_name: bare_metal_rustfs
-    ports:
-      - "9000:9000"
-      - "9001:9001"
-    environment:
-      RUSTFS_ROOT_USER: minioadmin
-      RUSTFS_ROOT_PASSWORD: minioadmin
-    volumes:
-      - rustfs_data:/data
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-
   rust-backend:
     build:
       context: ./rust-backend
@@ -73,7 +12,7 @@ services:
     ports:
       - "8001:8001"
     environment:
-      DATABASE_URL: postgres://app_user:app_pass@postgres:5432/app_database?options=-c%20search_path=rust_service
+      DATABASE_URL: postgres://app_user:app_pass@postgres:5432/app_database
       REDIS_URL: redis://redis:6379
       RUST_LOG: info
     depends_on:
@@ -96,7 +35,7 @@ services:
     ports:
       - "8000:8000"
     environment:
-      DATABASE_URL: postgres://app_user:app_pass@postgres:5432/app_database?options=-c%20search_path=python_service
+      DATABASE_URL: postgres://app_user:app_pass@postgres:5432/app_database
       REDIS_URL: redis://redis:6379
     depends_on:
       postgres:
@@ -142,8 +81,6 @@ services:
       - frontend
       - rust-backend
       - python-services
-    profiles:
-      - production
     restart: unless-stopped
 
   prometheus:
@@ -157,8 +94,6 @@ services:
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'
       - '--storage.tsdb.path=/prometheus'
-      - '--web.console.libraries=/etc/prometheus/console_libraries'
-      - '--web.console.templates=/etc/prometheus/consoles'
     deploy:
       resources:
         limits:
@@ -177,7 +112,6 @@ services:
     environment:
       - GF_AUTH_ANONYMOUS_ENABLED=true
       - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
-      - GF_INSTALL_PLUGINS=grafana-piechart-panel
     deploy:
       resources:
         limits:
@@ -185,8 +119,5 @@ services:
           memory: 1G
 
 volumes:
-  postgres_data:
-  redis_data:
-  rustfs_data:
   prometheus_data:
   grafana_data:

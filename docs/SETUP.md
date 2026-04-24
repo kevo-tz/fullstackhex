@@ -1,349 +1,200 @@
-# Setup and Installation Guide
+# Setup Guide
+
+Complete guide to setting up the Bare Metal Demo high-performance stack.
 
 ## Prerequisites
 
-Before setting up the Bare Metal Demo project, ensure you have the following installed:
-
-### Required Tools
-
-- **Rust** (1.70+): Download from https://rustup.rs/
-  ```bash
-  curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-  source $HOME/.cargo/env
-  ```
-
-- **Python** (3.12): Download from https://www.python.org/downloads/
-  ```bash
-  python --version  # Verify version
-  ```
-
-- **Bun**: Fast JavaScript runtime for TypeScript frontend
-  ```bash
-  curl -fsSL https://bun.sh/install | bash
-  bun --version
-  ```
-
-- **Docker**: For running containerized services (PostgreSQL, Rustfs)
-  ```bash
-  docker --version
-  ```
-
-- **Docker Compose**: For orchestrating multi-container setup
-  ```bash
-  docker-compose --version
-  ```
-
-### System Requirements
-
-- **OS**: Linux or macOS (Windows with WSL2 recommended)
-- **Memory**: Minimum 2GB RAM, 4GB+ recommended
-- **Disk Space**: 2GB free space
-- **Ports Available**: 3000, 5432, 5433, 8001, 9000
+- **Docker & Docker Compose** (v2.0+)
+- **Rust** (1.80+ for LazyLock support)
+- **Python** (3.11+)
+- **Bun** (1.0+)
+- **Node.js** (18+ for Astro CLI)
 
 ## Quick Start
 
-### Automated Setup
-
-The easiest way to set up the project is using the automated setup script:
+### 1. Clone & Setup Environment
 
 ```bash
-cd /home/cevor/github/bare_metal_demo
-chmod +x scripts/setup.sh
-./scripts/setup.sh
-```
-
-The setup script will:
-1. Install all dependencies (Rust, Python, TypeScript)
-2. Start Docker containers for PostgreSQL and Rustfs
-3. Initialize databases
-4. Build all services
-5. Start all services on their designated ports
-
-### Manual Setup (If Automated Setup Fails)
-
-#### 1. Clone the Repository
-
-```bash
-git clone <repository-url>
-cd bare_metal_demo
-```
-
-#### 2. Set Up Environment Variables
-
-```bash
+# Copy environment template
 cp .env.example .env
-# Edit .env with your local configuration if needed
+
+# Edit if needed (defaults work for local dev)
+nano .env
 ```
 
-#### 3. Start Docker Services
+### 2. Start Infrastructure
 
 ```bash
-# Start PostgreSQL and Rustfs
-docker-compose --profile manual up -d
+# Start all core services
+docker-compose up -d postgres redis rustfs
 
-# Verify services are running
+# Verify services are healthy
 docker-compose ps
+
+# Check logs
+docker-compose logs -f postgres
 ```
 
-#### 4. Set Up Rust Backend
+### 3. Run Services (Development Mode)
 
+**Rust Backend:**
 ```bash
 cd rust-backend
-
-# Build the project
-cargo build
-
-# Run the service
 cargo run
-# Service will start on http://localhost:3000
+# Or with hot reload (requires cargo-watch):
+# cargo watch -x run
 ```
 
-#### 5. Set Up Python Services
-
+**Python Services:**
 ```bash
 cd python-services
-
-# Install dependencies using UV (recommended)
-uv sync
-
-# Or install using pip
-pip install -e .
-
-# Run the service
-uv run python -m uvicorn src.main:app --host 0.0.0.0 --port 8001 --reload
-# Service will start on http://localhost:8001
+uv sync  # Install dependencies with uv
+uv run uvicorn src.main:app --reload --host 0.0.0.0 --port 8000 --loop uvloop
 ```
 
-#### 6. Set Up TypeScript Frontend
-
+**Astro Frontend:**
 ```bash
-cd typescript-frontend
-
-# Install dependencies
+cd frontend
 bun install
-
-# Run development server
-bun run dev
-# Frontend will start on http://localhost:3001
+bun run dev  # Development with HMR on port 3001
 ```
 
-## Service Health Checks
-
-### Quick Health Check Script
+### 4. Start Monitoring Stack
 
 ```bash
-#!/bin/bash
+# Start Prometheus + Grafana
+docker-compose --profile production up -d prometheus grafana
 
-echo "Checking Rust Backend..."
-curl -s http://localhost:3000/health && echo "" || echo "Rust service down"
-
-echo "Checking Python Service..."
-curl -s http://localhost:8001/health && echo "" || echo "Python service down"
-
-echo "Checking Frontend..."
-curl -s http://localhost:3001 > /dev/null && echo "Frontend running" || echo "Frontend down"
-
-echo "Checking Rust Database..."
-PGPASSWORD=rust_pass psql -h localhost -U rust_user -d rust_service -c "SELECT 1;" > /dev/null && echo "Rust DB OK" || echo "Rust DB down"
-
-echo "Checking Python Database..."
-PGPASSWORD=python_pass psql -h localhost -U python_user -d python_service -c "SELECT 1;" > /dev/null && echo "Python DB OK" || echo "Python DB down"
-
-echo "Checking Rustfs..."
-curl -s http://localhost:9000/minio/health/live && echo "" || echo "Rustfs down"
+# Access:
+# Prometheus: http://localhost:9090
+# Grafana: http://localhost:3000 (admin/admin)
 ```
 
-### Individual Service Health Checks
+### 5. Production Deployment
 
 ```bash
-# Rust Backend
-curl http://localhost:3000/health
-# Expected: {"status":"ok"}
+# Build all images
+docker-compose build
 
-# Python Service
-curl http://localhost:8001/health
-# Expected: {"status":"ok"}
+# Start all services (including Nginx)
+docker-compose --profile production up -d
 
-# Rustfs/MinIO
-curl http://localhost:9000/minio/health/live
-# Expected: {"status":"ok"}
-```
-
-## Viewing Logs
-
-### Docker Container Logs
-
-```bash
-# Rust database
-docker-compose logs -f rust-db
-
-# Python database
-docker-compose logs -f python-db
-
-# Rustfs storage
-docker-compose logs -f s3-storage
-```
-
-### Application Service Logs
-
-For services running locally (not in Docker):
-
-```bash
-# Rust Backend (terminal where you ran cargo run)
-# Logs appear automatically
-
-# Python Service (terminal where you ran uvicorn)
-# Set log level: RUST_LOG=debug
-
-# Frontend
-# Bun dev server logs appear in terminal
-```
-
-### Log Level Configuration
-
-```bash
-# Rust Backend
-export RUST_LOG=debug  # Options: error, warn, info, debug, trace
-cargo run
-
-# Python Service
-# Uvicorn will show access logs by default
-```
-
-## Port Mappings Reference
-
-| Service | Port | Description | Protocol |
-|---------|------|-------------|----------|
-| Rust Backend API | 3000 | Main API service | HTTP |
-| Rust PostgreSQL | 5432 | Database for Rust service | PostgreSQL |
-| Python PostgreSQL | 5433 | Database for Python service | PostgreSQL |
-| Rustfs/MinIO | 9000 | Object storage server | S3-compatible HTTP |
-| Python Service | 8001 | FastAPI service | HTTP |
-| TypeScript Frontend | 3001 | Development server | HTTP |
-
-## Troubleshooting Common Issues
-
-### Port Already in Use
-
-**Problem**: `Address already in use`
-
-**Solution**:
-```bash
-# Find process using the port
-lsof -i :3000
-
-# Kill the process
-kill -9 <PID>
-
-# Or use a different port
-cargo run -- --port 3001
-```
-
-### Database Connection Failed
-
-**Problem**: `connection refused` or `FATAL: role "rust_user" does not exist`
-
-**Solution**:
-```bash
-# Check if Docker containers are running
+# Check status
 docker-compose ps
 
-# Restart Docker services
-docker-compose down
-docker-compose --profile manual up -d
-
-# Wait for PostgreSQL to be ready (may take 30 seconds)
-docker-compose logs rust-db
+# View logs
+docker-compose logs -f
 ```
 
-### Dependency Installation Issues
+## Database Setup
 
-**Rust**:
+The single Postgres instance uses schemas for isolation:
+- `rust_service` - Rust backend tables
+- `python_service` - Python services tables
+
+The init script `postgres/init-schemas.sql` runs automatically on first start.
+
+### Manual Schema Creation (if needed)
 ```bash
-# Update Rust
-rustup update
+psql -h localhost -U app_user -d app_database
+CREATE SCHEMA IF NOT EXISTS rust_service;
+CREATE SCHEMA IF NOT EXISTS python_service;
+SET search_path TO rust_service, python_service, public;
+```
 
-# Clean build
+## Performance Tuning
+
+### Postgres
+Edit `postgres/postgres.conf` and restart:
+```bash
+docker-compose restart postgres
+```
+
+### Redis
+Edit command in `docker-compose.yml`:
+```yaml
+command: redis-server --maxmemory 1gb --maxmemory-policy allkeys-lru --appendonly yes
+```
+
+### Rust Backend
+Adjust connection pool in `rust-backend/src/main.rs`:
+```rust
+.max_connections(50)  // Increase for production
+.min_connections(10)
+```
+
+## Monitoring Setup
+
+### Grafana Dashboards
+1. Login to Grafana (admin/admin)
+2. Add Prometheus data source: `http://prometheus:9090`
+3. Import pre-configured dashboards from `monitoring/grafana/dashboards/`
+
+### Available Metrics
+- Rust Backend: `http://localhost:8001/metrics`
+- Python Services: `http://localhost:8000/metrics`
+- Prometheus: `http://localhost:9090/metrics`
+
+## Troubleshooting
+
+### Port Conflicts
+```bash
+# Check what's using a port
+lsof -i :5432
+# Change ports in .env and docker-compose.yml
+```
+
+### Database Connection Issues
+```bash
+# Check Postgres logs
+docker-compose logs postgres
+
+# Test connection
+psql -h localhost -U app_user -d app_database
+```
+
+### Redis Connection Issues
+```bash
+# Check Redis logs
+docker-compose logs redis
+
+# Test connection
+redis-cli -h localhost -p 6379 ping
+```
+
+### Rust Build Errors
+```bash
+# Clean and rebuild
+cd rust-backend
 cargo clean
 cargo build
 ```
 
-**Python**:
+### Python Dependencies
 ```bash
-# Update UV
-pip install --upgrade uv
-
-# Reinstall dependencies
-uv sync --refresh
+cd python-services
+uv pip install -e .
 ```
 
-**TypeScript/Bun**:
+## Cleanup
+
 ```bash
-# Clear Bun cache
-bun pm cache rm
+# Stop all containers
+docker-compose down
 
-# Reinstall
-rm -rf node_modules bun.lock
-bun install
+# Remove volumes (DELETES DATA)
+docker-compose down -v
+
+# Full cleanup (including built images)
+docker-compose down -v --rmi all
+
+# Run cleanup script
+./scripts/cleanup.sh
 ```
-
-### Environment Variables Not Loading
-
-**Problem**: Services failing with configuration errors
-
-**Solution**:
-```bash
-# Verify .env file exists
-cat .env
-
-# Check syntax
-grep -E '^[A-Z_]+=.*' .env
-
-# Make sure it's in the correct directory for each service
-# Rust Backend: rust-backend/.env or use export
-export RUST_SERVICE_DB_URL=...
-```
-
-### Docker Daemon Not Running
-
-**Problem**: `Cannot connect to Docker daemon`
-
-**Solution**:
-```bash
-# macOS
-open --background -a Docker
-
-# Linux
-sudo systemctl start docker
-
-# Verify
-docker ps
-```
-
-### Frontend Cannot Connect to Backend
-
-**Problem**: CORS errors or connection refused
-
-**Solution**:
-- Verify Rust backend is running on port 3000
-- Check that CORS is enabled (it is by default with `CorsLayer::permissive()`)
-- Verify frontend is trying to connect to `http://localhost:3000`
-
-## Performance Tips
-
-1. **Use Release Build for Rust**:
-   ```bash
-   cargo run --release
-   ```
-
-2. **Database Connection Pooling**: Already configured in Rust service (5 connections)
-
-3. **UV for Python**: Much faster than pip for dependency installation
-
-4. **Bun for Frontend**: Significantly faster than npm/yarn
 
 ## Next Steps
 
-- See [ARCHITECTURE.md](./ARCHITECTURE.md) for system design overview
-- See [SERVICES.md](./SERVICES.md) for detailed service documentation
-- Check individual service README files in each service directory
+- Explore the API endpoints (see [SERVICES.md](./SERVICES.md))
+- Run load tests to measure performance
+- Customize Grafana dashboards
+- Add your own features to the services

@@ -23,7 +23,7 @@ Axum is a modular and composable web framework built on top of Tokio. It provide
 **Location**: `/home/cevor/github/bare_metal_demo/rust-backend`
 **Language**: Rust (Edition 2024)
 **Runtime**: Tokio (async)
-**Default Port**: 3000
+**Default Port**: 8001
 
 ### Dependencies
 
@@ -120,7 +120,7 @@ main.rs
   │   └── db_pool (Arc<sqlx::PgPool>)
   ├── Router (route handlers)
   │   └── /health -> health_check()
-  └── TcpListener (0.0.0.0:3000)
+    └── TcpListener (0.0.0.0:8001)
 ```
 
 ### Middleware Stack
@@ -186,7 +186,7 @@ cargo build --release
 
 # Docker
 docker build -t bare-metal-rust .
-docker run -p 3000:3000 \
+docker run -p 8001:8001 \
   -e RUST_SERVICE_DB_URL=postgres://... \
   bare-metal-rust
 ```
@@ -211,7 +211,7 @@ FastAPI is a modern, fast (high-performance) web framework for building APIs wit
 **Language**: Python 3.14
 **Framework**: FastAPI
 **ASGI Server**: uvicorn
-**Default Port**: 8001
+**Default Port**: 8000
 **Dependency Manager**: UV (recommended) or pip
 
 ### Dependencies
@@ -240,29 +240,10 @@ cd python-services
 uv sync
 
 # Run development server with hot reload
-uv run python -m uvicorn src.main:app --host 0.0.0.0 --port 8001 --reload
+python -m uvicorn src.main:app --host 0.0.0.0 --port 8000 --reload
 
 # Run production server
-uv run python -m uvicorn src.main:app --host 0.0.0.0 --port 8001 --workers 4
-```
-
-#### Using pip
-
-```bash
-cd python-services
-
-# Create virtual environment
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-
-# Install dependencies
-pip install -e .
-
-# Run development server
-python -m uvicorn src.main:app --host 0.0.0.0 --port 8001 --reload
-
-# Run production server
-python -m uvicorn src.main:app --host 0.0.0.0 --port 8001 --workers 4
+python -m uvicorn src.main:app --host 0.0.0.0 --port 8000 --workers 4
 ```
 
 ### Database
@@ -310,9 +291,9 @@ GET /health
 
 Once the service is running, access interactive documentation:
 
-- **Swagger UI**: http://localhost:8001/docs
-- **ReDoc**: http://localhost:8001/redoc
-- **OpenAPI JSON**: http://localhost:8001/openapi.json
+- **Swagger UI**: http://localhost:8000/docs
+- **ReDoc**: http://localhost:8000/redoc
+- **OpenAPI JSON**: http://localhost:8000/openapi.json
 
 ### Architecture
 
@@ -446,11 +427,11 @@ Bun is an all-in-one toolkit for JavaScript/TypeScript development. It's designe
 
 ### Service Details
 
-**Location**: `/home/cevor/github/bare_metal_demo/typescript-frontend`
-**Language**: TypeScript
+**Location**: `/home/cevor/github/bare_metal_demo/frontend`
+**Framework**: Astro.js + Bun
+**Language**: TypeScript (Astro components)
 **Runtime**: Bun
-**Default Port**: 3001 (development), configurable for production
-**Package Manager**: Bun
+**Default Port**: 4321 (development), configurable for production
 
 ### Project Setup
 
@@ -477,13 +458,13 @@ Bun is an all-in-one toolkit for JavaScript/TypeScript development. It's designe
 
 #### Prerequisites
 - Bun installed
-- Rust backend running on port 3000
-- Python service running on port 8001 (optional)
+- Rust backend running on port 8001
+- Python service running on port 8000 (optional)
 
 #### Development Server
 
 ```bash
-cd typescript-frontend
+cd frontend
 
 # Install dependencies (one-time)
 bun install
@@ -491,7 +472,7 @@ bun install
 # Start development server with hot reload
 bun run dev
 
-# Server runs on http://localhost:3001
+# Server runs on http://localhost:4321
 ```
 
 #### Production Build
@@ -572,7 +553,7 @@ root = "./tests"
 **Connecting to Rust Backend**:
 ```typescript
 // Example fetch from backend
-const response = await fetch('http://localhost:3000/health');
+const response = await fetch('http://localhost:8001/health');
 const data = await response.json();
 console.log(data); // { status: "ok" }
 ```
@@ -580,7 +561,7 @@ console.log(data); // { status: "ok" }
 **Connecting to Python Service**:
 ```typescript
 // Example fetch from Python service
-const response = await fetch('http://localhost:8001/health');
+const response = await fetch('http://localhost:8000/health');
 const data = await response.json();
 console.log(data); // { status: "ok" }
 ```
@@ -593,8 +574,8 @@ Create `.env` file in frontend directory:
 
 ```env
 # API Endpoints
-VITE_RUST_BACKEND_URL=http://localhost:3000
-VITE_PYTHON_SERVICE_URL=http://localhost:8001
+VITE_RUST_BACKEND_URL=http://localhost:8001
+VITE_PYTHON_SERVICE_URL=http://localhost:8000
 
 # Environment
 NODE_ENV=development
@@ -654,7 +635,7 @@ bun dist/index.js
 **Docker**:
 ```bash
 docker build -t bare-metal-frontend .
-docker run -p 3001:3001 bare-metal-frontend
+docker run -p 4321:4321 bare-metal-frontend
 ```
 
 **Static Hosting** (CDN, S3, etc.):
@@ -796,9 +777,9 @@ check_db() {
 
 # Check services
 echo "=== API Services ==="
-check_service "Rust Backend" "http://localhost:3000/health"
-check_service "Python Service" "http://localhost:8001/health"
-check_service "Frontend Dev Server" "http://localhost:3001"
+check_service "Rust Backend" "http://localhost:8001/health"
+check_service "Python Service" "http://localhost:8000/health"
+check_service "Frontend Dev Server" "http://localhost:4321"
 
 echo
 echo "=== Databases ==="
@@ -819,13 +800,13 @@ echo "Use 'docker-compose logs [service]' for service logs"
 
 ```bash
 # Rust Backend
-curl http://localhost:3000/health
-
-# Python Service
 curl http://localhost:8001/health
 
+# Python Service
+curl http://localhost:8000/health
+
 # Frontend (HTML response)
-curl -I http://localhost:3001
+curl -I http://localhost:4321
 
 # Rustfs/MinIO
 curl http://localhost:9000/minio/health/live
@@ -847,7 +828,7 @@ PGPASSWORD=python_pass psql -h localhost -U python_user -d python_service -c "SE
 // From Rust Axum handler
 async fn call_python_service() -> Result<String> {
     let response = reqwest::Client::new()
-        .get("http://localhost:8001/health")
+        .get("http://localhost:8000/health")
         .send()
         .await?;
     
@@ -860,7 +841,7 @@ async fn call_python_service() -> Result<String> {
 ```typescript
 // From TypeScript
 async function getRustHealth() {
-    const response = await fetch('http://localhost:3000/health');
+    const response = await fetch('http://localhost:8001/health');
     return response.json();
 }
 ```
@@ -870,7 +851,7 @@ async function getRustHealth() {
 ```typescript
 // From TypeScript
 async function getPythonHealth() {
-    const response = await fetch('http://localhost:8001/health');
+    const response = await fetch('http://localhost:8000/health');
     return response.json();
 }
 ```

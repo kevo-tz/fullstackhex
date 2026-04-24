@@ -13,8 +13,8 @@ The Bare Metal Demo is a high-performance distributed system with Rust, Python, 
 └──────────────┬──────────────────────────┬─────────────────────────┘
                │                          │
      ┌─────────▼──────────┐    ┌─────────▼──────────┐
-     │   Astro Frontend    │    │   Rust Backend     │
-     │ Port 3001 (Bun SSR)│    │  Port 8001 (Axum)  │
+      │   Astro Frontend    │    │   Rust Backend     │
+      │ Port 4321 (Bun SSR)│    │  Port 8001 (Axum)  │
      └─────────┬──────────┘    └─────────┬──────────┘
                │                          │
                ├──────────┬───────────────┤
@@ -108,7 +108,7 @@ The Bare Metal Demo is a high-performance distributed system with Rust, Python, 
 | External Port | Service              | Internal Port |
 |---------------|----------------------|---------------|
 | 80/443        | Nginx                | 80/443        |
-| 3001          | Astro Frontend       | 3001          |
+| 4321          | Astro Frontend       | 4321          |
 | 8001          | Rust Backend         | 8001          |
 | 8000          | Python Services      | 8000          |
 | 5432          | PostgreSQL           | 5432          |

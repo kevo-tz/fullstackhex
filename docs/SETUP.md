@@ -5,7 +5,7 @@ Complete guide to setting up the Bare Metal Demo high-performance stack.
 ## Prerequisites
 
 - **Docker & Docker Compose** (v2.0+)
-- **Rust** (1.95+ for LazyLock support)
+- **Rust** (edition 2024)
 - **Python** (3.14+)
 - **Bun** (1.0+)
 - **Node.js** (18+ for Astro CLI)
@@ -56,7 +56,7 @@ uv run uvicorn src.main:app --reload --host 0.0.0.0 --port 8000 --loop uvloop
 ```bash
 cd frontend
 bun install
-bun run dev  # Development with HMR on port 3001
+bun run dev  # Development with HMR on port 4321
 ```
 
 ### 4. Start Monitoring Stack

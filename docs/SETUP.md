@@ -8,7 +8,7 @@ Complete guide to setting up the Bare Metal Demo high-performance stack.
 - **Rust** (edition 2024)
 - **Python** (3.14+)
 - **Bun** (1.0+)
-- **Node.js** (18+ for Astro CLI)
+- **Node.js** (24+ for Astro CLI)
 
 ## Quick Start
 

@@ -197,7 +197,7 @@ docker run -p 8001:8001 \
 
 ### Framework: FastAPI
 
-FastAPI is a modern, fast (high-performance) web framework for building APIs with Python 3.12+. It's based on standard Python type hints.
+FastAPI is a modern, fast (high-performance) web framework for building APIs with Python 3.14+. It's based on standard Python type hints.
 
 **Key Benefits**:
 - Automatic interactive API documentation (Swagger UI)

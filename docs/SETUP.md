@@ -5,8 +5,8 @@ Complete guide to setting up the Bare Metal Demo high-performance stack.
 ## Prerequisites
 
 - **Docker & Docker Compose** (v2.0+)
-- **Rust** (1.80+ for LazyLock support)
-- **Python** (3.11+)
+- **Rust** (1.95+ for LazyLock support)
+- **Python** (3.14+)
 - **Bun** (1.0+)
 - **Node.js** (18+ for Astro CLI)
 

@@ -1,36 +1,17 @@
 ---
-export const prerender = false; // Enable SSR
+export const prerender = false;
 ---
 
 <html lang="en">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Bare Metal Demo - Astro + Bun SSR</title>
+    <title>Bare Metal Template</title>
   </head>
   <body>
     <main>
-      <h1>🚀 Bare Metal Demo</h1>
-      <p>High-performance stack with Astro.js + Bun SSR</p>
-      
-      <div id="api-status">
-        <h2>API Status</h2>
-        <button onclick="checkHealth()">Check Backend Health</button>
-        <pre id="health-result"></pre>
-      </div>
+      <h1>🚀 Hello from Frontend!</h1>
+      <p>High-performance stack with Astro + Bun SSR</p>
     </main>
-
-    <script>
-      async function checkHealth() {
-        const result = document.getElementById('health-result');
-        try {
-          const res = await fetch('http://localhost:8001/health');
-          const data = await res.json();
-          result.textContent = JSON.stringify(data, null, 2);
-        } catch (e) {
-          result.textContent = `Error: ${e.message}`;
-        }
-      }
-    </script>
   </body>
 </html>

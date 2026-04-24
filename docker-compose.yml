@@ -1,43 +1,33 @@
 version: '3.9'
 
 services:
-  rust-db:
+  postgres:
     image: postgres:16-alpine
-    container_name: bare_metal_rust_db
+    container_name: bare_metal_db
     ports:
       - "5432:5432"
     environment:
-      POSTGRES_USER: rust_user
-      POSTGRES_PASSWORD: rust_pass
-      POSTGRES_DB: rust_service
+      POSTGRES_USER: app_user
+      POSTGRES_PASSWORD: app_pass
+      POSTGRES_DB: app_database
     volumes:
-      - rust_db_data:/var/lib/postgresql/data
+      - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U rust_user -d rust_service"]
+      test: ["CMD-SHELL", "pg_isready -U app_user -d app_database"]
       interval: 10s
       timeout: 5s
       retries: 5
-    profiles:
-      - manual
 
-  python-db:
-    image: postgres:16-alpine
-    container_name: bare_metal_python_db
+  redis:
+    image: redis:7-alpine
+    container_name: bare_metal_redis
     ports:
-      - "5433:5432"
-    environment:
-      POSTGRES_USER: python_user
-      POSTGRES_PASSWORD: python_pass
-      POSTGRES_DB: python_service
-    volumes:
-      - python_db_data:/var/lib/postgresql/data
+      - "6379:6379"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U python_user -d python_service"]
+      test: ["CMD", "redis-cli", "ping"]
       interval: 10s
       timeout: 5s
       retries: 5
-    profiles:
-      - manual
 
   s3-storage:
     image: rustfs/rustfs:latest
@@ -53,6 +43,5 @@ services:
       - manual
 
 volumes:
-  rust_db_data:
-  python_db_data:
+  postgres_data:
   rustfs_data:

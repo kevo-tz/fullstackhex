@@ -11,9 +11,9 @@ A minimal, high-performance development template with **Rust**, **Python**, **Bu
 └────────┬──────────────┬────────────────────────┘
          │              │
     ┌────▼─────┐  ┌────▼─────┐
-    │  Frontend │  │  Rust    │
-    │  Astro+Bun│  │  Axum    │
-    │  Port 3001│  │  Port 8001│
+     │  Frontend │  │  Rust    │
+     │  Astro+Bun│  │  Axum    │
+     │  Port 4321│  │  Port 8001│
     └───────────┘  └────┬─────┘
                          │
               ┌──────────┼──────────┐
@@ -56,7 +56,7 @@ docker compose -f docker-compose.dev.yml up -d
 # Run services locally:
 cd rust-backend && cargo run              # Port 8001
 cd python-services && uv run uvicorn src.main:app --reload  # Port 8000
-cd frontend && bun run dev                 # Port 3001
+cd frontend && bun run dev                 # Port 4321
 ```
 
 ### Production (Full Stack)

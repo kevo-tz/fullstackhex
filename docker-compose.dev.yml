@@ -2,7 +2,7 @@ version: '3.9'
 
 services:
   postgres:
-    image: postgres:16-alpine
+    image: postgres:18-alpine
     container_name: bare_metal_db
     ports:
       - "5432:5432"
@@ -13,7 +13,7 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U app_user -d app_database"]
+      test: [ "CMD-SHELL", "pg_isready -U app_user -d app_database" ]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -27,7 +27,7 @@ services:
           memory: 1G
 
   redis:
-    image: redis:7-alpine
+    image: redis:8-alpine
     container_name: bare_metal_redis
     ports:
       - "6379:6379"
@@ -35,7 +35,7 @@ services:
     volumes:
       - redis_data:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: [ "CMD", "redis-cli", "ping" ]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -52,12 +52,18 @@ services:
       - "9000:9000"
       - "9001:9001"
     environment:
-      RUSTFS_ROOT_USER: minioadmin
-      RUSTFS_ROOT_PASSWORD: minioadmin
+      - RUSTFS_VOLUMES=/data
+      - RUSTFS_ADDRESS=0.0.0.0:9000
+      - RUSTFS_CONSOLE_ADDRESS=0.0.0.0:9001
+      - RUSTFS_CONSOLE_ENABLE=true
+      - RUSTFS_CORS_ALLOWED_ORIGINS=*
+      - RUSTFS_CONSOLE_CORS_ALLOWED_ORIGINS=*
+      - RUSTFS_ACCESS_KEY=devadmin
+      - RUSTFS_SECRET_KEY=devadmin
     volumes:
       - rustfs_data:/data
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      test: [ "CMD", "sh", "-c", "curl -f http://127.0.0.1:9000/health && curl -f http://127.0.0.1:9001/rustfs/console/health" ]
       interval: 30s
       timeout: 10s
       retries: 3

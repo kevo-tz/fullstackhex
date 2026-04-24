@@ -8,33 +8,33 @@ The Bare Metal Demo is a high-performance distributed system with Rust, Python, 
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────┐
-│                    Nginx (HTTP/2, Brotli/Gzip)                       │
-│                         Ports 80/443                                  │
-└──────────────┬──────────────────────────┬─────────────────────────┘
+│                    Nginx (HTTP/2, Brotli/Gzip)                          │
+│                         Ports 80/443                                    │
+└──────────────┬──────────────────────────┬───────────────────────────────┘
                │                          │
-     ┌─────────▼──────────┐    ┌─────────▼──────────┐
-      │   Astro Frontend    │    │   Rust Backend     │
-      │ Port 4321 (Bun SSR)│    │  Port 8001 (Axum)  │
-     └─────────┬──────────┘    └─────────┬──────────┘
-               │                          │
-               ├──────────┬───────────────┤
+     ┌─────────▼──────────┐     ┌─────────▼──────────┐
+     │  Astro Frontend    │     │   Rust Backend     │
+     │ Port 4321 (Bun SSR)├─────┤  Port 8001 (Axum)  │
+     └────────────────────┘     └─────────┬──────────┘
+                                          │
+               ┌──────────┬───────────────┤
                │          │               │
-        ┌──────▼──────┐  │    ┌─────────▼──────────┐
-        │  Python      │  │    │  Postgres (Single) │
-        │  Services   │  │    │  Port 5432         │
-        │  Port 8000  │  │    │  Schemas: rust, python │
-        └──────┬──────┘  │    └────────────────────┘
+        ┌──────▼──────┐   │     ┌─────────▼──────────────┐
+        │  Python     │   │     │  Postgres (Single)     │
+        │  Services   │   │     │  Port 5432             │
+        │  Port 8000  │   │     │  Schemas: rust, python │
+        └──────┬──────┘   │     └────────────────────────┘
                │          │
                ├──────────┤
                │          │
         ┌──────▼──────┐  ┌▼──────────────┐
-        │    Redis     │  │   RustFS (S3)   │
-        │  Port 6379  │  │  Port 9000     │
+        │    Redis    │  │  RustFS (S3)  │
+        │  Port 6379  │  │  Port 9000    │
         └─────────────┘  └───────────────┘
 
 ┌─────────────────────────────────────────────────────────────────────┐
 │              Monitoring Stack                                       │
-│  Prometheus (9090) + Grafana (3000) + Metrics Endpoints         │
+│  Prometheus (9090) + Grafana (3000) + Metrics Endpoints             │
 └─────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -55,7 +55,7 @@ The Bare Metal Demo is a high-performance distributed system with Rust, Python, 
 ## Technology Stack
 
 ### Astro Frontend (Bun SSR)
-- **Framework**: Astro.js 4.x
+- **Framework**: Astro.js 6.x
 - **Runtime**: Bun (SSR mode)
 - **Output**: Standalone Node.js-compatible bundle
 - **Performance**: HTTP/2, HMR in dev, optimized builds
@@ -114,6 +114,7 @@ The Bare Metal Demo is a high-performance distributed system with Rust, Python, 
 | 5432          | PostgreSQL           | 5432          |
 | 6379          | Redis                | 6379          |
 | 9000          | RustFS (API)         | 9000          |
+| 9001          | RustFS (Console)     | 9001          |
 | 9090          | Prometheus           | 9090          |
 | 3000          | Grafana              | 3000          |
 

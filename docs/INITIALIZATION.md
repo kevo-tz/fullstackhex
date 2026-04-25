@@ -123,7 +123,7 @@ echo ""
 echo "Next steps:"
 echo "  1. docker compose -f docker-compose.dev.yml up -d"
 echo "  2. cd rust-backend && cargo run --workspace"
-echo "  3. cd frontend && bun install && bun run dev"
+echo "  3. cd frontend && bun run dev"
 echo ""
 echo "Verify versions:"
 echo "  rustc --version    (should show latest stable)"
@@ -134,19 +134,16 @@ echo ""
 
 ## Scaffold Astro Frontend
 
-After `scripts/install.sh` completes, scaffold the frontend with **Astro** and **Bun**:
+> **Note:** `scripts/install.sh` runs this automatically. The steps below are the manual equivalent.
 
 ```bash
 # From repo root
-bun create astro@latest frontend
+bun create astro@latest frontend -- --template minimal --no-install --no-git --yes
 
 cd frontend
 
-# Add Tailwind integration
-bunx astro add tailwind
-
-# Install dependencies
-bun install
+# Add Tailwind integration (also installs dependencies)
+bunx astro add tailwind --yes
 ```
 
 Recommended template layout:

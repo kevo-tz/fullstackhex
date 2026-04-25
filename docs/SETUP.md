@@ -1,139 +1,150 @@
-# Setup Guide
+# Setup Guide - High Performance Stack
 
-Complete guide to setting up the Bare Metal Demo high-performance stack.
-
-## Prerequisites
-
-- **Docker & Docker Compose** (v2.0+)
-- **Rust** (edition 2024)
-- **Python** (3.14+)
-- **Bun** (1.0+)
-- **Node.js** (24+ for Astro CLI)
-
-## Quick Start
-
-### 1. Clone & Setup Environment
+## One-Command Initialization
 
 ```bash
-# Copy environment template
-cp .env.example .env
-
-# Edit if needed (defaults work for local dev)
-nano .env
+# Clone and run full initialization
+git clone <repo>
+cd bare-metal-demo
+./scripts/install.sh
 ```
 
-### 2. Start Infrastructure
+The script installs latest versions AND creates the Rust workspace structure.
+
+## What `install.sh` Does
+
+1. **Installs latest tools:**
+   - Rust (edition 2024) via rustup
+   - Bun (latest) via official installer
+   - uv (latest Python package manager)
+   - Docker & Docker Compose (if missing)
+
+2. **Creates Rust workspace:**
+   ```
+   rust-backend/
+   ├── Cargo.toml (workspace root)
+   ├── crates/
+   │   ├── api/
+   │   ├── core/
+   │   ├── db/
+   │   └── python-sidecar/
+   └── target/
+   ```
+
+3. **Sets up environment:**
+   - Copies `.env.example` to `.env`
+   - Configures Unix socket path for Python sidecar
+
+## Manual Step-by-Step (Alternative)
+
+### 1. Install Tools (Latest Versions)
 
 ```bash
-# Start all core services
-docker-compose up -d postgres redis rustfs
+# Rust (edition 2024)
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+rustup update stable
+rustc --version  # Verify edition 2024
 
-# Verify services are healthy
-docker-compose ps
+# Bun (latest)
+curl -fsSL https://bun.sh/install | bash
+bun upgrade
+bun --version
 
-# Check logs
-docker-compose logs -f postgres
+# uv (latest Python package manager)
+curl -LsSf https://astral.sh/uv/install.sh | sh
+uv --version
+
+# Verify Docker
+docker --version
+docker compose version
 ```
 
-### 3. Run Services (Development Mode)
+### 2. Create Rust Workspace
 
-**Rust Backend:**
 ```bash
 cd rust-backend
-cargo run
-# Or with hot reload (requires cargo-watch):
-# cargo watch -x run
+
+# Initialize workspace (done by install.sh)
+cat > Cargo.toml << 'EOF'
+[workspace]
+members = ["crates/*"]
+
+[workspace.dependencies]
+tokio = { version = "1", features = ["full"] }
+serde = { version = "1.0", features = ["derive"] }
+axum = "0.8"
+sqlx = { version = "0.8", features = ["postgres"] }
+EOF
+
+# Create crates
+mkdir -p crates
+for crate in api core db python-sidecar; do
+    if [ ! -d "crates/$crate" ]; then
+        cargo new --lib "crates/$crate"
+    fi
+done
+
+# Build workspace
+cargo build --workspace
 ```
 
-**Python Services:**
+### 3. Start Infrastructure
+
 ```bash
-cd python-services
-uv sync  # Install dependencies with uv
-uv run uvicorn src.main:app --reload --host 0.0.0.0 --port 8000 --loop uvloop
+docker compose -f docker-compose.dev.yml up -d
+docker compose ps
 ```
 
-**Astro Frontend:**
+### 4. Run Services
+
 ```bash
+# Terminal 1: Rust (with Python sidecar)
+cd rust-backend
+cargo run --workspace
+
+# Terminal 2: Frontend
 cd frontend
 bun install
-bun run dev  # Development with HMR on port 4321
+bun run dev
 ```
 
-### 4. Start Monitoring Stack
+## Verify Installation
 
 ```bash
-# Start Prometheus + Grafana
-docker-compose --profile production up -d prometheus grafana
+# Rust backend (with sidecar)
+curl http://localhost:8001/health
 
-# Access:
-# Prometheus: http://localhost:9090
-# Grafana: http://localhost:3000 (admin/admin)
+# Python sidecar (via Rust, internal socket)
+curl http://localhost:8001/api/python/health
+
+# Frontend
+curl http://localhost:4321
+
+# Infrastructure
+docker compose ps
 ```
 
-### 5. Production Deployment
+## Environment Configuration
 
 ```bash
-# Build all images
-docker-compose build
+# Copy template
+cp .env.example .env
 
-# Start all services (including Nginx)
-docker-compose --profile production up -d
-
-# Check status
-docker-compose ps
-
-# View logs
-docker-compose logs -f
+# Review settings (defaults work for local dev)
+cat .env
 ```
 
-## Database Setup
-
-The single Postgres instance uses schemas for isolation:
-- `rust_service` - Rust backend tables
-- `python_service` - Python services tables
-
-The init script `postgres/init-schemas.sql` runs automatically on first start.
-
-### Manual Schema Creation (if needed)
-```bash
-psql -h localhost -U app_user -d app_database
-CREATE SCHEMA IF NOT EXISTS rust_service;
-CREATE SCHEMA IF NOT EXISTS python_service;
-SET search_path TO rust_service, python_service, public;
+Key settings in `.env`:
 ```
+# Rust Backend
+RUST_SERVICE_DB_URL=postgres://localhost/bare_metal
 
-## Performance Tuning
+# Python Sidecar (Unix socket)
+PYTHON_SIDEcar_SOCKET=/tmp/python-sidecar.sock
 
-### Postgres
-Edit `postgres/postgres.conf` and restart:
-```bash
-docker-compose restart postgres
+# Frontend (Rust API only)
+VITE_RUST_BACKEND_URL=http://localhost:8001
 ```
-
-### Redis
-Edit command in `docker-compose.yml`:
-```yaml
-command: redis-server --maxmemory 1gb --maxmemory-policy allkeys-lru --appendonly yes
-```
-
-### Rust Backend
-Adjust connection pool in `rust-backend/src/main.rs`:
-```rust
-.max_connections(50)  // Increase for production
-.min_connections(10)
-```
-
-## Monitoring Setup
-
-### Grafana Dashboards
-1. Login to Grafana (admin/admin)
-2. Add Prometheus data source: `http://prometheus:9090`
-3. Import pre-configured dashboards from `monitoring/grafana/dashboards/`
-
-### Available Metrics
-- Rust Backend: `http://localhost:8001/metrics`
-- Python Services: `http://localhost:8000/metrics`
-- Prometheus: `http://localhost:9090/metrics`
 
 ## Troubleshooting
 
@@ -141,60 +152,35 @@ Adjust connection pool in `rust-backend/src/main.rs`:
 ```bash
 # Check what's using a port
 lsof -i :5432
+
 # Change ports in .env and docker-compose.yml
-```
-
-### Database Connection Issues
-```bash
-# Check Postgres logs
-docker-compose logs postgres
-
-# Test connection
-psql -h localhost -U app_user -d app_database
-```
-
-### Redis Connection Issues
-```bash
-# Check Redis logs
-docker-compose logs redis
-
-# Test connection
-redis-cli -h localhost -p 6379 ping
 ```
 
 ### Rust Build Errors
 ```bash
-# Clean and rebuild
 cd rust-backend
 cargo clean
-cargo build
+cargo build --workspace
 ```
 
 ### Python Dependencies
 ```bash
 cd python-services
-uv pip install -e .
+uv sync
 ```
 
-## Cleanup
-
+### Infrastructure Issues
 ```bash
-# Stop all containers
-docker-compose down
+# Check logs
+docker compose logs postgres
+docker compose logs redis
 
-# Remove volumes (DELETES DATA)
-docker-compose down -v
-
-# Full cleanup (including built images)
-docker-compose down -v --rmi all
-
-# Run cleanup script
-./scripts/cleanup.sh
+# Restart services
+docker compose restart
 ```
 
 ## Next Steps
 
-- Explore the API endpoints (see [SERVICES.md](./SERVICES.md))
-- Run load tests to measure performance
-- Customize Grafana dashboards
-- Add your own features to the services
+- See [SERVICES.md](./SERVICES.md) for API documentation
+- See [INITIALIZATION.md](./INITIALIZATION.md) for template-ready setup
+- Review individual service directories for detailed docs

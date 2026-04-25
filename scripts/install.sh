@@ -9,7 +9,7 @@ BLUE='\033[0;34m'
 NC='\033[0m'
 
 echo -e "${BLUE}========================================${NC}"
-echo -e "${BLUE}  Bare Metal Template - Install Script${NC}"
+echo -e "${BLUE}  Bare Metal Demo - Full Initialization${NC}"
 echo -e "${BLUE}========================================${NC}"
 echo ""
 
@@ -39,6 +39,7 @@ install_rust() {
         source "$HOME/.cargo/env"
         echo -e "${GREEN}✓ Rust installed: $(rustc --version)${NC}"
     fi
+    rustup update stable
 }
 
 # Check and install Bun
@@ -52,6 +53,7 @@ install_bun() {
         export PATH="$HOME/.bun/bin:$PATH"
         echo -e "${GREEN}✓ Bun installed: v$(bun --version)${NC}"
     fi
+    bun upgrade
 }
 
 # Check Python (don't auto-install, just check)
@@ -61,16 +63,16 @@ check_python() {
         local major=$(python3 -c 'import sys; print(sys.version_info.major)')
         local minor=$(python3 -c 'import sys; print(sys.version_info.minor)')
 
-        if [[ "$major" -ge 3 && "$minor" -ge 11 ]]; then
+        if [[ "$major" -ge 3 && "$minor" -ge 14 ]]; then
             echo -e "${GREEN}✓ Python already installed: $version${NC}"
         else
-            echo -e "${RED}✗ Python 3.11+ required. Found: $version${NC}"
-            echo -e "${YELLOW}  Install with: pyenv install 3.11 or your package manager${NC}"
+            echo -e "${RED}✗ Python 3.14+ required. Found: $version${NC}"
+            echo -e "${YELLOW}  Install with: pyenv install 3.14 or your package manager${NC}"
             return 1
         fi
     else
         echo -e "${RED}✗ Python 3 not found${NC}"
-        echo -e "${YELLOW}  Install with: pyenv install 3.11 or your package manager${NC}"
+        echo -e "${YELLOW}  Install with: pyenv install 3.14 or your package manager${NC}"
         return 1
     fi
 }
@@ -107,6 +109,83 @@ install_uv() {
     fi
 }
 
+# Create Rust workspace structure
+create_rust_workspace() {
+    echo ""
+    echo -e "${YELLOW}2. Creating Rust workspace...${NC}"
+    
+    cd rust-backend
+    
+    # Create workspace Cargo.toml if not exists
+    if [ ! -f Cargo.toml ]; then
+        echo "Creating workspace Cargo.toml..."
+        cat > Cargo.toml << 'EOF'
+[workspace]
+members = ["crates/*"]
+
+[workspace.dependencies]
+tokio = { version = "1", features = ["full"] }
+serde = { version = "1.0", features = ["derive"] }
+axum = "0.8"
+sqlx = { version = "0.8", features = ["postgres", "runtime-tokio-native-tls"] }
+tower = "0.5"
+tower-http = "0.5"
+EOF
+    else
+        echo -e "${GREEN}✓ Workspace Cargo.toml already exists${NC}"
+    fi
+    
+    # Create crates directory
+    mkdir -p crates
+    
+    # Create individual crates if they don't exist
+    for crate in api core db python-sidecar; do
+        if [ ! -d "crates/$crate" ]; then
+            echo "Creating crate: $crate..."
+            cargo new --lib "crates/$crate"
+        else
+            echo -e "${GREEN}✓ Crate already exists: $crate${NC}"
+        fi
+    done
+    
+    # Build workspace
+    echo "Building workspace..."
+    cargo build --workspace
+    echo -e "${GREEN}✓ Rust workspace ready${NC}"
+    
+    cd ..
+}
+
+# Setup environment
+setup_environment() {
+    echo ""
+    echo -e "${YELLOW}3. Setting up environment...${NC}"
+    
+    # Copy .env if not exists
+    if [ ! -f .env ]; then
+        if [ -f .env.example ]; then
+            cp .env.example .env
+            echo -e "${GREEN}✓ Created .env from .env.example${NC}"
+        else
+            echo -e "${YELLOW}⚠ .env.example not found, skipping${NC}"
+        fi
+    else
+        echo -e "${GREEN}✓ .env already exists${NC}"
+    fi
+    
+    # Add Unix socket path to .env if not present
+    if [ -f .env ]; then
+        if ! grep -q "PYTHON_SIDECAR_SOCKET" .env 2>/dev/null; then
+            echo "" >> .env
+            echo "# Python Sidecar (Unix socket)" >> .env
+            echo "PYTHON_SIDECAR_SOCKET=/tmp/python-sidecar.sock" >> .env
+            echo -e "${GREEN}✓ Added Unix socket config to .env${NC}"
+        else
+            echo -e "${GREEN}✓ Unix socket config already in .env${NC}"
+        fi
+    fi
+}
+
 # Run installations
 echo -e "${YELLOW}1. Checking dependencies...${NC}"
 echo ""
@@ -117,15 +196,25 @@ check_python
 install_uv
 check_docker
 
+# Create workspace and setup environment
+create_rust_workspace
+setup_environment
+
 echo ""
 echo -e "${GREEN}========================================${NC}"
-echo -e "${GREEN}  ✓ Installation check complete!${NC}"
+echo -e "${GREEN}  ✓ Initialization complete!${NC}"
 echo -e "${GREEN}========================================${NC}"
+echo ""
+echo "Architecture: Rust-centric with Python sidecar (Unix socket)"
 echo ""
 echo "Next steps:"
-echo "  - Dev:    docker compose -f docker-compose.dev.yml up -d"
-echo "  - Prod:   docker compose -f docker-compose.prod.yml up -d"
-echo "  - Rust:   cd rust-backend && cargo run"
-echo "  - Python: cd python-services && uv run uvicorn src.main:app --reload"
-echo "  - Frontend: cd frontend && bun run dev"
+echo "  1. docker compose -f docker-compose.dev.yml up -d"
+echo "  2. cd rust-backend && cargo run --workspace"
+echo "     (Rust will spawn Python sidecar automatically)"
+echo "  3. cd frontend && bun install && bun run dev"
+echo ""
+echo "Verify versions:"
+echo "  rustc --version    (should show latest stable)"
+echo "  bun --version     (should show latest)"
+echo "  uv --version      (should show latest)"
 echo ""

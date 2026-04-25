@@ -1,150 +1,105 @@
 # System Architecture Overview
 
-## High-Level System Design
-
-The Bare Metal Demo is a high-performance distributed system with Rust, Python, and Astro.js (Bun SSR) components, featuring a unified infrastructure with monitoring.
-
-### System Overview
+## Core Architecture: Rust-Centric with Python Sidecar
 
 ```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                    Nginx (HTTP/2, Brotli/Gzip)                          │
-│                         Ports 80/443                                    │
-└──────────────┬──────────────────────────┬───────────────────────────────┘
-               │                          │
-     ┌─────────▼──────────┐     ┌─────────▼──────────┐
-     │  Astro Frontend    │     │   Rust Backend     │
-     │ Port 4321 (Bun SSR)├─────┤  Port 8001 (Axum)  │
-     └────────────────────┘     └─────────┬──────────┘
-                                          │
-               ┌──────────┬───────────────┤
-               │          │               │
-        ┌──────▼──────┐   │     ┌─────────▼──────────────┐
-        │  Python     │   │     │  Postgres (Single)     │
-        │  Services   │   │     │  Port 5432             │
-        │  Port 8000  │   │     │  Schemas: rust, python │
-        └──────┬──────┘   │     └────────────────────────┘
-               │          │
-               ├──────────┤
-               │          │
-        ┌──────▼──────┐  ┌▼──────────────┐
-        │    Redis    │  │  RustFS (S3)  │
-        │  Port 6379  │  │  Port 9000    │
-        └─────────────┘  └───────────────┘
-
-┌─────────────────────────────────────────────────────────────────────┐
-│              Monitoring Stack                                       │
-│  Prometheus (9090) + Grafana (3000) + Metrics Endpoints             │
-└─────────────────────────────────────────────────────────────────────┘
+┌────────────────────────────────────────────────────────┐
+│          Frontend (Astro + Bun)                       │
+│              Port 4321                                 │
+└─────────────────┬──────────────────────────────────────┘
+                  │ HTTP API only
+                  ▼
+┌────────────────────────────────────────────────────────┐
+│         Rust Backend (Axum + Tokio)                   │
+│              Port 8001 (only external API)            │
+│                                                        │
+│  Workspace Crates:                                    │
+│  ├── api/          HTTP routes, middleware            │
+│  ├── core/         Business logic                    │
+│  ├── db/           sqlx + PostgreSQL                 │
+│  └── python-sidecar/ Sidecar manager                │
+│                        │                              │
+│                        │ Unix domain socket            │
+│                        ▼                              │
+│  ┌─────────────────────────────────────────┐         │
+│  │    Python Service (FastAPI)             │         │
+│  │    /tmp/python-sidecar.sock (internal) │         │
+│  └─────────────────────────────────────────┘         │
+└──────────────┬───────────────────────────────────────┘
+               │
+    ┌──────────┼──────────┐
+    ▼          ▼          ▼
+┌────────┐ ┌────────┐ ┌─────────┐
+│ Postgres│ │ Redis  │ │ RustFS  │
+│  5432   │ │ 6379   │ │  9000   │
+└────────┘ └────────┘ └─────────┘
 ```
+
+## Key Architectural Decisions
+
+| Decision | Rationale |
+|----------|-----------|
+| Python as Rust sidecar | Single entry point, Rust controls lifecycle |
+| Frontend → Rust only | Simplified networking, Rust proxies to Python |
+| Rust workspace | Modular crates, clear boundaries |
+| Unix domain socket | Fast IPC on Linux/macOS, no TCP overhead |
+| Latest versions | Predictable initialization via scripts |
 
 ## Data Flow
 
-### Request Flow
-1. **Client Request** → Nginx (HTTP/2, compression)
-2. **Static/SSR Content** → Astro Frontend (Bun)
-3. **API Requests** → Rust Backend (Axum) or Python Services (FastAPI)
-4. **Data Layer** → Postgres (single instance, multiple schemas) + Redis (cache)
-5. **Object Storage** → RustFS (S3-compatible)
+1. **Frontend** → HTTP request to Rust (localhost:8001) only
+2. **Rust API** → Processes request, may call internal crates
+3. **Python Sidecar** → Rust communicates via Unix domain socket when Python logic needed
+4. **Data Layer** → Postgres (sqlx) + Redis + RustFS
 
-### Service Communication
-- Frontend ↔ Rust Backend (HTTP API)
-- Rust Backend ↔ Python Services (HTTP API, optional)
-- All services ↔ Postgres/Redis (async connections)
+## Technology Stack (Latest Versions)
 
-## Technology Stack
+| Component | Technology | Version Check Command |
+|-----------|-------------|----------------------|
+| Rust | Edition 2024 | `rustc --version` |
+| Workspace | Cargo workspace | Auto |
+| Web Framework | Axum 0.8+ | Check crates.io |
+| Async Runtime | Tokio 1.x | Check crates.io |
+| Python | 3.14+ | `python3 --version` |
+| Package Manager | uv (latest) | `uv --version` |
+| Frontend | Astro 6.x + Bun | `bun --version` |
+| Database | PostgreSQL 18 | `docker compose ps` |
+| Cache | Redis 8 | `docker compose ps` |
+| IPC | Unix domain socket | `/tmp/python-sidecar.sock` |
 
-### Astro Frontend (Bun SSR)
-- **Framework**: Astro.js 6.x
-- **Runtime**: Bun (SSR mode)
-- **Output**: Standalone Node.js-compatible bundle
-- **Performance**: HTTP/2, HMR in dev, optimized builds
+## Workspace Structure
 
-### Rust Backend
-- **Framework**: Axum 0.8 (HTTP/2 support)
-- **Runtime**: Tokio (async)
-- **Database**: PostgreSQL with sqlx (compile-time checks)
-- **Cache**: Redis (async, connection manager)
-- **Middleware**: Compression, CORS, Tracing, Rate Limiting
-- **Metrics**: Prometheus endpoint (/metrics)
-- **Performance**: 50 max DB connections, 10 min connections
+```
+rust-backend/
+├── Cargo.toml              # Workspace root
+├── crates/
+│   ├── api/               # HTTP API layer (Axum routes)
+│   ├── core/              # Business logic
+│   ├── db/                # Database layer (sqlx)
+│   └── python-sidecar/    # Sidecar process manager
+└── target/
+```
 
-### Python Services
-- **Framework**: FastAPI (modern, fast)
-- **Server**: Uvicorn (with uvloop for performance)
-- **Database**: PostgreSQL with psycopg (async pool)
-- **Cache**: Redis (asyncio)
-- **Metrics**: Prometheus FastAPI Instrumentator
-- **Performance**: uvloop, httptools, async connection pooling
+## IPC: Unix Domain Socket
 
-### Data Layer
-- **PostgreSQL 18**: Single instance, multiple schemas (`rust_service`, `python_service`)
-  - Resource limits: 2 CPU, 2GB RAM
-  - Tuning: shared_buffers=512MB, effective_cache_size=1536MB
-- **Redis 8**: LRU eviction, 512MB maxmemory, AOF persistence
-  - Resource limits: 1 CPU, 1GB RAM
-- **RustFS**: S3-compatible object storage, MinIO-compatible API
-
-### Infrastructure
-- **Reverse Proxy**: Nginx (HTTP/2, Brotli/Gzip compression)
-- **Monitoring**: Prometheus + Grafana
-- **Orchestration**: Docker Compose with resource limits
-- **All services**: Healthchecks, restart policies, graceful shutdown
-
-## Performance Features
-
-✅ **Async Everywhere**: Tokio (Rust), asyncio (Python), async/await (Redis)  
-✅ **Connection Pooling**: Postgres (50 max), Redis (manager)  
-✅ **HTTP/2**: Enabled via Axum + Nginx  
-✅ **Compression**: Brotli/Gzip (Nginx + Tower middleware)  
-✅ **Caching**: Multi-layer (Redis + HTTP cache headers)  
-✅ **Rate Limiting**: Tower governor (Rust backend)  
-✅ **Observability**: Prometheus metrics + OpenTelemetry tracing  
-✅ **Resource Management**: Docker container limits (CPU/memory)  
-✅ **Persistence**: Redis AOF, Postgres WAL  
+Python sidecar binds to `/tmp/python-sidecar.sock`. Rust communicates through this socket for:
+- Low latency (no TCP overhead)
+- Security (only local processes can connect)
+- Simple integration with FastAPI/Uvicorn
 
 ## Port Mappings
 
-| External Port | Service              | Internal Port |
-|---------------|----------------------|---------------|
-| 80/443        | Nginx                | 80/443        |
-| 4321          | Astro Frontend       | 4321          |
-| 8001          | Rust Backend         | 8001          |
-| 8000          | Python Services      | 8000          |
-| 5432          | PostgreSQL           | 5432          |
-| 6379          | Redis                | 6379          |
-| 9000          | RustFS (API)         | 9000          |
-| 9001          | RustFS (Console)     | 9001          |
-| 9090          | Prometheus           | 9090          |
-| 3000          | Grafana              | 3000          |
-
-## Scaling Considerations
-
-### Horizontal Scaling
-- Frontend: Multiple replicas behind Nginx load balancer
-- Backend: Multiple Rust instances with Redis for session storage
-- Services: Multiple Python instances with connection pooling
-- Database: Read replicas + connection pooling
-- Redis: Cluster mode for high availability
-
-### Vertical Scaling
-- Increase container resource limits in docker-compose.yml
-- Adjust Postgres shared_buffers, work_mem
-- Increase connection pool sizes
-- Enable Redis Cluster for higher throughput
-
-## Security (Production)
-
-- Enable JWT/OAuth2 authentication
-- Restrict CORS to specific domains
-- Use strong database credentials
-- Enable SSL/TLS for all connections
-- Implement rate limiting
-- Use secrets management (not .env files)
-- Regular security updates
+| Service | Port | Purpose |
+|---------|------|---------|
+| Frontend | 4321 | Development server |
+| Rust Backend | 8001 | Only external API |
+| Python Sidecar | Internal | Unix socket only (/tmp/python-sidecar.sock) |
+| PostgreSQL | 5432 | Database |
+| Redis | 6379 | Cache |
+| RustFS | 9000 | S3-compatible storage |
 
 ## Next Steps
 
 - See [SETUP.md](./SETUP.md) for installation instructions
-- See [SERVICES.md](./SERVICES.md) for API documentation
-- Review individual services
+- See [SERVICES.md](./SERVICES.md) for service details
+- See [INITIALIZATION.md](./INITIALIZATION.md) for template-ready setup

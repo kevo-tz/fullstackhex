@@ -42,7 +42,7 @@ services:
       # Optional: mount init scripts
       # - ./scripts/db/init:/docker-entrypoint-initdb.d
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-app_user} -d ${POSTGRES_DB:-app_database}"]
+      test: [ "CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-app_user} -d ${POSTGRES_DB:-app_database}" ]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -62,15 +62,11 @@ services:
     ports:
       - "${REDIS_PORT:-6379}:6379"
     command: >
-      redis-server
-      --maxmemory ${REDIS_MAX_MEMORY:-512mb}
-      --maxmemory-policy ${REDIS_MAXMEMORY_POLICY:-allkeys-lru}
-      --appendonly ${REDIS_APPENDONLY:-yes}
-      --save ${REDIS_SAVE:-900 1 300 10 60 10000}
+      redis-server --maxmemory ${REDIS_MAX_MEMORY:-512mb} --maxmemory-policy ${REDIS_MAXMEMORY_POLICY:-allkeys-lru} --appendonly ${REDIS_APPENDONLY:-yes} --save ${REDIS_SAVE:-900 1 300 10 60 10000}
     volumes:
       - redis_data:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: [ "CMD", "redis-cli", "ping" ]
       interval: 10s
       timeout: 3s
       retries: 5
@@ -106,7 +102,7 @@ services:
     volumes:
       - rustfs_data:/data
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:9000/minio/health/live || exit 1"]
+      test: [ "CMD", "sh", "-c", "curl -f http://127.0.0.1:9000/health && curl -f http://127.0.0.1:9001/rustfs/console/health" ]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -118,38 +114,3 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
-
-  # Optional: Adminer for database management UI
-  adminer:
-    image: adminer:latest
-    container_name: bare_metal_adminer
-    restart: unless-stopped
-    ports:
-      - "${ADMINER_PORT:-8080}:8080"
-    environment:
-      ADMINER_DEFAULT_SERVER: postgres
-    networks:
-      - bare-metal-network
-    profiles:
-      - tools
-    depends_on:
-      postgres:
-        condition: service_healthy
-
-  # Optional: Redis Commander for Redis management UI
-  redis-commander:
-    image: rediscommander/redis-commander:latest
-    container_name: bare_metal_redis_cmdr
-    restart: unless-stopped
-    ports:
-      - "${REDIS_COMMANDER_PORT:-8081}:8081"
-    environment:
-      REDIS_HOST: redis
-      REDIS_PORT: 6379
-    networks:
-      - bare-metal-network
-    profiles:
-      - tools
-    depends_on:
-      redis:
-        condition: service_healthy

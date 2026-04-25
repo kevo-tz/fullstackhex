@@ -1,4 +1,14 @@
-# Setup Guide - High Performance Stack
+# Setup Guide - Rust/Bun/uv Latest-Version Stack
+
+## Table of Contents
+
+1. [One-Command Initialization](#one-command-initialization)
+2. [What `install.sh` Does](#what-installsh-does)
+3. [Manual Step-by-Step (Alternative)](#manual-step-by-step-alternative)
+4. [Verify Installation](#verify-installation)
+5. [Environment Configuration](#environment-configuration)
+6. [Troubleshooting](#troubleshooting)
+7. [Related Docs](#related-docs)
 
 ## One-Command Initialization
 
@@ -179,9 +189,7 @@ docker compose logs redis
 docker compose restart
 ```
 
-## Next Steps
+## Related Docs
 
-- See [INFRASTRUCTURE.md](./INFRASTRUCTURE.md) for complete Docker infrastructure docs
-- See [SERVICES.md](./SERVICES.md) for API documentation
-- See [INITIALIZATION.md](./INITIALIZATION.md) for template-ready setup
-- Review individual service directories for detailed docs
+- [Next: ARCHITECTURE.md](./ARCHITECTURE.md) - System design overview
+- [All Docs](./INDEX.md) - Full documentation index

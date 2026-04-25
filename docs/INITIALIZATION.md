@@ -2,6 +2,17 @@
 
 Use this as a template for new projects with the same architecture.
 
+## Table of Contents
+
+1. [Prerequisites](#prerequisites)
+2. [Initialization Script](#initialization-script)
+3. [Make Script Executable](#make-script-executable)
+4. [Verification](#verification)
+5. [Portable Template](#portable-template)
+6. [What Gets Installed (Latest Versions)](#what-gets-installed-latest-versions)
+7. [Troubleshooting](#troubleshooting)
+8. [Related Docs](#related-docs)
+
 ## Prerequisites
 
 - Linux/macOS (Unix domain socket requires Unix-like OS)
@@ -176,9 +187,7 @@ cargo build --workspace
 
 ---
 
-## Next Steps
+## Related Docs
 
-- See [INFRASTRUCTURE.md](./INFRASTRUCTURE.md) for complete Docker infrastructure docs
-- See [SETUP.md](./SETUP.md) for installation instructions
-- See [SERVICES.md](./SERVICES.md) for service details
-- See [ARCHITECTURE.md](./ARCHITECTURE.md) for system design
+- [Previous: INFRASTRUCTURE.md](./INFRASTRUCTURE.md) - Docker setup and config
+- [All Docs](./INDEX.md) - Full documentation index

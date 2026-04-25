@@ -1,5 +1,15 @@
 # Service Documentation
 
+## Table of Contents
+
+1. [Architecture Overview](#architecture-overview)
+2. [Rust Backend (Workspace)](#rust-backend-workspace)
+3. [Python Service (Sidecar Mode)](#python-service-sidecar-mode)
+4. [Frontend Service](#frontend-service)
+5. [Service Communication](#service-communication)
+6. [Health Checks](#health-checks)
+7. [Related Docs](#related-docs)
+
 ## Architecture Overview
 
 - **Rust Backend**: Main API server, manages Python sidecar
@@ -224,9 +234,8 @@ docker compose ps
 
 ---
 
-## Next Steps
+## Related Docs
 
-- See [INFRASTRUCTURE.md](./INFRASTRUCTURE.md) for Docker infrastructure (single source of truth)
-- See [SETUP.md](./SETUP.md) for installation and troubleshooting
-- See [ARCHITECTURE.md](./ARCHITECTURE.md) for system design details
-- See [INITIALIZATION.md](./INITIALIZATION.md) for template-ready setup
+- [Previous: ARCHITECTURE.md](./ARCHITECTURE.md) - System design overview
+- [Next: INFRASTRUCTURE.md](./INFRASTRUCTURE.md) - Docker setup and config
+- [All Docs](./INDEX.md) - Full documentation index

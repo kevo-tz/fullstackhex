@@ -1,5 +1,16 @@
 # System Architecture Overview
 
+## Table of Contents
+
+1. [Core Architecture](#core-architecture-rust-centric-with-python-sidecar)
+2. [Key Architectural Decisions](#key-architectural-decisions)
+3. [Data Flow](#data-flow)
+4. [Technology Stack (Latest Versions)](#technology-stack-latest-versions)
+5. [Workspace Structure](#workspace-structure)
+6. [IPC: Unix Domain Socket](#ipc-unix-domain-socket)
+7. [Port Mappings](#port-mappings)
+8. [Related Docs](#related-docs)
+
 ## Core Architecture: Rust-Centric with Python Sidecar
 
 ```
@@ -100,9 +111,8 @@ Python sidecar binds to `/tmp/python-sidecar.sock`. Rust communicates through th
 | RustFS | 9001 | Console for storage |
 
 
-## Next Steps
+## Related Docs
 
-- See [INFRASTRUCTURE.md](./INFRASTRUCTURE.md) for Docker setup
-- See [SETUP.md](./SETUP.md) for installation instructions
-- See [SERVICES.md](./SERVICES.md) for service details
-- See [INITIALIZATION.md](./INITIALIZATION.md) for template-ready setup
+- [Previous: SETUP.md](./SETUP.md) - One-command init and tool install
+- [Next: SERVICES.md](./SERVICES.md) - Service details and communication
+- [All Docs](./INDEX.md) - Full documentation index

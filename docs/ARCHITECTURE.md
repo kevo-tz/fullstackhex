@@ -97,10 +97,12 @@ Python sidecar binds to `/tmp/python-sidecar.sock`. Rust communicates through th
 | PostgreSQL | 5432 | Database |
 | Redis | 6379 | Cache |
 | RustFS | 9000 | S3-compatible storage |
+| RustFS | 9001 | Console for storage |
+
 
 ## Next Steps
 
-- See [INFRASTRUCTURE.md](./INFRASTRUCTURE.md) for Docker setup (single source of truth)
+- See [INFRASTRUCTURE.md](./INFRASTRUCTURE.md) for Docker setup
 - See [SETUP.md](./SETUP.md) for installation instructions
 - See [SERVICES.md](./SERVICES.md) for service details
 - See [INITIALIZATION.md](./INITIALIZATION.md) for template-ready setup

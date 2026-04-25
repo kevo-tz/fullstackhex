@@ -45,10 +45,14 @@ The script installs/updates Rust, Bun, and uv, validates Docker prerequisites, a
    ```
 
 3. **Sets up environment:**
-   - Copies `.env.example` to `.env`
-   - Configures Unix socket path for Python sidecar
+   - Creates `.env` (from `.env.example` if present, or empty)
+   - Configures Unix socket path for Python sidecar (`PYTHON_SIDECAR_SOCKET`)
+   - Adds `VITE_RUST_BACKEND_URL=http://localhost:8001`
 
-> **Note:** Astro frontend scaffolding is left as an explicit step after initialization. See [Scaffold Frontend](#scaffold-frontend-astro--bun) below.
+4. **Scaffolds Astro frontend** (automated, idempotent):
+   - Runs `bun create astro@latest frontend` (non-interactive, `--template minimal`)
+   - Adds Tailwind CSS via `bunx astro add tailwind`
+   - Creates `src/pages/api/health.ts` proxy route to Rust backend
 
 ## Manual Step-by-Step (Alternative)
 
@@ -128,27 +132,23 @@ docker compose -f docker-compose.dev.yml ps
 cd rust-backend
 cargo run --workspace
 
-# Terminal 2: Frontend
+# Terminal 2: Frontend (dependencies already installed by install.sh)
 cd frontend
-bun install
 bun run dev
 ```
 
 ## Scaffold Frontend (Astro + Bun)
 
-Create the frontend once Bun is available:
+> **Note:** `install.sh` runs this automatically. The steps below are the manual equivalent.
 
 ```bash
 # From repo root
-bun create astro@latest frontend
+bun create astro@latest frontend -- --template minimal --no-install --no-git --yes
 
 cd frontend
 
-# Add Tailwind
-bunx astro add tailwind
-
-# Install dependencies
-bun install
+# Add Tailwind (also installs dependencies)
+bunx astro add tailwind --yes
 ```
 
 Recommended first-page structure:

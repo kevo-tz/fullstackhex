@@ -109,13 +109,49 @@ install_uv() {
     fi
 }
 
+# Scaffold Astro frontend
+scaffold_frontend() {
+    echo ""
+    echo -e "${YELLOW}4. Scaffolding Astro frontend...${NC}"
+
+    if [ -d "frontend" ]; then
+        echo -e "${GREEN}✓ Frontend already scaffolded${NC}"
+        return 0
+    fi
+
+    echo "Creating Astro app..."
+    bun create astro@latest frontend -- --template minimal --no-install --no-git --yes
+
+    pushd frontend > /dev/null
+
+    echo "Adding Tailwind CSS integration..."
+    bunx astro add tailwind --yes
+
+    # Create API health proxy route
+    mkdir -p src/pages/api
+    cat > src/pages/api/health.ts << 'EOF'
+export async function GET() {
+    const response = await fetch(`${import.meta.env.VITE_RUST_BACKEND_URL}/health`);
+    const body = await response.json();
+
+    return new Response(JSON.stringify(body), {
+        headers: { 'Content-Type': 'application/json' },
+    });
+}
+EOF
+
+    echo -e "${GREEN}✓ Astro frontend ready (port 4321)${NC}"
+
+    popd > /dev/null
+}
+
 # Create Rust workspace structure
 create_rust_workspace() {
     echo ""
     echo -e "${YELLOW}2. Creating Rust workspace...${NC}"
     
     mkdir -p rust-backend
-    cd rust-backend
+    pushd rust-backend > /dev/null
     
 # Create workspace Cargo.toml if not exists
         if [ ! -f Cargo.toml ]; then
@@ -157,7 +193,7 @@ EOF
     cargo build --workspace
     echo -e "${GREEN}✓ Rust workspace ready${NC}"
     
-    cd ..
+    popd > /dev/null
 }
 
 # Setup environment
@@ -171,22 +207,30 @@ setup_environment() {
             cp .env.example .env
             echo -e "${GREEN}✓ Created .env from .env.example${NC}"
         else
-            echo -e "${YELLOW}⚠ .env.example not found, skipping${NC}"
+            touch .env
+            echo -e "${YELLOW}⚠ .env.example not found, created empty .env${NC}"
         fi
     else
         echo -e "${GREEN}✓ .env already exists${NC}"
     fi
     
     # Add Unix socket path to .env if not present
-    if [ -f .env ]; then
-        if ! grep -q "PYTHON_SIDECAR_SOCKET" .env 2>/dev/null; then
-            echo "" >> .env
-            echo "# Python Sidecar (Unix socket)" >> .env
-            echo "PYTHON_SIDECAR_SOCKET=/tmp/python-sidecar.sock" >> .env
-            echo -e "${GREEN}✓ Added Unix socket config to .env${NC}"
-        else
-            echo -e "${GREEN}✓ Unix socket config already in .env${NC}"
-        fi
+    if ! grep -q "PYTHON_SIDECAR_SOCKET" .env 2>/dev/null; then
+        echo "" >> .env
+        echo "# Python Sidecar (Unix socket)" >> .env
+        echo "PYTHON_SIDECAR_SOCKET=/tmp/python-sidecar.sock" >> .env
+        echo -e "${GREEN}✓ Added Unix socket config to .env${NC}"
+    else
+        echo -e "${GREEN}✓ Unix socket config already in .env${NC}"
+    fi
+
+    if ! grep -q "VITE_RUST_BACKEND_URL" .env 2>/dev/null; then
+        echo "" >> .env
+        echo "# Frontend → Rust backend" >> .env
+        echo "VITE_RUST_BACKEND_URL=http://localhost:8001" >> .env
+        echo -e "${GREEN}✓ Added Rust backend URL to .env${NC}"
+    else
+        echo -e "${GREEN}✓ Rust backend URL already in .env${NC}"
     fi
 }
 
@@ -200,9 +244,10 @@ check_python
 install_uv
 check_docker
 
-# Create workspace and setup environment
+# Create workspace, scaffold frontend, and setup environment
 create_rust_workspace
 setup_environment
+scaffold_frontend
 
 echo ""
 echo -e "${GREEN}========================================${NC}"
@@ -215,7 +260,7 @@ echo "Next steps:"
 echo "  1. docker compose -f docker-compose.dev.yml up -d"
 echo "  2. cd rust-backend && cargo run --workspace"
 echo "     (Rust will spawn Python sidecar automatically)"
-echo "  3. cd frontend && bun install && bun run dev"
+echo "  3. cd frontend && bun run dev"
 echo ""
 echo "Verify versions:"
 echo "  rustc --version    (should show latest stable)"

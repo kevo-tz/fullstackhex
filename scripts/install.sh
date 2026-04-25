@@ -114,6 +114,7 @@ create_rust_workspace() {
     echo ""
     echo -e "${YELLOW}2. Creating Rust workspace...${NC}"
     
+    mkdir -p rust-backend
     cd rust-backend
     
 # Create workspace Cargo.toml if not exists

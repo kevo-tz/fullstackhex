@@ -72,6 +72,7 @@ uv --version
 
 # 5. Create Rust workspace structure
 echo "Creating Rust workspace..."
+mkdir -p rust-backend
 cd rust-backend
 
 # Create workspace Cargo.toml
@@ -86,6 +87,9 @@ axum = "0.8"
 sqlx = { version = "0.8", features = ["postgres", "runtime-tokio-native-tls"] }
 tower = "0.5"
 tower-http = "0.5"
+
+[profile.release]
+lto = true
 EOF
 
 # Create crates directory
@@ -106,7 +110,7 @@ if [ ! -f .env ]; then
     cp .env.example .env
 fi
 
-# 6. Configure Python sidecar socket path
+# 7. Configure Python sidecar socket path
 if ! grep -q "PYTHON_SIDECAR_SOCKET" .env 2>/dev/null; then
     echo "" >> .env
     echo "# Python Sidecar (Unix socket)" >> .env
@@ -211,8 +215,9 @@ To use this as a template for new projects:
    your-project/
    ├── scripts/install.sh
    ├── rust-backend/ (empty, will be populated)
+   │   └── crates/
+   │       └── python-sidecar/ (your FastAPI sidecar crate)
    ├── frontend/ (your Astro project)
-   ├── python-services/ (your FastAPI project)
    └── .env.example (with PYTHON_SIDECAR_SOCKET)
    ```
 

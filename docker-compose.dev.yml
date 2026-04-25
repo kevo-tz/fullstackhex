@@ -114,3 +114,33 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
+
+  adminer:
+    image: adminer:latest
+    container_name: bare_metal_adminer
+    restart: unless-stopped
+    ports:
+      - "${ADMINER_PORT:-8080}:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - bare-metal-network
+    profiles:
+      - tools
+
+  redis-commander:
+    image: rediscommander/redis-commander:latest
+    container_name: bare_metal_redis_commander
+    restart: unless-stopped
+    ports:
+      - "${REDIS_COMMANDER_PORT:-8081}:8081"
+    environment:
+      REDIS_HOSTS: local:bare_metal_redis:6379
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - bare-metal-network
+    profiles:
+      - tools

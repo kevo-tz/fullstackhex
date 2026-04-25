@@ -21,6 +21,8 @@ Use this as a template for new projects with the same architecture.
 
 ## Initialization Script
 
+> **Note:** This is a portable template showing the core steps. The project's `scripts/install.sh` extends this with OS detection, color output, and additional safety checks.
+
 Save as `scripts/install.sh`:
 
 ```bash
@@ -29,7 +31,20 @@ set -e
 
 echo "=== Bare Metal Demo Initialization ==="
 
-# 1. Install Rust (edition 2024)
+# 1. Check Python 3.14+ (required for sidecar; install manually via pyenv if missing)
+if command -v python3 &> /dev/null; then
+    minor=$(python3 -c 'import sys; print(sys.version_info.minor)')
+    if [[ "$(python3 -c 'import sys; print(sys.version_info.major)')" -lt 3 || "$minor" -lt 14 ]]; then
+        echo "ERROR: Python 3.14+ required. Found: $(python3 --version)"
+        echo "Install with: pyenv install 3.14"
+        exit 1
+    fi
+else
+    echo "ERROR: Python 3 not found. Install Python 3.14+ first."
+    exit 1
+fi
+
+# 2. Install Rust (edition 2024)
 if ! command -v rustc &> /dev/null; then
     echo "Installing Rust..."
     curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
@@ -38,7 +53,7 @@ fi
 rustup update stable
 rustc --version
 
-# 2. Install Bun
+# 3. Install Bun
 if ! command -v bun &> /dev/null; then
     echo "Installing Bun..."
     curl -fsSL https://bun.sh/install | bash
@@ -47,14 +62,14 @@ fi
 bun upgrade
 bun --version
 
-# 3. Install uv (Python package manager)
+# 4. Install uv (Python package manager)
 if ! command -v uv &> /dev/null; then
     echo "Installing uv..."
     curl -LsSf https://astral.sh/uv/install.sh | sh
 fi
 uv --version
 
-# 4. Create Rust workspace structure
+# 5. Create Rust workspace structure
 echo "Creating Rust workspace..."
 cd rust-backend
 
@@ -79,11 +94,11 @@ mkdir -p crates
 for crate in api core db python-sidecar; do
     if [ ! -d "crates/$crate" ]; then
         echo "Creating crate: $crate"
-        cargo new --lib "crates/$crate"
+        cargo new --lib --edition 2024 "crates/$crate"
     fi
 done
 
-# 5. Copy environment files
+# 6. Copy environment files
 cd ..
 echo "Setting up environment..."
 if [ ! -f .env ]; then

@@ -125,7 +125,7 @@ Open-source S3-compatible object storage server.
 
 **Console URL:** `http://localhost:9001` (login with access/secret keys)
 
-**Health check:** `curl -f http://localhost:9000/minio/health/live`
+**Health check:** `curl -f http://localhost:9000/health`
 
 **Data persistence:** Volume `rustfs_data` → `/data`
 
@@ -328,6 +328,36 @@ services:
         max-size: "10m"
         max-file: "3"
 
+  adminer:
+    image: adminer:latest
+    container_name: bare_metal_adminer
+    restart: unless-stopped
+    ports:
+      - "${ADMINER_PORT:-8080}:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - bare-metal-network
+    profiles:
+      - tools
+
+  redis-commander:
+    image: rediscommander/redis-commander:latest
+    container_name: bare_metal_redis_commander
+    restart: unless-stopped
+    ports:
+      - "${REDIS_COMMANDER_PORT:-8081}:8081"
+    environment:
+      REDIS_HOSTS: local:bare_metal_redis:6379
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - bare-metal-network
+    profiles:
+      - tools
+
 ```
 
 ## Common Commands
@@ -422,7 +452,7 @@ docker compose -f docker-compose.dev.yml logs --tail=50
 
 **What gets recreated:**
 - 3 containers (postgres, redis, rustfs)
-- 3 volumes (postgres_data, redis_data, rustfs_data) → **data is lost with `-v`
+- 3 volumes (postgres_data, redis_data, rustfs_data) → **data is lost with `-v`**
 - 1 network (bare-metal-network)
 
 **What persists:**
@@ -502,7 +532,7 @@ docker cp bare_metal_db:/var/lib/postgresql/data ./postgres_backup
 # Manually test health checks
 docker exec bare_metal_db pg_isready -U app_user -d app_database
 docker exec bare_metal_redis redis-cli ping
-docker exec bare_metal_rustfs curl -f http://localhost:9000/minio/health/live
+docker exec bare_metal_rustfs curl -f http://localhost:9000/health
 
 # Check health status
 docker inspect bare_metal_db --format='{{.State.Health.Status}}'
@@ -525,16 +555,13 @@ docker logs bare_metal_rustfs
 
 Services communicate over `bare-metal-network` (172.20.0.0/16):
 
-| Service | Container Name | Internal IP | External Port |
-|---------|----------------|--------------|---------------|
-| Postgres | `bare_metal_db` | 172.20.0.10* | `5432` |
-| Redis | `bare_metal_redis` | 172.20.0.11* | `6379` |
-| RustFS | `bare_metal_rustfs` | 172.20.0.12* | `9000`, `9001` |
+| Service | Container Name | Inter-service DNS | External Port |
+|---------|----------------|-------------------|---------------|
+| Postgres | `bare_metal_db` | `postgres:5432` | `5432` |
+| Redis | `bare_metal_redis` | `redis:6379` | `6379` |
+| RustFS | `bare_metal_rustfs` | `rustfs:9000` | `9000`, `9001` |
 
-*IPs are dynamically assigned by Docker. Use container names for inter-service communication:
-- Postgres: `postgres:5432`
-- Redis: `redis:6379`
-- RustFS: `rustfs:9000`
+IPs are dynamically assigned by Docker — use container service names (column 3) for inter-service communication, not IP addresses.
 
 ## Volumes
 

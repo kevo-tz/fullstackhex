@@ -2,6 +2,17 @@
 
 Markdown style guide for the bare-metal-demo documentation. All docs in `./docs` follow these rules.
 
+## Table of Contents
+
+1. [Header Hierarchy](#header-hierarchy)
+2. [Table of Contents](#table-of-contents)
+3. [Table Formatting](#table-formatting)
+4. [Code Blocks](#code-blocks)
+5. [Cross-Linking](#cross-linking)
+6. [Text Formatting](#text-formatting)
+7. [Callouts](#callouts)
+8. [Phrasing](#phrasing)
+
 ## Header Hierarchy
 
 - `#` = Document title (one per file, line 1)
@@ -19,8 +30,6 @@ Every doc includes a TOC after the title section. Format:
 1. [Section Name](#section-name)
 2. [Another Section](#another-section)
 ```
-
-Every doc includes a TOC after the title section. Format:
 
 ## Table Formatting
 

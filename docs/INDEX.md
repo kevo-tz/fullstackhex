@@ -18,7 +18,7 @@ Start here for the bare-metal-demo documentation. Documents are listed in recomm
 3. **[SERVICES.md](./SERVICES.md)** - Service details and communication
     - Rust workspace crates and API endpoints
     - Python sidecar (FastAPI + Unix socket)
-    - Frontend (planned: Astro + Bun) API communication
+   - Frontend service implementation (Astro + Bun + Tailwind)
     - Health checks
 
 4. **[INFRASTRUCTURE.md](./INFRASTRUCTURE.md)** - Docker setup and config

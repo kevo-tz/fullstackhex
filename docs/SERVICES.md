@@ -141,27 +141,89 @@ if __name__ == "__main__":
 
 ---
 
-## Frontend Service (planned: Astro + Bun)
+## Frontend Service (Astro + Bun)
+
+### Implementation Goal
+
+The frontend is a template-ready Astro application managed by **Bun**. It serves a single `index.astro` page, uses **Tailwind** for styling, and keeps backend integration behind Astro-owned server routes when possible.
+
+### Recommended Structure
+
+```text
+frontend/
+├── astro.config.mjs
+├── package.json
+├── tailwind.config.mjs
+├── tsconfig.json
+├── public/
+└── src/
+        ├── components/
+        ├── layouts/
+        └── pages/
+                ├── index.astro
+                └── api/
+                        └── health.ts
+```
+
+### Scaffold Frontend
+
+```bash
+# Create Astro app with Bun
+bun create astro@latest frontend
+
+# Enter project
+cd frontend
+
+# Add Tailwind integration
+bunx astro add tailwind
+
+# Install dependencies
+bun install
+```
 
 ### API Communication (Rust Only)
 
-Frontend ONLY communicates with Rust backend:
+Frontend browser code should call Astro-owned routes first. Astro server routes then call Rust when backend data is needed:
 
 ```typescript
-// Correct: Call Rust API
-const response = await fetch('http://localhost:8001/api/data');
+// src/pages/api/health.ts
+export async function GET() {
+    const response = await fetch(`${import.meta.env.VITE_RUST_BACKEND_URL}/health`);
+    const body = await response.json();
 
-// Rust proxies to Python internally when needed
-// Frontend doesn't know/care about Python
+    return new Response(JSON.stringify(body), {
+        headers: { 'Content-Type': 'application/json' },
+    });
+}
+```
+
+Page code then calls the frontend-owned route:
+
+```typescript
+const response = await fetch('/api/health');
+
+// Astro server route calls Rust internally
+// Frontend still doesn't know/care about Python
 ```
 
 ### Environment Configuration
 
 ```env
 # .env (frontend)
+ASTRO_PORT=4321
+PUBLIC_API_URL=http://localhost:8001
 VITE_RUST_BACKEND_URL=http://localhost:8001
 # No VITE_PYTHON_SERVICE_URL - frontend doesn't talk to Python directly
 ```
+
+### Single-Page Template Scope
+
+The first implementation should stay intentionally narrow:
+
+- **Page:** `src/pages/index.astro`
+- **Purpose:** Explain the Rust/Bun/uv stack and show service entry points
+- **UI blocks:** Stack summary, service cards, backend health status, quick-start commands
+- **Client JavaScript:** Minimal; prefer Astro rendering first
 
 ### Running Frontend
 
@@ -172,10 +234,13 @@ cd frontend
 bun install
 
 # Development server with HMR
-bun run dev  # Port 4321
+bun run dev --port 4321
 
 # Production build
 bun run build
+
+# Preview production build
+bun run preview
 ```
 
 ---
@@ -209,9 +274,9 @@ pub async fn call_python() -> Result<String> {
 ### Frontend → Rust
 
 ```typescript
-// From TypeScript
-async function getData() {
-    const response = await fetch('http://localhost:8001/api/data');
+// Browser -> Astro server route
+async function getHealth() {
+    const response = await fetch('/api/health');
     return response.json();
 }
 ```

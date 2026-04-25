@@ -460,6 +460,10 @@ lsof -i :5432  # Postgres
 lsof -i :6379  # Redis
 lsof -i :9000  # RustFS API
 
+# Check for stuck Docker containers holding ports
+docker ps  # List running containers
+docker rm -f <container_name>  # Force-remove stuck container
+
 # Change ports in .env
 POSTGRES_PORT=5433
 REDIS_PORT=6380

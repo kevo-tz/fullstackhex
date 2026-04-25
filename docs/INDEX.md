@@ -16,10 +16,10 @@ Start here for the bare-metal-demo documentation. Documents are listed in recomm
    - Port mappings and data flow
 
 3. **[SERVICES.md](./SERVICES.md)** - Service details and communication
-   - Rust workspace crates and API endpoints
-   - Python sidecar (FastAPI + Unix socket)
-   - Frontend (Astro + Bun) API communication
-   - Health checks
+    - Rust workspace crates and API endpoints
+    - Python sidecar (FastAPI + Unix socket)
+    - Frontend (planned: Astro + Bun) API communication
+    - Health checks
 
 4. **[INFRASTRUCTURE.md](./INFRASTRUCTURE.md)** - Docker setup and config
    - PostgreSQL 18, Redis 8, RustFS (S3-compatible)

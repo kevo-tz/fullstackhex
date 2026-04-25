@@ -20,7 +20,7 @@ Every doc includes a TOC after the title section. Format:
 2. [Another Section](#another-section)
 ```
 
-Only `INFRASTRUCTURE.md` uses numbered TOC with anchors. All docs now follow this format.
+Every doc includes a TOC after the title section. Format:
 
 ## Table Formatting
 

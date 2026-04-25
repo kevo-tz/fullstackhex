@@ -116,10 +116,10 @@ create_rust_workspace() {
     
     cd rust-backend
     
-    # Create workspace Cargo.toml if not exists
-    if [ ! -f Cargo.toml ]; then
-        echo "Creating workspace Cargo.toml..."
-        cat > Cargo.toml << 'EOF'
+# Create workspace Cargo.toml if not exists
+        if [ ! -f Cargo.toml ]; then
+            echo "Creating workspace Cargo.toml..."
+            cat > Cargo.toml << 'EOF'
 [workspace]
 members = ["crates/*"]
 
@@ -130,6 +130,9 @@ axum = "0.8"
 sqlx = { version = "0.8", features = ["postgres", "runtime-tokio-native-tls"] }
 tower = "0.5"
 tower-http = "0.5"
+
+[profile.release]
+lto = true
 EOF
     else
         echo -e "${GREEN}✓ Workspace Cargo.toml already exists${NC}"
@@ -138,15 +141,15 @@ EOF
     # Create crates directory
     mkdir -p crates
     
-    # Create individual crates if they don't exist
-    for crate in api core db python-sidecar; do
-        if [ ! -d "crates/$crate" ]; then
-            echo "Creating crate: $crate..."
-            cargo new --lib "crates/$crate"
-        else
-            echo -e "${GREEN}✓ Crate already exists: $crate${NC}"
-        fi
-    done
+# Create individual crates if they don't exist
+        for crate in api core db python-sidecar; do
+            if [ ! -d "crates/$crate" ]; then
+                echo "Creating crate: $crate..."
+                cargo new --lib --edition 2024 "crates/$crate"
+            else
+                echo -e "${GREEN}✓ Crate already exists: $crate${NC}"
+            fi
+        done
     
     # Build workspace
     echo "Building workspace..."

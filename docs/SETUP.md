@@ -49,6 +49,8 @@ The script installs latest versions AND creates the Rust workspace structure.
 
 ### 1. Install Tools (Latest Versions)
 
+**Prerequisite:** Python 3.14+ required (check: `python3 --version`). Install via pyenv or package manager if missing.
+
 ```bash
 # Rust (edition 2024)
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
@@ -101,6 +103,9 @@ cargo build --workspace
 ### 3. Start Infrastructure
 
 ```bash
+# Verify Docker daemon is running
+docker info > /dev/null 2>&1 || { echo "Docker daemon not running. Start Docker first."; exit 1; }
+
 docker compose -f docker-compose.dev.yml up -d
 docker compose ps
 ```
@@ -174,8 +179,11 @@ cargo build --workspace
 ```
 
 ### Python Dependencies
+
+Python dependencies are managed within the Rust workspace (`rust-backend/crates/python-sidecar/`).
+
 ```bash
-cd python-services
+cd rust-backend/crates/python-sidecar
 uv sync
 ```
 

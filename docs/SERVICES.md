@@ -107,6 +107,8 @@ uv run uvicorn src.main:app --uds /tmp/python-sidecar.sock
 
 ### FastAPI with Unix Socket
 
+Requires `uv` (installed in Step 1 of SETUP.md).
+
 ```python
 # src/main.py
 from fastapi import FastAPI
@@ -139,7 +141,7 @@ if __name__ == "__main__":
 
 ---
 
-## Frontend Service
+## Frontend Service (planned: Astro + Bun)
 
 ### API Communication (Rust Only)
 

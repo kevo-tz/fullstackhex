@@ -175,3 +175,10 @@ cargo build --workspace
 ```
 
 ---
+
+## Next Steps
+
+- See [INFRASTRUCTURE.md](./INFRASTRUCTURE.md) for complete Docker infrastructure docs
+- See [SETUP.md](./SETUP.md) for installation instructions
+- See [SERVICES.md](./SERVICES.md) for service details
+- See [ARCHITECTURE.md](./ARCHITECTURE.md) for system design

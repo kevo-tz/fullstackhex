@@ -100,6 +100,7 @@ Python sidecar binds to `/tmp/python-sidecar.sock`. Rust communicates through th
 
 ## Next Steps
 
+- See [INFRASTRUCTURE.md](./INFRASTRUCTURE.md) for Docker setup (single source of truth)
 - See [SETUP.md](./SETUP.md) for installation instructions
 - See [SERVICES.md](./SERVICES.md) for service details
 - See [INITIALIZATION.md](./INITIALIZATION.md) for template-ready setup

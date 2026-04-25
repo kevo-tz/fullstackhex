@@ -226,6 +226,7 @@ docker compose ps
 
 ## Next Steps
 
+- See [INFRASTRUCTURE.md](./INFRASTRUCTURE.md) for Docker infrastructure (single source of truth)
 - See [SETUP.md](./SETUP.md) for installation and troubleshooting
 - See [ARCHITECTURE.md](./ARCHITECTURE.md) for system design details
 - See [INITIALIZATION.md](./INITIALIZATION.md) for template-ready setup

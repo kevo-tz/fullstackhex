@@ -1,6 +1,6 @@
 # Infrastructure Documentation
 
-Single source of truth for recreating the development infrastructure from scratch.
+Canonical reference for recreating the development infrastructure from scratch.
 
 ## Table of Contents
 
@@ -574,8 +574,8 @@ docker compose -f docker-compose.dev.yml up -d --force-recreate
 docker image prune -f
 ```
 
-## Next Steps
+## Related Docs
 
-- See [ARCHITECTURE.md](./ARCHITECTURE.md) for system design
-- See [SETUP.md](./SETUP.md) for installation guide
-- See [SERVICES.md](./SERVICES.md) for service documentation
+- [Previous: SERVICES.md](./SERVICES.md) - Service details and communication
+- [Next: INITIALIZATION.md](./INITIALIZATION.md) - Template-ready setup script
+- [All Docs](./INDEX.md) - Full documentation index

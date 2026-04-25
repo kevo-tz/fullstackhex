@@ -92,7 +92,7 @@ EOF
 mkdir -p crates
 for crate in api core db python-sidecar; do
     if [ ! -d "crates/$crate" ]; then
-        cargo new --lib "crates/$crate"
+        cargo new --lib --edition 2024 "crates/$crate"
     fi
 done
 
@@ -150,12 +150,12 @@ cat .env
 ```
 
 Key settings in `.env`:
-```
+```env
 # Rust Backend
-RUST_SERVICE_DB_URL=postgres://localhost/bare_metal
+RUST_SERVICE_DB_URL=postgres://app_user:app_pass@localhost:5432/app_database
 
 # Python Sidecar (Unix socket)
-PYTHON_SIDEcar_SOCKET=/tmp/python-sidecar.sock
+PYTHON_SIDECAR_SOCKET=/tmp/python-sidecar.sock
 
 # Frontend (Rust API only)
 VITE_RUST_BACKEND_URL=http://localhost:8001

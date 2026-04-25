@@ -74,7 +74,7 @@ Response:
 
 #### Proxy to Python (internal)
 ```
-POST /api/python/{path}  → Forwards to Python sidecar via Unix socket
+ANY /api/python/{path}  → Forwards request method/path/body to Python sidecar via Unix socket
 ```
 
 ### Running Rust with Sidecar

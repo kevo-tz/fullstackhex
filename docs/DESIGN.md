@@ -22,7 +22,7 @@ Markdown style guide for the bare-metal-demo documentation. All docs in `./docs`
 
 ## Table of Contents
 
-Every doc includes a TOC after the title section. Format:
+Every doc includes a TOC after the title section (including `INDEX.md`). Format:
 
 ```
 ## Table of Contents
@@ -33,7 +33,7 @@ Every doc includes a TOC after the title section. Format:
 
 ## Table Formatting
 
-- No trailing pipes on table rows
+- Use trailing pipes consistently on all table rows
 - Align column separators consistently
 - Use bold for property/header rows
 

@@ -17,20 +17,22 @@
 # Clone and run full initialization
 git clone <repo>
 cd bare-metal-demo
+mkdir -p rust-backend
 ./scripts/install.sh
 ```
 
-The script installs latest versions AND creates the Rust workspace structure.
+The script installs/updates Rust, Bun, and uv, validates Docker prerequisites, and populates an existing `rust-backend/` workspace structure.
 
 ## What `install.sh` Does
 
-1. **Installs latest tools:**
+1. **Checks and installs tools (in order):**
    - Rust (edition 2024) via rustup
    - Bun (latest) via official installer
+   - Python 3.14+ validation (script exits if not found; install via pyenv first)
    - uv (latest Python package manager)
-   - Docker & Docker Compose (if missing)
+   - Docker & Docker Compose validation (script exits if not found; install manually)
 
-2. **Creates Rust workspace:**
+2. **Creates or updates Rust workspace:**
    ```
    rust-backend/
    ├── Cargo.toml (workspace root)
@@ -46,9 +48,7 @@ The script installs latest versions AND creates the Rust workspace structure.
    - Copies `.env.example` to `.env`
    - Configures Unix socket path for Python sidecar
 
-4. **Prepares frontend tooling:**
-   - Installs **Bun** for Astro development
-   - Leaves Astro app scaffolding as an explicit project step
+> **Note:** Astro frontend scaffolding is left as an explicit step after initialization. See [Scaffold Frontend](#scaffold-frontend-astro--bun) below.
 
 ## Manual Step-by-Step (Alternative)
 
@@ -79,6 +79,7 @@ docker compose version
 ### 2. Create Rust Workspace
 
 ```bash
+mkdir -p rust-backend
 cd rust-backend
 
 # Initialize workspace (done by install.sh)
@@ -90,7 +91,12 @@ members = ["crates/*"]
 tokio = { version = "1", features = ["full"] }
 serde = { version = "1.0", features = ["derive"] }
 axum = "0.8"
-sqlx = { version = "0.8", features = ["postgres"] }
+sqlx = { version = "0.8", features = ["postgres", "runtime-tokio-native-tls"] }
+tower = "0.5"
+tower-http = "0.5"
+
+[profile.release]
+lto = true
 EOF
 
 # Create crates
@@ -112,7 +118,7 @@ cargo build --workspace
 docker info > /dev/null 2>&1 || { echo "Docker daemon not running. Start Docker first."; exit 1; }
 
 docker compose -f docker-compose.dev.yml up -d
-docker compose ps
+docker compose -f docker-compose.dev.yml ps
 ```
 
 ### 4. Run Services
@@ -193,7 +199,7 @@ curl http://localhost:8001/api/python/health
 curl http://localhost:4321
 
 # Infrastructure
-docker compose ps
+docker compose -f docker-compose.dev.yml ps
 ```
 
 ## Environment Configuration
@@ -209,7 +215,7 @@ cat .env
 Key settings in `.env`:
 ```env
 # Rust Backend
-RUST_SERVICE_DB_URL=postgres://app_user:app_pass@localhost:5432/app_database
+DATABASE_URL=postgres://app_user:app_pass@localhost:5432/app_database
 
 # Python Sidecar (Unix socket)
 PYTHON_SIDECAR_SOCKET=/tmp/python-sidecar.sock
@@ -227,7 +233,7 @@ VITE_RUST_BACKEND_URL=http://localhost:8001
 # Check what's using a port
 lsof -i :5432
 
-# Change ports in .env and docker-compose.yml
+# Change ports in .env and docker-compose.dev.yml
 ```
 
 ### Rust Build Errors

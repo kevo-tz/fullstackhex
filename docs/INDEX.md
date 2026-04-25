@@ -2,6 +2,12 @@
 
 Start here for the bare-metal-demo documentation. Documents are listed in recommended reading order for new users.
 
+## Table of Contents
+
+1. [User Journey](#user-journey)
+2. [Quick Reference](#quick-reference)
+3. [Related Docs](#related-docs)
+
 ## User Journey
 
 1. **[SETUP.md](./SETUP.md)** - One-command init and tool install

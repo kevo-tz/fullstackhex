@@ -181,6 +181,7 @@ docker compose restart
 
 ## Next Steps
 
+- See [INFRASTRUCTURE.md](./INFRASTRUCTURE.md) for complete Docker infrastructure docs
 - See [SERVICES.md](./SERVICES.md) for API documentation
 - See [INITIALIZATION.md](./INITIALIZATION.md) for template-ready setup
 - Review individual service directories for detailed docs

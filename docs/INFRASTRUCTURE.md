@@ -43,18 +43,18 @@ docker compose -f docker-compose.dev.yml ps
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                    bare-metal-network (172.20.0.0/16)         │
+│            bare-metal-network (172.20.0.0/16)                   │
 │                                                                 │
-│  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐   │
-│  │ Postgres │  │  Redis   │  │  RustFS  │  │ Adminer  │   │
-│  │   :5432  │  │  :6379  │  │:9000:9001│  │  :8080  │   │
-│  └────┬─────┘  └────┬─────┘  └────┬─────┘  └──────────┘   │
-│       │               │               │                          │
-│       ▼               ▼               ▼                          │
-│  ┌─────────────────────────────────────────────────────────┐   │
-│  │              Rust Backend (:8001)                      │   │
-│  │         (connects to all three services)               │   │
-│  └─────────────────────────────────────────────────────────┘   │
+│  ┌──────────┐  ┌──────────┐  ┌──────────┐                       │
+│  │ Postgres │  │  Redis   │  │  RustFS  │                       │
+│  │   :5432  │  │  :6379   │  │:9000:9001│                       │
+│  └────┬─────┘  └────┬─────┘  └────┬─────┘                       │
+│       │             │             │                             │
+│       ▼             ▼             ▼                             │
+│  ┌─────────────────────────────────────────────────────────┐    │
+│  │              Rust Backend (:8001)                       │    │
+│  │         (connects to all three services)                │    │
+│  └─────────────────────────────────────────────────────────┘    │
 │                                                                 │
 └─────────────────────────────────────────────────────────────────┘
 
@@ -211,7 +211,16 @@ REDIS_COMMANDER_PORT=8081
 This is the canonical reference. Always check this file for the latest configuration.
 
 ```yaml
-version: '3.9'
+# Development Infrastructure for Bare Metal Demo
+# Usage: docker compose -f docker-compose.dev.yml up -d
+#
+# Services:
+#   - postgres:18-alpine  (port 5432) - Primary database
+#   - redis:8-alpine      (port 6379) - Cache layer
+#   - rustfs/rustfs:latest (ports 9000, 9001) - S3-compatible object storage
+#
+# Networks: bare-metal-network (bridge)
+# Volumes: postgres_data, redis_data, rustfs_data (persistent)
 
 networks:
   bare-metal-network:
@@ -239,11 +248,14 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-app_user}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-app_pass}
       POSTGRES_DB: ${POSTGRES_DB:-app_database}
+      # Tune for development (not production)
       POSTGRES_INITDB_ARGS: "--encoding=UTF-8 --locale=C"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+      # Optional: mount init scripts
+      # - ./scripts/db/init:/docker-entrypoint-initdb.d
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-app_user} -d ${POSTGRES_DB:-app_database}"]
+      test: [ "CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-app_user} -d ${POSTGRES_DB:-app_database}" ]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -263,15 +275,11 @@ services:
     ports:
       - "${REDIS_PORT:-6379}:6379"
     command: >
-      redis-server
-      --maxmemory ${REDIS_MAX_MEMORY:-512mb}
-      --maxmemory-policy ${REDIS_MAXMEMORY_POLICY:-allkeys-lru}
-      --appendonly ${REDIS_APPENDONLY:-yes}
-      --save ${REDIS_SAVE:-900 1 300 10 60 10000}
+      redis-server --maxmemory ${REDIS_MAX_MEMORY:-512mb} --maxmemory-policy ${REDIS_MAXMEMORY_POLICY:-allkeys-lru} --appendonly ${REDIS_APPENDONLY:-yes} --save ${REDIS_SAVE:-900 1 300 10 60 10000}
     volumes:
       - redis_data:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: [ "CMD", "redis-cli", "ping" ]
       interval: 10s
       timeout: 3s
       retries: 5
@@ -292,19 +300,22 @@ services:
       - "${RUSTFS_API_PORT:-9000}:9000"
       - "${RUSTFS_CONSOLE_PORT:-9001}:9001"
     environment:
+      # RustFS configuration
       RUSTFS_VOLUMES: /data
       RUSTFS_ADDRESS: 0.0.0.0:9000
       RUSTFS_CONSOLE_ADDRESS: 0.0.0.0:9001
       RUSTFS_CONSOLE_ENABLE: "true"
       RUSTFS_CORS_ALLOWED_ORIGINS: ${RUSTFS_CORS_ORIGINS:-*}
       RUSTFS_CONSOLE_CORS_ALLOWED_ORIGINS: ${RUSTFS_CORS_ORIGINS:-*}
+      # Credentials (use .env for production-like secrets)
       RUSTFS_ACCESS_KEY: ${RUSTFS_ACCESS_KEY:-devadmin}
       RUSTFS_SECRET_KEY: ${RUSTFS_SECRET_KEY:-devadmin}
+      # Enable browser access
       RUSTFS_BROWSER: "on"
     volumes:
       - rustfs_data:/data
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:9000/minio/health/live || exit 1"]
+      test: [ "CMD", "sh", "-c", "curl -f http://127.0.0.1:9000/health && curl -f http://127.0.0.1:9001/rustfs/console/health" ]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -317,38 +328,6 @@ services:
         max-size: "10m"
         max-file: "3"
 
-  adminer:
-    image: adminer:latest
-    container_name: bare_metal_adminer
-    restart: unless-stopped
-    ports:
-      - "${ADMINER_PORT:-8080}:8080"
-    environment:
-      ADMINER_DEFAULT_SERVER: postgres
-    networks:
-      - bare-metal-network
-    profiles:
-      - tools
-    depends_on:
-      postgres:
-        condition: service_healthy
-
-  redis-commander:
-    image: rediscommander/redis-commander:latest
-    container_name: bare_metal_redis_cmdr
-    restart: unless-stopped
-    ports:
-      - "${REDIS_COMMANDER_PORT:-8081}:8081"
-    environment:
-      REDIS_HOST: redis
-      REDIS_PORT: 6379
-    networks:
-      - bare-metal-network
-    profiles:
-      - tools
-    depends_on:
-      redis:
-        condition: service_healthy
 ```
 
 ## Common Commands

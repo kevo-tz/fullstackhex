@@ -5,10 +5,11 @@
 1. [One-Command Initialization](#one-command-initialization)
 2. [What `install.sh` Does](#what-installsh-does)
 3. [Manual Step-by-Step (Alternative)](#manual-step-by-step-alternative)
-4. [Verify Installation](#verify-installation)
-5. [Environment Configuration](#environment-configuration)
-6. [Troubleshooting](#troubleshooting)
-7. [Related Docs](#related-docs)
+4. [Scaffold Frontend (Astro + Bun)](#scaffold-frontend-astro--bun)
+5. [Verify Installation](#verify-installation)
+6. [Environment Configuration](#environment-configuration)
+7. [Troubleshooting](#troubleshooting)
+8. [Related Docs](#related-docs)
 
 ## One-Command Initialization
 
@@ -44,6 +45,10 @@ The script installs latest versions AND creates the Rust workspace structure.
 3. **Sets up environment:**
    - Copies `.env.example` to `.env`
    - Configures Unix socket path for Python sidecar
+
+4. **Prepares frontend tooling:**
+   - Installs **Bun** for Astro development
+   - Leaves Astro app scaffolding as an explicit project step
 
 ## Manual Step-by-Step (Alternative)
 
@@ -123,11 +128,63 @@ bun install
 bun run dev
 ```
 
+## Scaffold Frontend (Astro + Bun)
+
+Create the frontend once Bun is available:
+
+```bash
+# From repo root
+bun create astro@latest frontend
+
+cd frontend
+
+# Add Tailwind
+bunx astro add tailwind
+
+# Install dependencies
+bun install
+```
+
+Recommended first-page structure:
+
+```text
+frontend/
+├── astro.config.mjs
+├── package.json
+├── tailwind.config.mjs
+├── src/
+│   ├── components/
+│   ├── layouts/
+│   └── pages/
+│       ├── index.astro
+│       └── api/
+│           └── health.ts
+└── public/
+```
+
+Recommended first route implementation:
+
+```typescript
+// src/pages/api/health.ts
+export async function GET() {
+   const response = await fetch(`${import.meta.env.VITE_RUST_BACKEND_URL}/health`);
+   const body = await response.json();
+
+   return new Response(JSON.stringify(body), {
+      headers: { 'Content-Type': 'application/json' },
+   });
+}
+```
+
 ## Verify Installation
 
 ```bash
 # Rust backend (with sidecar)
 curl http://localhost:8001/health
+
+# Frontend build
+cd frontend
+bun run build
 
 # Python sidecar (via Rust, internal socket)
 curl http://localhost:8001/api/python/health
@@ -158,6 +215,8 @@ RUST_SERVICE_DB_URL=postgres://app_user:app_pass@localhost:5432/app_database
 PYTHON_SIDECAR_SOCKET=/tmp/python-sidecar.sock
 
 # Frontend (Rust API only)
+ASTRO_PORT=4321
+PUBLIC_API_URL=http://localhost:8001
 VITE_RUST_BACKEND_URL=http://localhost:8001
 ```
 

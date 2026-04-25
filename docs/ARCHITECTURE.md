@@ -58,10 +58,11 @@
 
 ## Data Flow
 
-1. **Frontend** → HTTP request to Rust (localhost:8001) only
-2. **Rust API** → Processes request, may call internal crates
-3. **Python Sidecar** → Rust communicates via Unix domain socket when Python logic needed
-4. **Data Layer** → Postgres (sqlx) + Redis + RustFS
+1. **Browser** → Requests Astro frontend on `localhost:4321`
+2. **Astro Server Route** → Calls Rust backend on `localhost:8001` when backend data needed
+3. **Rust API** → Processes request, may call internal crates
+4. **Python Sidecar** → Rust communicates via Unix domain socket when Python logic needed
+5. **Data Layer** → Postgres (sqlx) + Redis + RustFS
 
 ## Technology Stack (Latest Versions)
 
@@ -81,6 +82,17 @@
 ## Workspace Structure
 
 ```
+frontend/
+├── astro.config.mjs         # Astro dev/build configuration
+├── package.json             # Bun-managed scripts and dependencies
+├── src/
+│   ├── components/          # Reusable Astro components
+│   ├── layouts/             # Page shell/layouts
+│   └── pages/
+│       ├── index.astro      # Template landing page
+│       └── api/
+│           └── health.ts    # Astro server route proxying Rust health
+
 rust-backend/
 ├── Cargo.toml              # Workspace root
 ├── crates/

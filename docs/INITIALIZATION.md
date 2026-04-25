@@ -6,12 +6,13 @@ Use this as a template for new projects with the same architecture.
 
 1. [Prerequisites](#prerequisites)
 2. [Initialization Script](#initialization-script)
-3. [Make Script Executable](#make-script-executable)
-4. [Verification](#verification)
-5. [Portable Template](#portable-template)
-6. [What Gets Installed (Latest Versions)](#what-gets-installed-latest-versions)
-7. [Troubleshooting](#troubleshooting)
-8. [Related Docs](#related-docs)
+3. [Scaffold Astro Frontend](#scaffold-astro-frontend)
+4. [Make Script Executable](#make-script-executable)
+5. [Verification](#verification)
+6. [Portable Template](#portable-template)
+7. [What Gets Installed (Latest Versions)](#what-gets-installed-latest-versions)
+8. [Troubleshooting](#troubleshooting)
+9. [Related Docs](#related-docs)
 
 ## Prerequisites
 
@@ -125,6 +126,54 @@ echo "  rustc --version    (should show latest stable)"
 echo "  bun --version       (should show latest)"
 echo "  uv --version        (should show latest)"
 echo ""
+```
+
+## Scaffold Astro Frontend
+
+After `scripts/install.sh` completes, scaffold the frontend with **Astro** and **Bun**:
+
+```bash
+# From repo root
+bun create astro@latest frontend
+
+cd frontend
+
+# Add Tailwind integration
+bunx astro add tailwind
+
+# Install dependencies
+bun install
+```
+
+Recommended template layout:
+
+```text
+frontend/
+├── astro.config.mjs
+├── package.json
+├── tailwind.config.mjs
+├── src/
+│   ├── components/
+│   ├── layouts/
+│   └── pages/
+│       ├── index.astro
+│       └── api/
+│           └── health.ts
+└── public/
+```
+
+Use Astro server routes for backend-derived data:
+
+```typescript
+// src/pages/api/health.ts
+export async function GET() {
+    const response = await fetch(`${import.meta.env.VITE_RUST_BACKEND_URL}/health`);
+    const body = await response.json();
+
+    return new Response(JSON.stringify(body), {
+        headers: { 'Content-Type': 'application/json' },
+    });
+}
 ```
 
 ## Make Script Executable

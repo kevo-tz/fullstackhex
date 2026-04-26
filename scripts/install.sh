@@ -63,7 +63,8 @@ check_python() {
         local major=$(python3 -c 'import sys; print(sys.version_info.major)')
         local minor=$(python3 -c 'import sys; print(sys.version_info.minor)')
 
-        if [[ "$major" -ge 3 && "$minor" -ge 14 ]]; then
+        # Accept Python >= 3.14, including future major versions (e.g., 4.x).
+        if (( major > 3 )) || (( major == 3 && minor >= 14 )); then
             echo -e "${GREEN}✓ Python already installed: $version${NC}"
         else
             echo -e "${RED}✗ Python 3.14+ required. Found: $version${NC}"

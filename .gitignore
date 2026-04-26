@@ -25,6 +25,12 @@ build/
 .dockerignore
 docker-compose.override.yml
 
+# TLS certificates — never commit private keys
+nginx/certs/*.pem
+nginx/certs/*.key
+nginx/certs/*.crt
+nginx/certs/*.p12
+
 # OS files
 .DS_Store
 .DS_Store?

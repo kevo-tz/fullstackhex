@@ -1,0 +1,62 @@
+# syntax=docker/dockerfile:1
+
+# ─────────────────────────────────────────────
+# Stage 1: Builder — install deps with uv
+# ─────────────────────────────────────────────
+FROM python:3.14-slim AS builder
+
+# Install uv
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /usr/local/bin/
+
+WORKDIR /build
+
+# Copy dependency manifests first for layer caching
+COPY python-sidecar/pyproject.toml python-sidecar/uv.lock* ./
+
+# Install dependencies into a virtual environment (no editable install yet)
+RUN uv sync --frozen --no-install-project
+
+# Copy application source
+COPY python-sidecar/src ./src
+
+# Install the project itself
+RUN uv sync --frozen
+
+# ─────────────────────────────────────────────
+# Stage 2: Runtime
+# ─────────────────────────────────────────────
+FROM python:3.14-slim AS runtime
+
+# Install uv for runtime activation
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /usr/local/bin/
+
+# Run as non-root user
+RUN groupadd --system app && useradd --system --gid app app
+
+# Pre-create the socket directory so the app user can write to it.
+# The named volume (sidecar_socket) is initialised from this image,
+# so it inherits these permissions on first mount.
+RUN mkdir -p /tmp/sidecar && chown app:app /tmp/sidecar
+
+WORKDIR /app
+
+# Copy virtual environment and source from builder
+COPY --from=builder /build/.venv /app/.venv
+COPY --from=builder /build/src /app/src
+
+ENV PATH="/app/.venv/bin:$PATH"
+ENV PYTHONUNBUFFERED=1
+ENV PYTHONDONTWRITEBYTECODE=1
+
+# Socket path is determined by Rust at runtime via env; expose for documentation
+ENV PYTHON_SIDECAR_SOCKET=/tmp/python-sidecar.sock
+
+USER app
+
+# Python sidecar communicates via Unix domain socket — no TCP port exposed
+# The socket path is passed by the Rust parent process
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+    CMD python -c "import socket, os; s=socket.socket(socket.AF_UNIX); s.connect(os.environ['PYTHON_SIDECAR_SOCKET']); s.close()" || exit 1
+
+# Use shell form so $PYTHON_SIDECAR_SOCKET is expanded at runtime (set by docker-compose)
+CMD python -m uvicorn src.main:app --uds "${PYTHON_SIDECAR_SOCKET}"

@@ -35,26 +35,25 @@ rust-backend/
 
 ### Crate: python-sidecar
 
-Manages Python process via Unix domain socket:
+Manages HTTP communication to the Python sidecar via Unix domain socket:
 
 ```rust
 // crates/python-sidecar/src/lib.rs
-use tokio::net::UnixStream;
-use std::path::PathBuf;
-
 pub struct PythonSidecar {
     socket_path: PathBuf,  // /tmp/python-sidecar.sock
 }
 
 impl PythonSidecar {
-    pub async fn call(&self, request: &str) -> Result<String> {
-        let mut stream = UnixStream::connect(&self.socket_path).await?;
-        stream.write_all(request.as_bytes()).await?;
-        
-        let mut response = String::new();
-        stream.read_to_string(&mut response).await?;
-        Ok(response)
-    }
+    pub fn new(socket_path: impl Into<PathBuf>) -> Self { ... }
+
+    /// Forward an HTTP/1.1 request over the Unix socket.
+    /// Uses hyper::client::conn::http1 with TokioIo-wrapped UnixStream.
+    pub async fn forward(
+        &self,
+        method: Method,
+        path: &str,
+        body: Bytes,
+    ) -> anyhow::Result<(StatusCode, Bytes)> { ... }
 }
 ```
 
@@ -72,7 +71,7 @@ Response:
 }
 ```
 
-#### Proxy to Python (internal)
+> **Note:** The Python sidecar `/health` response includes an additional field: `{"status": "ok", "service": "python-sidecar"}`.
 ```
 ANY /api/python/{path}  → Forwards request method/path/body to Python sidecar via Unix socket
 ```
@@ -82,14 +81,12 @@ ANY /api/python/{path}  → Forwards request method/path/body to Python sidecar 
 ```bash
 cd rust-backend
 
-# Development
-cargo run --workspace
+# Development: starts Axum on port 8001
+cargo run -p api
 
-# Rust automatically:
-# 1. Starts the Axum server on 8001
-# 2. Spawns Python sidecar process
-# 3. Connects via Unix domain socket
-# 4. Manages sidecar lifecycle (restart on crash)
+# The python-sidecar crate (crates/python-sidecar/) contains the
+# Unix socket client; wire it into main.rs to spawn and connect
+# to the Python sidecar process.
 ```
 
 ---
@@ -102,7 +99,7 @@ Python runs as a subprocess of Rust, not standalone:
 
 ```bash
 # This is managed by Rust, not run manually
-uv run uvicorn src.main:app --uds /tmp/python-sidecar.sock
+uv run uvicorn app.main:app --uds /tmp/python-sidecar.sock
 ```
 
 ### FastAPI with Unix Socket
@@ -110,28 +107,20 @@ uv run uvicorn src.main:app --uds /tmp/python-sidecar.sock
 Requires `uv` (installed in Step 1 of SETUP.md).
 
 ```python
-# src/main.py
+# app/main.py
 from fastapi import FastAPI
-import uvicorn
 
 app = FastAPI()
 
+
 @app.get("/health")
-async def health():
-    return {"status": "ok"}
-
-@app.post("/process")
-async def process(data: dict):
-    # Python business logic here
-    return {"result": "processed"}
-
-if __name__ == "__main__":
-    # Run on Unix socket, not TCP port
-    uvicorn.run(
-        app,
-        uds="/tmp/python-sidecar.sock"  # Internal only
-    )
+def health() -> dict[str, str]:
+    return {"status": "ok", "service": "python-sidecar"}
 ```
+
+> **Note:** Add new routes here as Python business logic grows. The sidecar is
+> started by Rust — run it directly only for debugging:
+> `uv run uvicorn app.main:app --uds /tmp/python-sidecar.sock`
 
 ### Key Difference from Standalone
 
@@ -153,7 +142,6 @@ The frontend is a template-ready Astro application managed by **Bun**. It serves
 frontend/
 ├── astro.config.mjs
 ├── package.json
-├── tailwind.config.mjs
 ├── tsconfig.json
 ├── public/
 └── src/
@@ -165,20 +153,38 @@ frontend/
                         └── health.ts
 ```
 
+> **Note:** Tailwind v4 uses `@tailwindcss/vite` as a Vite plugin — no `tailwind.config.mjs` is needed.
+
 ### Scaffold Frontend
 
 ```bash
 # Create Astro app with Bun
-bun create astro@latest frontend
+bun create astro@latest frontend -- --template minimal --no-install --no-git --yes
 
-# Enter project
 cd frontend
 
-# Add Tailwind integration
-bunx astro add tailwind
+# Install Tailwind v4 and the Node SSR adapter
+bun add @tailwindcss/vite tailwindcss @astrojs/node
 
-# Install dependencies
+# Install all dependencies
 bun install
+```
+
+`astro.config.mjs` must enable SSR and add the Tailwind vite plugin:
+
+```javascript
+// astro.config.mjs
+import { defineConfig } from 'astro/config';
+import node from '@astrojs/node';
+import tailwindcss from '@tailwindcss/vite';
+
+export default defineConfig({
+  output: 'server',
+  adapter: node({ mode: 'standalone' }),
+  vite: {
+    plugins: [tailwindcss()]
+  }
+});
 ```
 
 ### API Communication (Rust Only)

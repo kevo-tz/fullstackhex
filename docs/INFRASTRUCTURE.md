@@ -20,7 +20,9 @@ Canonical reference for recreating the development infrastructure from scratch.
 10. [Network Architecture](#network-architecture)
 11. [Volumes](#volumes)
 12. [Migration to Production](#migration-to-production)
-13. [Updates](#updates)
+13. [Nginx Configuration](#nginx-configuration)
+14. [Monitoring Stack](#monitoring-stack)
+15. [Updates](#updates)
 
 ## Quick Start
 
@@ -37,6 +39,27 @@ docker compose -f docker-compose.dev.yml up -d
 
 # Verify
 docker compose -f docker-compose.dev.yml ps
+
+# Optional: monitoring stack (Prometheus + Grafana)
+docker compose -f docker-compose.monitor.yml up -d
+```
+
+### Monitoring Overlay
+
+The monitoring stack is defined in `docker-compose.monitor.yml` and is designed to run alongside the main stack.
+
+- Prometheus config: `monitoring/prometheus.yml`
+- Grafana datasource provisioning: `monitoring/grafana/provisioning/datasources/prometheus.yml`
+- Grafana dashboard provisioning: `monitoring/grafana/provisioning/dashboards/dashboards.yml`
+- Starter dashboard: `monitoring/grafana/dashboards/overview.json`
+
+Use the monitoring-specific environment values in `.env` or `.env.prod.example`:
+
+```env
+PROMETHEUS_PORT=9090
+GRAFANA_PORT=3000
+GRAFANA_ADMIN_USER=admin
+GRAFANA_ADMIN_PASSWORD=CHANGE_ME
 ```
 
 ## Architecture
@@ -584,14 +607,118 @@ docker run --rm -v postgres_data:/data -v $(pwd):/backup alpine tar xzf /backup/
 
 ## Migration to Production
 
-For production, consider:
+Use `docker-compose.prod.yml` to run all services as Docker containers with no external port exposure (except Nginx).
 
-1. **Secrets management:** Use Docker secrets or vault, not `.env`
-2. **Resource limits:** Uncomment `deploy.resources` in compose file
-3. **Backups:** Automated daily backups of all volumes
-4. **Monitoring:** Add Prometheus + Grafana stack
-5. **TLS:** Enable HTTPS for RustFS console
-6. **Auth:** Change default credentials immediately
+### Production Services
+
+| Service | Image | Internal port | Notes |
+|---------|-------|---------------|-------|
+| nginx | `nginx:alpine` | 80 / 443 | TLS termination, reverse proxy |
+| rust-backend | `Dockerfile.rust` | 8001 | Depends on postgres, redis, python-sidecar |
+| python-sidecar | `Dockerfile.python` | Unix socket | Shares `sidecar_socket` volume with rust-backend |
+| frontend | `Dockerfile.frontend` | 4321 | Astro SSR node adapter |
+| postgres | `postgres:18-alpine` | 5432 | Internal only (no host binding) |
+| redis | `redis:8-alpine` | 6379 | Internal only |
+| rustfs | `rustfs/rustfs:latest` | 9000 / 9001 | Internal only |
+
+### Unix Socket in Production
+
+In production, the sidecar socket is shared via a Docker named volume (`sidecar_socket` → `/tmp/sidecar/`):
+
+```yaml
+volumes:
+  sidecar_socket:
+    driver: local
+```
+
+Both `rust-backend` and `python-sidecar` mount this volume at `/tmp/sidecar`. The socket path becomes `/tmp/sidecar/python-sidecar.sock`. Set in `.env`:
+
+```env
+PYTHON_SIDECAR_SOCKET=/tmp/sidecar/python-sidecar.sock
+```
+
+### TLS Certificates
+
+Place certificates in `nginx/certs/` before starting:
+
+```bash
+nginx/certs/fullchain.pem
+nginx/certs/privkey.pem
+```
+
+### Start Production Stack
+
+```bash
+cp .env.example .env
+# Edit .env — replace ALL CHANGE_ME values and set PYTHON_SIDECAR_SOCKET
+docker compose -f docker-compose.prod.yml up -d
+```
+
+---
+
+## Nginx Configuration
+
+Two config files in `nginx/`:
+
+### `nginx/nginx.conf` — Production reverse proxy
+
+Handles TLS termination and routing:
+
+| Route | Upstream |
+|-------|----------|
+| `/` | `frontend:4321` (Astro SSR) |
+| `/api/` | `rust-backend:8001` (Axum) |
+
+Key features:
+- HTTP → HTTPS redirect (port 80 → 443)
+- TLS 1.2 / 1.3 only with strong cipher suite
+- HSTS, X-Content-Type-Options, X-Frame-Options headers
+- Gzip compression for text, CSS, JS, JSON
+- OCSP stapling
+
+### `nginx/static.conf` — Optional static file serving
+
+Minimal config for serving an Astro **static** build (no SSR) at port 4321. Not used when running Astro in SSR mode with the Node adapter.
+
+---
+
+## Monitoring Stack
+
+The monitoring stack is in `docker-compose.monitor.yml` and joins the existing `fullstackhex-network`. Run it alongside either dev or prod:
+
+```bash
+docker compose -f docker-compose.monitor.yml up -d
+```
+
+### Monitoring Services
+
+| Service | Image | Port | Purpose |
+|---------|-------|------|---------|
+| prometheus | `prom/prometheus:v3.3.1` | `9090` | Metrics scraping + storage |
+| grafana | `grafana/grafana:11.2.0` | `3000` | Dashboards |
+
+### Configuration Files
+
+| File | Purpose |
+|------|---------|
+| `monitoring/prometheus.yml` | Scrape targets |
+| `monitoring/grafana/provisioning/datasources/prometheus.yml` | Auto-wire Prometheus as Grafana datasource |
+| `monitoring/grafana/provisioning/dashboards/dashboards.yml` | Dashboard provisioning path |
+| `monitoring/grafana/dashboards/overview.json` | Starter overview dashboard |
+
+### Monitoring `.env` Variables
+
+```env
+PROMETHEUS_PORT=9090
+GRAFANA_PORT=3000
+GRAFANA_ADMIN_USER=admin
+GRAFANA_ADMIN_PASSWORD=CHANGE_ME
+GRAFANA_DOMAIN=localhost
+```
+
+> **Note:** `GRAFANA_ADMIN_PASSWORD` must be set — `docker-compose.monitor.yml` uses `:?` syntax and will fail at startup if missing.
+
+---
 
 ## Updates
 

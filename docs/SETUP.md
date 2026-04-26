@@ -21,7 +21,7 @@ mkdir -p rust-backend
 ./scripts/install.sh
 ```
 
-The script installs/updates Rust, Bun, and uv, validates Docker prerequisites, and populates an existing `rust-backend/` workspace structure.
+The script installs/updates Rust, Bun, and uv, validates Docker prerequisites, scaffolds `rust-backend/`, scaffolds `python-sidecar/`, scaffolds `frontend/`, and generates baseline Rust/Python/frontend tests.
 
 ## What `install.sh` Does
 
@@ -51,8 +51,19 @@ The script installs/updates Rust, Bun, and uv, validates Docker prerequisites, a
 
 4. **Scaffolds Astro frontend** (automated, idempotent):
    - Runs `bun create astro@latest frontend` (non-interactive, `--template minimal`)
-   - Adds Tailwind CSS via `bunx astro add tailwind`
+   - Installs Tailwind v4 (`@tailwindcss/vite`) and Node SSR adapter (`@astrojs/node`)
+   - Writes `astro.config.mjs` with `output: 'server'` and Tailwind vite plugin
    - Creates `src/pages/api/health.ts` proxy route to Rust backend
+
+5. **Scaffolds Python sidecar** (automated, idempotent):
+   - Creates `python-sidecar/pyproject.toml`
+   - Creates `python-sidecar/app/main.py`
+   - Creates `python-sidecar/tests/` with starter unit + integration tests
+
+6. **Scaffolds generated test suites**:
+   - Rust: starter unit/integration/smoke tests under crate `tests/` folders
+   - Python: starter unit/integration tests under `python-sidecar/tests/`
+   - Frontend: starter unit/integration/smoke tests under `frontend/tests/`
 
 ## Manual Step-by-Step (Alternative)
 
@@ -90,6 +101,13 @@ cd rust-backend
 cat > Cargo.toml << 'EOF'
 [workspace]
 members = ["crates/*"]
+resolver = "3"
+
+[workspace.package]
+description = "FullStackHex project"
+license = "MIT"
+repository = "https://github.com/yourusername/yourrepo"
+authors = ["Your Name <your@email.com>"]
 
 [workspace.dependencies]
 tokio = { version = "1", features = ["full"] }
@@ -128,9 +146,9 @@ docker compose -f docker-compose.dev.yml ps
 ### 4. Run Services
 
 ```bash
-# Terminal 1: Rust (with Python sidecar)
+# Terminal 1: Rust API
 cd rust-backend
-cargo run --workspace
+cargo run -p api
 
 # Terminal 2: Frontend (dependencies already installed by install.sh)
 cd frontend
@@ -147,8 +165,9 @@ bun create astro@latest frontend -- --template minimal --no-install --no-git --y
 
 cd frontend
 
-# Add Tailwind (also installs dependencies)
-bunx astro add tailwind --yes
+# Install Tailwind v4 (vite plugin) and Node SSR adapter
+bun add @tailwindcss/vite tailwindcss @astrojs/node
+bun install
 ```
 
 Recommended first-page structure:
@@ -157,7 +176,7 @@ Recommended first-page structure:
 frontend/
 ├── astro.config.mjs
 ├── package.json
-├── tailwind.config.mjs
+├── tsconfig.json
 ├── src/
 │   ├── components/
 │   ├── layouts/
@@ -167,6 +186,8 @@ frontend/
 │           └── health.ts
 └── public/
 ```
+
+> **Note:** No `tailwind.config.mjs` — Tailwind v4 is configured entirely via the vite plugin.
 
 Recommended first route implementation:
 
@@ -215,7 +236,7 @@ cat .env
 Key settings in `.env`:
 ```env
 # Rust Backend
-DATABASE_URL=postgres://app_user:CHANGE_ME@localhost:5432/app_database
+DATABASE_URL=postgres://app_user:CHANGE_ME@localhost:5432/app_database # pragma: allowlist secret
 
 # Python Sidecar (Unix socket)
 PYTHON_SIDECAR_SOCKET=/tmp/python-sidecar.sock
@@ -245,10 +266,10 @@ cargo build --workspace
 
 ### Python Dependencies
 
-Python dependencies are managed within the Rust workspace (`rust-backend/crates/python-sidecar/`).
+Python dependencies are managed in the root `python-sidecar/` project.
 
 ```bash
-cd rust-backend/crates/python-sidecar
+cd python-sidecar
 uv sync
 ```
 

@@ -34,8 +34,9 @@ echo "=== FullStackHex Initialization ==="
 
 # 1. Check Python 3.14+ (required for sidecar; install manually via pyenv if missing)
 if command -v python3 &> /dev/null; then
+    major=$(python3 -c 'import sys; print(sys.version_info.major)')
     minor=$(python3 -c 'import sys; print(sys.version_info.minor)')
-    if [[ "$(python3 -c 'import sys; print(sys.version_info.major)')" -lt 3 || "$minor" -lt 14 ]]; then
+    if (( major < 3 )) || (( major == 3 && minor < 14 )); then
         echo "ERROR: Python 3.14+ required. Found: $(python3 --version)"
         echo "Install with: pyenv install 3.14"
         exit 1

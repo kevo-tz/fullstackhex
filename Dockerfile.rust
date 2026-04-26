@@ -22,10 +22,12 @@ COPY rust-backend/crates/core/Cargo.toml ./crates/core/Cargo.toml
 COPY rust-backend/crates/db/Cargo.toml ./crates/db/Cargo.toml
 COPY rust-backend/crates/python-sidecar/Cargo.toml ./crates/python-sidecar/Cargo.toml
 
-# Create stub lib.rs files so cargo can resolve deps without full source
-RUN for crate in api core db python-sidecar; do \
+# Create stub source files so cargo can resolve deps without full source
+# api has a binary (main.rs); all others are lib crates
+RUN mkdir -p crates/api/src && echo 'fn main() {}' > crates/api/src/main.rs && \
+    for crate in core db python-sidecar; do \
       mkdir -p crates/$crate/src && \
-      echo 'fn main() {}' > crates/$crate/src/lib.rs; \
+      touch crates/$crate/src/lib.rs; \
     done
 
 RUN cargo fetch

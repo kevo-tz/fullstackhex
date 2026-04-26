@@ -17,7 +17,7 @@ COPY python-sidecar/pyproject.toml python-sidecar/uv.lock* ./
 RUN uv sync --frozen --no-install-project
 
 # Copy application source
-COPY python-sidecar/src ./src
+COPY python-sidecar/app ./app
 
 # Install the project itself
 RUN uv sync --frozen
@@ -42,7 +42,7 @@ WORKDIR /app
 
 # Copy virtual environment and source from builder
 COPY --from=builder /build/.venv /app/.venv
-COPY --from=builder /build/src /app/src
+COPY --from=builder /build/app /app/app
 
 ENV PATH="/app/.venv/bin:$PATH"
 ENV PYTHONUNBUFFERED=1
@@ -59,4 +59,4 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
     CMD python -c "import socket, os; s=socket.socket(socket.AF_UNIX); s.connect(os.environ['PYTHON_SIDECAR_SOCKET']); s.close()" || exit 1
 
 # Use shell form so $PYTHON_SIDECAR_SOCKET is expanded at runtime (set by docker-compose)
-CMD python -m uvicorn src.main:app --uds "${PYTHON_SIDECAR_SOCKET}"
+CMD python -m uvicorn app.main:app --uds "${PYTHON_SIDECAR_SOCKET}"

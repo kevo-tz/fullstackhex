@@ -54,3 +54,12 @@ Thumbs.db
 # LeanKg
 .leankg/
 leankg.yaml
+
+# Generated scaffold outputs (created by scripts/install.sh at project init time)
+rust-backend/
+python-sidecar/
+frontend/
+monitoring/
+
+# Temporary tooling shims
+.tmp/

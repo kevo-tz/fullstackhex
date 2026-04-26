@@ -80,6 +80,7 @@ cd rust-backend
 cat > Cargo.toml << 'EOF'
 [workspace]
 members = ["crates/*"]
+resolver = "3"
 
 [workspace.package]
 description = "FullStackHex project"
@@ -129,7 +130,7 @@ echo "=== Initialization Complete ==="
 echo ""
 echo "Next steps:"
 echo "  1. docker compose -f docker-compose.dev.yml up -d"
-echo "  2. cd rust-backend && cargo run --workspace"
+echo "  2. cd rust-backend && cargo run -p api"
 echo "  3. cd frontend && bun run dev"
 echo ""
 echo "Verify versions:"
@@ -149,8 +150,9 @@ bun create astro@latest frontend -- --template minimal --no-install --no-git --y
 
 cd frontend
 
-# Add Tailwind integration (also installs dependencies)
-bunx astro add tailwind --yes
+# Install Tailwind v4 (vite plugin) and Node SSR adapter
+bun add @tailwindcss/vite tailwindcss @astrojs/node
+bun install
 ```
 
 Recommended template layout:
@@ -159,7 +161,7 @@ Recommended template layout:
 frontend/
 ├── astro.config.mjs
 ├── package.json
-├── tailwind.config.mjs
+├── tsconfig.json
 ├── src/
 │   ├── components/
 │   ├── layouts/
@@ -169,6 +171,8 @@ frontend/
 │           └── health.ts
 └── public/
 ```
+
+> **Note:** No `tailwind.config.mjs` — Tailwind v4 is configured via the vite plugin in `astro.config.mjs`.
 
 Use Astro server routes for backend-derived data:
 
@@ -205,7 +209,20 @@ cd rust-backend
 cargo build --workspace
 ls crates/           # Should show: api core db python-sidecar
 
+# Verify generated tests
+cargo test --workspace
+
+# Verify Python sidecar scaffold and tests
+cd ../python-sidecar
+uv sync --all-extras
+uv run pytest
+
+# Verify frontend tests
+cd ../frontend
+bun test
+
 # Test Unix socket path exists in config
+cd ..
 grep PYTHON_SIDECAR_SOCKET .env
 ```
 

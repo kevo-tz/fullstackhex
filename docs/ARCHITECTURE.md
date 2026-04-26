@@ -103,15 +103,15 @@
 
 ```
 frontend/
-├── astro.config.mjs         # Astro dev/build configuration
+├── astro.config.mjs         # Astro SSR config (output: server, @astrojs/node adapter)
 ├── package.json             # Bun-managed scripts and dependencies
+├── tsconfig.json            # TypeScript config (extends astro/tsconfigs/strict)
 ├── src/
-│   ├── components/          # Reusable Astro components
-│   ├── layouts/             # Page shell/layouts
 │   └── pages/
 │       ├── index.astro      # Template landing page
 │       └── api/
 │           └── health.ts    # Astro server route proxying Rust health
+└── tests/                   # Bun test suites (unit, integration, smoke)
 
 rust-backend/
 ├── Cargo.toml              # Workspace root

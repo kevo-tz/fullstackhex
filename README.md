@@ -25,7 +25,7 @@ A production-ready full-stack template combining a Rust/Axum backend, Python sid
 
 ```bash
 # 1. Clone
-git clone https://github.com/yourusername/fullstackhex.git
+git clone https://github.com/kevo-tz/fullstackhex.git
 cd fullstackhex
 
 # 2. Configure secrets

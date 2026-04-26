@@ -1,6 +1,6 @@
 # Docs Design System
 
-Markdown style guide for the bare-metal-demo documentation. All docs in `./docs` follow these rules.
+Markdown style guide for the FullStackHex documentation. All docs in `./docs` follow these rules.
 
 ## Table of Contents
 

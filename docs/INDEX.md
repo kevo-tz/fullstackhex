@@ -1,6 +1,6 @@
 # Docs Index
 
-Start here for the bare-metal-demo documentation. Documents are listed in recommended reading order for new users.
+Start here for the FullStackHex documentation. Documents are listed in recommended reading order for new users.
 
 ## Table of Contents
 

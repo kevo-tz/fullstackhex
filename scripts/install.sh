@@ -9,7 +9,7 @@ BLUE='\033[0;34m'
 NC='\033[0m'
 
 echo -e "${BLUE}========================================${NC}"
-echo -e "${BLUE}  Bare Metal Demo - Full Initialization${NC}"
+echo -e "${BLUE}  FullStackHex - Full Initialization${NC}"
 echo -e "${BLUE}========================================${NC}"
 echo ""
 
@@ -159,6 +159,12 @@ create_rust_workspace() {
             cat > Cargo.toml << 'EOF'
 [workspace]
 members = ["crates/*"]
+
+[workspace.package]
+description = "FullStackHex project"
+license = "MIT"
+repository = "https://github.com/yourusername/fullstackhex"
+authors = ["Your Name <your@email.com>"]
 
 [workspace.dependencies]
 tokio = { version = "1", features = ["full"] }

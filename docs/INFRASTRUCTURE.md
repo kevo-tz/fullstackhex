@@ -27,7 +27,7 @@ Canonical reference for recreating the development infrastructure from scratch.
 ```bash
 # Clone and start all infrastructure
 git clone <repo>
-cd bare-metal-demo
+cd fullstackhex
 
 # Copy environment template
 cp .env.example .env
@@ -43,7 +43,7 @@ docker compose -f docker-compose.dev.yml ps
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│            bare-metal-network (172.20.0.0/16)                   │
+│            fullstackhex-network (172.20.0.0/16)                 │
 │                                                                 │
 │  ┌──────────┐  ┌──────────┐  ┌──────────┐                       │
 │  │ Postgres │  │  Redis   │  │  RustFS  │                       │
@@ -73,13 +73,13 @@ Primary relational database for the application.
 | Property | Value |
 |----------|-------|
 | Image | `postgres:18-alpine` |
-| Container | `bare_metal_db` |
+| Container | `fullstackhex_db` |
 | Port | `5432` (configurable: `POSTGRES_PORT`) |
 | Username | `app_user` (configurable: `POSTGRES_USER`) |
-| Password | `app_pass` (configurable: `POSTGRES_PASSWORD`) |
+| Password | `CHANGE_ME` (set via `POSTGRES_PASSWORD` in `.env`) |
 | Database | `app_database` (configurable: `POSTGRES_DB`) |
 
-**Connection string:** `postgres://app_user:app_pass@localhost:5432/app_database`
+**Connection string:** `postgres://app_user:CHANGE_ME@localhost:5432/app_database`
 
 **Health check:** Uses `pg_isready` (10s interval, 5 retries)
 
@@ -92,7 +92,7 @@ In-memory cache and session store.
 | Property | Value |
 |----------|-------|
 | Image | `redis:8-alpine` |
-| Container | `bare_metal_redis` |
+| Container | `fullstackhex_redis` |
 | Port | `6379` (configurable: `REDIS_PORT`) |
 | Max Memory | `512mb` (configurable: `REDIS_MAX_MEMORY`) |
 | Eviction Policy | `allkeys-lru` (configurable: `REDIS_MAXMEMORY_POLICY`) |
@@ -114,11 +114,11 @@ Open-source S3-compatible object storage server.
 | Property | Value |
 |----------|-------|
 | Image | `rustfs/rustfs:latest` |
-| Container | `bare_metal_rustfs` |
+| Container | `fullstackhex_rustfs` |
 | API Port | `9000` (configurable: `RUSTFS_API_PORT`) |
 | Console Port | `9001` (configurable: `RUSTFS_CONSOLE_PORT`) |
-| Access Key | `devadmin` (configurable: `RUSTFS_ACCESS_KEY`) |
-| Secret Key | `devadmin` (configurable: `RUSTFS_SECRET_KEY`) |
+| Access Key | `CHANGE_ME` (set via `RUSTFS_ACCESS_KEY` in `.env`) |
+| Secret Key | `CHANGE_ME` (set via `RUSTFS_SECRET_KEY` in `.env`) |
 | Console | Enabled (web UI at `http://localhost:9001`) |
 
 **Endpoint:** `http://localhost:9000`
@@ -168,10 +168,10 @@ cp .env.example .env
 ```env
 # PostgreSQL
 POSTGRES_USER=app_user
-POSTGRES_PASSWORD=app_pass
+POSTGRES_PASSWORD=CHANGE_ME
 POSTGRES_DB=app_database
 POSTGRES_PORT=5432
-DATABASE_URL=postgres://app_user:app_pass@localhost:5432/app_database
+DATABASE_URL=postgres://app_user:CHANGE_ME@localhost:5432/app_database
 ```
 
 ### Cache Configuration
@@ -192,8 +192,8 @@ REDIS_URL=redis://localhost:6379
 # RustFS (S3-compatible)
 RUSTFS_API_PORT=9000
 RUSTFS_CONSOLE_PORT=9001
-RUSTFS_ACCESS_KEY=devadmin
-RUSTFS_SECRET_KEY=devadmin
+RUSTFS_ACCESS_KEY=CHANGE_ME
+RUSTFS_SECRET_KEY=CHANGE_ME
 RUSTFS_CORS_ORIGINS=*
 RUSTFS_ENDPOINT=http://localhost:9000
 ```
@@ -211,7 +211,7 @@ REDIS_COMMANDER_PORT=8081
 This is the canonical reference. Always check this file for the latest configuration.
 
 ```yaml
-# Development Infrastructure for Bare Metal Demo
+# Development Infrastructure for FullStackHex
 # Usage: docker compose -f docker-compose.dev.yml up -d
 #
 # Services:
@@ -219,11 +219,11 @@ This is the canonical reference. Always check this file for the latest configura
 #   - redis:8-alpine      (port 6379) - Cache layer
 #   - rustfs/rustfs:latest (ports 9000, 9001) - S3-compatible object storage
 #
-# Networks: bare-metal-network (bridge)
+# Networks: fullstackhex-network (bridge)
 # Volumes: postgres_data, redis_data, rustfs_data (persistent)
 
 networks:
-  bare-metal-network:
+  fullstackhex-network:
     driver: bridge
     ipam:
       config:
@@ -240,13 +240,14 @@ volumes:
 services:
   postgres:
     image: postgres:18-alpine
-    container_name: bare_metal_db
+    container_name: fullstackhex_db
     restart: unless-stopped
     ports:
       - "${POSTGRES_PORT:-5432}:5432"
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-app_user}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-app_pass}
+      # POSTGRES_PASSWORD must be set in .env — no default is intentional
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env}
       POSTGRES_DB: ${POSTGRES_DB:-app_database}
       # Tune for development (not production)
       POSTGRES_INITDB_ARGS: "--encoding=UTF-8 --locale=C"
@@ -261,7 +262,7 @@ services:
       retries: 5
       start_period: 10s
     networks:
-      - bare-metal-network
+      - fullstackhex-network
     logging:
       driver: "json-file"
       options:
@@ -270,7 +271,7 @@ services:
 
   redis:
     image: redis:8-alpine
-    container_name: bare_metal_redis
+    container_name: fullstackhex_redis
     restart: unless-stopped
     ports:
       - "${REDIS_PORT:-6379}:6379"
@@ -285,7 +286,7 @@ services:
       retries: 5
       start_period: 5s
     networks:
-      - bare-metal-network
+      - fullstackhex-network
     logging:
       driver: "json-file"
       options:
@@ -294,7 +295,7 @@ services:
 
   rustfs:
     image: rustfs/rustfs:latest
-    container_name: bare_metal_rustfs
+    container_name: fullstackhex_rustfs
     restart: unless-stopped
     ports:
       - "${RUSTFS_API_PORT:-9000}:9000"
@@ -307,9 +308,9 @@ services:
       RUSTFS_CONSOLE_ENABLE: "true"
       RUSTFS_CORS_ALLOWED_ORIGINS: ${RUSTFS_CORS_ORIGINS:-*}
       RUSTFS_CONSOLE_CORS_ALLOWED_ORIGINS: ${RUSTFS_CORS_ORIGINS:-*}
-      # Credentials (use .env for production-like secrets)
-      RUSTFS_ACCESS_KEY: ${RUSTFS_ACCESS_KEY:-devadmin}
-      RUSTFS_SECRET_KEY: ${RUSTFS_SECRET_KEY:-devadmin}
+      # Credentials must be set in .env — no defaults are intentional
+      RUSTFS_ACCESS_KEY: ${RUSTFS_ACCESS_KEY:?RUSTFS_ACCESS_KEY must be set in .env}
+      RUSTFS_SECRET_KEY: ${RUSTFS_SECRET_KEY:?RUSTFS_SECRET_KEY must be set in .env}
       # Enable browser access
       RUSTFS_BROWSER: "on"
     volumes:
@@ -321,7 +322,7 @@ services:
       retries: 3
       start_period: 15s
     networks:
-      - bare-metal-network
+      - fullstackhex-network
     logging:
       driver: "json-file"
       options:
@@ -330,7 +331,7 @@ services:
 
   adminer:
     image: adminer:latest
-    container_name: bare_metal_adminer
+    container_name: fullstackhex_adminer
     restart: unless-stopped
     ports:
       - "${ADMINER_PORT:-8080}:8080"
@@ -338,23 +339,23 @@ services:
       postgres:
         condition: service_healthy
     networks:
-      - bare-metal-network
+      - fullstackhex-network
     profiles:
       - tools
 
   redis-commander:
     image: rediscommander/redis-commander:latest
-    container_name: bare_metal_redis_commander
+    container_name: fullstackhex_redis_commander
     restart: unless-stopped
     ports:
       - "${REDIS_COMMANDER_PORT:-8081}:8081"
     environment:
-      REDIS_HOSTS: local:bare_metal_redis:6379
+      REDIS_HOSTS: local:fullstackhex_redis:6379
     depends_on:
       redis:
         condition: service_healthy
     networks:
-      - bare-metal-network
+      - fullstackhex-network
     profiles:
       - tools
 
@@ -394,36 +395,36 @@ docker compose -f docker-compose.dev.yml logs -f
 docker compose -f docker-compose.dev.yml logs -f postgres
 
 # Check health status
-docker inspect bare_metal_db --format='{{json .State.Health}}' | jq
+docker inspect fullstackhex_db --format='{{json .State.Health}}' | jq
 ```
 
 ### Shell Access
 
 ```bash
 # Postgres shell
-docker exec -it bare_metal_db psql -U app_user app_database
+docker exec -it fullstackhex_db psql -U app_user app_database
 
 # Redis CLI
-docker exec -it bare_metal_redis redis-cli
+docker exec -it fullstackhex_redis redis-cli
 
 # RustFS shell
-docker exec -it bare_metal_rustfs sh
+docker exec -it fullstackhex_rustfs sh
 
 # Check RustFS bucket list (requires mc client in container)
-docker exec -it bare_metal_rustfs sh -c 'rustfs client ls'
+docker exec -it fullstackhex_rustfs sh -c 'rustfs client ls'
 ```
 
 ### Database Operations
 
 ```bash
 # Backup Postgres
-docker exec bare_metal_db pg_dump -U app_user app_database > backup_$(date +%Y%m%d).sql
+docker exec fullstackhex_db pg_dump -U app_user app_database > backup_$(date +%Y%m%d).sql
 
 # Restore Postgres
-docker exec -i bare_metal_db psql -U app_user app_database < backup_20260425.sql
+docker exec -i fullstackhex_db psql -U app_user app_database < backup_20260425.sql
 
 # Redis backup (RDB file)
-docker cp bare_metal_redis:/data/dump.rdb ./redis_backup.rdb
+docker cp fullstackhex_redis:/data/dump.rdb ./redis_backup.rdb
 ```
 
 ## Recreating from Scratch
@@ -453,7 +454,7 @@ docker compose -f docker-compose.dev.yml logs --tail=50
 **What gets recreated:**
 - 3 containers (postgres, redis, rustfs)
 - 3 volumes (postgres_data, redis_data, rustfs_data) → **data is lost with `-v`**
-- 1 network (bare-metal-network)
+- 1 network (fullstackhex-network)
 
 **What persists:**
 - `docker-compose.dev.yml` (configuration)
@@ -469,15 +470,15 @@ docker compose -f docker-compose.dev.yml logs --tail=50
 aws --endpoint-url http://localhost:9000 s3 mb s3://my-bucket
 
 # Using RustFS client (if available in container)
-docker exec -it bare_metal_rustfs rustfs client mb /my-bucket
+docker exec -it fullstackhex_rustfs rustfs client mb /my-bucket
 ```
 
 ### Web Console
 
 1. Open `http://localhost:9001`
 2. Login with:
-   - Access Key: `devadmin` (or `RUSTFS_ACCESS_KEY`)
-   - Secret Key: `devadmin` (or `RUSTFS_SECRET_KEY`)
+   - Access Key: value of `RUSTFS_ACCESS_KEY` from your `.env`
+   - Secret Key: value of `RUSTFS_SECRET_KEY` from your `.env`
 3. Create buckets, upload files, manage permissions
 
 ## Troubleshooting
@@ -517,25 +518,25 @@ docker compose -f docker-compose.dev.yml restart postgres
 
 ```bash
 # Check volume mount points
-docker volume inspect bare_metal_demo_postgres_data
+docker volume inspect fullstackhex_postgres_data
 
 # See where data is stored on host
-docker inspect bare_metal_db | jq '.[0].Mounts'
+docker inspect fullstackhex_db | jq '.[0].Mounts'
 
 # Manually backup before destructive operations
-docker cp bare_metal_db:/var/lib/postgresql/data ./postgres_backup
+docker cp fullstackhex_db:/var/lib/postgresql/data ./postgres_backup
 ```
 
 ### Health Check Failures
 
 ```bash
 # Manually test health checks
-docker exec bare_metal_db pg_isready -U app_user -d app_database
-docker exec bare_metal_redis redis-cli ping
-docker exec bare_metal_rustfs curl -f http://localhost:9000/health
+docker exec fullstackhex_db pg_isready -U app_user -d app_database
+docker exec fullstackhex_redis redis-cli ping
+docker exec fullstackhex_rustfs curl -f http://localhost:9000/health
 
 # Check health status
-docker inspect bare_metal_db --format='{{.State.Health.Status}}'
+docker inspect fullstackhex_db --format='{{.State.Health.Status}}'
 ```
 
 ### RustFS Console Not Loading
@@ -545,7 +546,7 @@ docker inspect bare_metal_db --format='{{.State.Health.Status}}'
 docker ps | grep rustfs
 
 # Check RustFS logs
-docker logs bare_metal_rustfs
+docker logs fullstackhex_rustfs
 
 # Ensure CORS is configured for your frontend
 # Add to .env: RUSTFS_CORS_ORIGINS=http://localhost:4321
@@ -553,13 +554,13 @@ docker logs bare_metal_rustfs
 
 ## Network Architecture
 
-Services communicate over `bare-metal-network` (172.20.0.0/16):
+Services communicate over `fullstackhex-network` (172.20.0.0/16):
 
 | Service | Container Name | Inter-service DNS | External Port |
 |---------|----------------|-------------------|---------------|
-| Postgres | `bare_metal_db` | `postgres:5432` | `5432` |
-| Redis | `bare_metal_redis` | `redis:6379` | `6379` |
-| RustFS | `bare_metal_rustfs` | `rustfs:9000` | `9000`, `9001` |
+| Postgres | `fullstackhex_db` | `postgres:5432` | `5432` |
+| Redis | `fullstackhex_redis` | `redis:6379` | `6379` |
+| RustFS | `fullstackhex_rustfs` | `rustfs:9000` | `9000`, `9001` |
 
 IPs are dynamically assigned by Docker — use container service names (column 3) for inter-service communication, not IP addresses.
 

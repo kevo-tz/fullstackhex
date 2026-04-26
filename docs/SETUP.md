@@ -16,7 +16,7 @@
 ```bash
 # Clone and run full initialization
 git clone <repo>
-cd bare-metal-demo
+cd fullstackhex
 mkdir -p rust-backend
 ./scripts/install.sh
 ```
@@ -215,7 +215,7 @@ cat .env
 Key settings in `.env`:
 ```env
 # Rust Backend
-DATABASE_URL=postgres://app_user:app_pass@localhost:5432/app_database
+DATABASE_URL=postgres://app_user:CHANGE_ME@localhost:5432/app_database
 
 # Python Sidecar (Unix socket)
 PYTHON_SIDECAR_SOCKET=/tmp/python-sidecar.sock

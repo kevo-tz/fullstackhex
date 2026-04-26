@@ -30,7 +30,7 @@ Save as `scripts/install.sh`:
 #!/bin/bash
 set -e
 
-echo "=== Bare Metal Demo Initialization ==="
+echo "=== FullStackHex Initialization ==="
 
 # 1. Check Python 3.14+ (required for sidecar; install manually via pyenv if missing)
 if command -v python3 &> /dev/null; then
@@ -79,6 +79,12 @@ cd rust-backend
 cat > Cargo.toml << 'EOF'
 [workspace]
 members = ["crates/*"]
+
+[workspace.package]
+description = "FullStackHex project"
+license = "MIT"
+repository = "https://github.com/yourusername/fullstackhex"
+authors = ["Your Name <your@email.com>"]
 
 [workspace.dependencies]
 tokio = { version = "1", features = ["full"] }

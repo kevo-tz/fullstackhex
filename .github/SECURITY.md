@@ -8,7 +8,7 @@ We accept security reports against the latest commit on the `main` branch.
 
 **Do not open a public GitHub issue for security vulnerabilities.**
 
-Report security issues by emailing the maintainers directly. Include:
+Use [GitHub's private vulnerability reporting](https://github.com/kevo-tz/fullstackhex/security/advisories/new) to submit a report. Include:
 - A description of the vulnerability and its potential impact
 - Steps to reproduce or a proof-of-concept
 - Affected versions or components

@@ -1,0 +1,11 @@
+title = "FullStackHex Gitleaks Config"
+
+[allowlist]
+description = "Allow known safe placeholders and scanning artifacts"
+paths = [
+  '''^\.secrets\.baseline$''',
+  '''^docs/.*''',
+]
+regexes = [
+  '''CHANGE_ME''',
+]

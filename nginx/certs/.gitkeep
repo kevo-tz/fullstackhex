@@ -1,0 +1,12 @@
+# Place your TLS certificates here (not committed — see .gitignore).
+# Required files:
+#   fullchain.pem   — certificate + intermediate chain
+#   privkey.pem     — private key
+#
+# For Let's Encrypt (Certbot):
+#   ln -s /etc/letsencrypt/live/<domain>/fullchain.pem nginx/certs/fullchain.pem
+#   ln -s /etc/letsencrypt/live/<domain>/privkey.pem   nginx/certs/privkey.pem
+#
+# For self-signed (development/testing only):
+#   openssl req -x509 -newkey rsa:4096 -keyout nginx/certs/privkey.pem \
+#     -out nginx/certs/fullchain.pem -days 365 -nodes -subj '/CN=localhost'

@@ -1,0 +1,64 @@
+# syntax=docker/dockerfile:1
+
+# ─────────────────────────────────────────────
+# Stage 1: Builder
+# ─────────────────────────────────────────────
+FROM rust:slim AS builder
+
+WORKDIR /build
+
+# Install system build dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    pkg-config \
+    libssl-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy workspace manifests first for layer caching
+COPY rust-backend/Cargo.toml rust-backend/Cargo.lock ./
+
+# Copy all crate manifests (dependency resolution only)
+COPY rust-backend/crates/api/Cargo.toml ./crates/api/Cargo.toml
+COPY rust-backend/crates/core/Cargo.toml ./crates/core/Cargo.toml
+COPY rust-backend/crates/db/Cargo.toml ./crates/db/Cargo.toml
+COPY rust-backend/crates/python-sidecar/Cargo.toml ./crates/python-sidecar/Cargo.toml
+
+# Create stub lib.rs files so cargo can resolve deps without full source
+RUN for crate in api core db python-sidecar; do \
+      mkdir -p crates/$crate/src && \
+      echo 'fn main() {}' > crates/$crate/src/lib.rs; \
+    done
+
+RUN cargo fetch
+
+# Now copy the real source and build release binary
+COPY rust-backend/crates ./crates
+
+RUN cargo build --release --workspace
+
+# ─────────────────────────────────────────────
+# Stage 2: Runtime
+# ─────────────────────────────────────────────
+FROM debian:bookworm-slim AS runtime
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    curl \
+    libssl3 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Run as non-root user
+RUN groupadd --system app && useradd --system --gid app app
+
+WORKDIR /app
+
+# Copy compiled binary (adjust binary name to match your workspace bin crate)
+COPY --from=builder /build/target/release/api /app/api
+
+USER app
+
+EXPOSE 8001
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+    CMD curl -f http://localhost:8001/health || exit 1
+
+CMD ["/app/api"]

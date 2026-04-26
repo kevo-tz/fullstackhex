@@ -164,7 +164,7 @@ members = ["crates/*"]
 [workspace.package]
 description = "FullStackHex project"
 license = "MIT"
-repository = "https://github.com/yourusername/fullstackhex"
+repository = "https://github.com/yourusername/yourrepo"
 authors = ["Your Name <your@email.com>"]
 
 [workspace.dependencies]

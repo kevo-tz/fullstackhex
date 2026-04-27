@@ -2,6 +2,22 @@
 
 Performance targets enforced via CI gates. Any missed target becomes a P1 item.
 
+## Prerequisites
+
+`scripts/bench.sh` requires `bombardier` for load testing:
+
+```bash
+# Install bombardier (requires Go)
+go install github.com/codesenberg/bombardier@latest
+
+# Verify installation
+bombardier --version
+```
+
+If Go is not installed:
+- **Linux/macOS:** `curl -fsSL https://go.dev/dl/ | bash` or use package manager
+- **Verify:** `go version`
+
 ## Targets
 
 | Metric | Target | Measurement |
@@ -12,7 +28,7 @@ Performance targets enforced via CI gates. Any missed target becomes a P1 item.
 | Postgres query (simple read) | < 10ms p99 | `sqlx --quiet` timings |
 | Frontend TTFB (SSR) | < 100ms | `curl -w "%{time_starttransfer}"` |
 | Memory per Rust worker | < 50MB RSS | `ps aux` after warmup |
-| Zero-allocation hot paths | true | `cargo flamegraph` on p99 path |
+| Hot path allocations | 0 allocs in p99 path | `cargo flamegraph` on /health |
 
 ## CI Enforcement
 

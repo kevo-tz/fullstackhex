@@ -62,11 +62,11 @@ benchmark() {
     local output=$(bombardier -c "$CONCURRENT" -d "$DURATION" "$url" 2>&1)
     
     # Parse results (bombardier outputs to stderr)
-    local p50=$(echo "$output" | grep -oP 'p50:\s*\K[0-9.]+' | head -1)
-    local p99=$(echo "$output" | grep -oP 'p99:\s*\K[0-9.]+' | head -1)
-    local rps=$(echo "$output" | grep -oP 'Requests/sec:\s*\K[0-9.]+' | head -1)
+    local p50=$(echo "$output" | awk '/p50:/ {for(i=1;i<=NF;i++) if($i == "p50:") {gsub(/ms|,/, "", $(i+1)); print $(i+1); exit}}')
+    local p99=$(echo "$output" | awk '/p99:/ {for(i=1;i<=NF;i++) if($i == "p99:") {gsub(/ms|,/, "", $(i+1)); print $(i+1); exit}}')
+    local rps=$(echo "$output" | awk '/Requests\/sec:/ {for(i=1;i<=NF;i++) if($i == "Requests/sec:") {print $(i+1); exit}}')
     
-    # Convert ms toms (bombardier outputs in ms)
+    # Note: bombardier outputs latency in ms (no conversion needed)
     p50="${p50:-0}"
     p99="${p99:-0}"
     

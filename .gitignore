@@ -56,7 +56,7 @@ Thumbs.db
 leankg.yaml
 
 # Generated scaffold outputs (created by scripts/install.sh at project init time)
-rust-backend/
+backend/
 python-sidecar/
 frontend/
 monitoring/

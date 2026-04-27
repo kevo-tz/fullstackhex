@@ -17,11 +17,11 @@
 # Clone and run full initialization
 git clone <repo>
 cd fullstackhex
-mkdir -p rust-backend
+mkdir -p backend
 ./scripts/install.sh
 ```
 
-The script installs/updates Rust, Bun, and uv, validates Docker prerequisites, scaffolds `rust-backend/`, scaffolds `python-sidecar/`, scaffolds `frontend/`, and generates baseline Rust/Python/frontend tests.
+The script installs/updates Rust, Bun, and uv, validates Docker prerequisites, scaffolds `backend/`, scaffolds `python-sidecar/`, scaffolds `frontend/`, and generates baseline Rust/Python/frontend tests.
 
 ## What `install.sh` Does
 
@@ -34,7 +34,7 @@ The script installs/updates Rust, Bun, and uv, validates Docker prerequisites, s
 
 2. **Creates or updates Rust workspace:**
    ```
-   rust-backend/
+   backend/
    ├── Cargo.toml (workspace root)
    ├── crates/
    │   ├── api/
@@ -94,8 +94,8 @@ docker compose version
 ### 2. Create Rust Workspace
 
 ```bash
-mkdir -p rust-backend
-cd rust-backend
+mkdir -p backend
+cd backend
 
 # Initialize workspace (done by install.sh)
 cat > Cargo.toml << 'EOF'
@@ -139,15 +139,15 @@ cargo build --workspace
 # Verify Docker daemon is running
 docker info > /dev/null 2>&1 || { echo "Docker daemon not running. Start Docker first."; exit 1; }
 
-docker compose -f docker-compose.dev.yml up -d
-docker compose -f docker-compose.dev.yml ps
+docker compose -f compose/dev.yml up -d
+docker compose -f compose/dev.yml ps
 ```
 
 ### 4. Run Services
 
 ```bash
 # Terminal 1: Rust API
-cd rust-backend
+cd backend
 cargo run -p api
 
 # Terminal 2: Frontend (dependencies already installed by install.sh)
@@ -220,7 +220,7 @@ curl http://localhost:8001/api/python/health
 curl http://localhost:4321
 
 # Infrastructure
-docker compose -f docker-compose.dev.yml ps
+docker compose -f compose/dev.yml ps
 ```
 
 ## Environment Configuration
@@ -254,12 +254,12 @@ VITE_RUST_BACKEND_URL=http://localhost:8001
 # Check what's using a port
 lsof -i :5432
 
-# Change ports in .env and docker-compose.dev.yml
+# Change ports in .env and compose/dev.yml
 ```
 
 ### Rust Build Errors
 ```bash
-cd rust-backend
+cd backend
 cargo clean
 cargo build --workspace
 ```

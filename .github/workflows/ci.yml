@@ -16,7 +16,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: rust-backend
+        working-directory: backend
 
     steps:
       - uses: actions/checkout@v4
@@ -28,7 +28,7 @@ jobs:
 
       - name: Bootstrap generated workspace when missing
         run: |
-          if [ ! -d rust-backend ] || [ ! -d python-sidecar ] || [ ! -d frontend ]; then
+          if [ ! -d backend ] || [ ! -d python-sidecar ] || [ ! -d frontend ]; then
             chmod +x scripts/install.sh
             ./scripts/install.sh
           fi
@@ -44,8 +44,8 @@ jobs:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-            rust-backend/target
-          key: ${{ runner.os }}-cargo-${{ hashFiles('rust-backend/Cargo.lock') }}
+            backend/target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('backend/Cargo.lock') }}
           restore-keys: |
             ${{ runner.os }}-cargo-
 
@@ -75,7 +75,7 @@ jobs:
 
       - name: Bootstrap generated workspace when missing
         run: |
-          if [ ! -d rust-backend ] || [ ! -d python-sidecar ] || [ ! -d frontend ]; then
+          if [ ! -d backend ] || [ ! -d python-sidecar ] || [ ! -d frontend ]; then
             chmod +x scripts/install.sh
             ./scripts/install.sh
           fi
@@ -112,7 +112,7 @@ jobs:
 
       - name: Bootstrap generated workspace when missing
         run: |
-          if [ ! -d rust-backend ] || [ ! -d python-sidecar ] || [ ! -d frontend ]; then
+          if [ ! -d backend ] || [ ! -d python-sidecar ] || [ ! -d frontend ]; then
             chmod +x scripts/install.sh
             ./scripts/install.sh
           fi
@@ -162,7 +162,7 @@ jobs:
           ./scripts/install.sh
 
       - name: Rust generated smoke
-        working-directory: rust-backend
+        working-directory: backend
         run: cargo test --workspace
 
       - name: Python generated smoke

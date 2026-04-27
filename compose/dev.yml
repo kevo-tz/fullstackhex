@@ -1,5 +1,5 @@
 # Development Infrastructure for FullStackHex
-# Usage: docker compose -f docker-compose.dev.yml up -d
+# Usage: docker compose -f compose/dev.yml up -d
 #
 # Prerequisites: copy .env.example to .env and replace all CHANGE_ME values
 #

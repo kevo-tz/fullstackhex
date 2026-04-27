@@ -23,7 +23,7 @@
 ### Workspace Layout
 
 ```
-rust-backend/
+backend/
 ├── Cargo.toml              # Workspace root
 ├── crates/
 │   ├── api/               # HTTP API layer (Axum routes)
@@ -79,7 +79,7 @@ ANY /api/python/{path}  → Forwards request method/path/body to Python sidecar 
 ### Running Rust with Sidecar
 
 ```bash
-cd rust-backend
+cd backend
 
 # Development: starts Axum on port 8001
 cargo run -p api

@@ -19,7 +19,7 @@ A production-ready full-stack template combining a Rust/Axum backend, Python sid
 - **Latest tooling** — Rust stable (edition 2024), Bun (latest), uv (latest), Astro v5.
 - **One-command init** — `./scripts/install.sh` installs all tools, scaffolds the Rust workspace, and creates the Astro frontend.
 - **Dev infrastructure via Docker Compose** — PostgreSQL 18, Redis 8, and RustFS spin up with a single command; optional Adminer and Redis Commander behind a `tools` profile.
-- **Monitoring stack overlay** — `docker-compose.monitor.yml` adds Prometheus + Grafana with provisioning and starter dashboard.
+- **Monitoring stack overlay** — `compose/monitor.yml` adds Prometheus + Grafana with provisioning and starter dashboard.
 - **Generated test suites** — initialization scaffolds Rust/Python/Frontend unit, integration, and smoke tests by default.
 - **Security automation** — local `detect-secrets` pre-commit checks plus CI `gitleaks` scanning.
 - **Dependency automation** — Dependabot updates for Rust, Python, frontend, and GitHub Actions.
@@ -40,13 +40,13 @@ cp .env.example .env
 ./scripts/install.sh
 
 # 4. Start infrastructure
-docker compose -f docker-compose.dev.yml up -d
+docker compose -f compose/dev.yml up -d
 
 # 4b. Optional monitoring overlay
-docker compose -f docker-compose.monitor.yml up -d
+docker compose -f compose/monitor.yml up -d
 
 # 5. Run backend (spawns Python sidecar automatically)
-cd rust-backend && cargo run --workspace
+cd backend && cargo run --workspace
 
 # 6. Run frontend
 cd frontend && bun run dev

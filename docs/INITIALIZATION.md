@@ -73,8 +73,8 @@ uv --version
 
 # 5. Create Rust workspace structure
 echo "Creating Rust workspace..."
-mkdir -p rust-backend
-cd rust-backend
+mkdir -p backend
+cd backend
 
 # Create workspace Cargo.toml
 cat > Cargo.toml << 'EOF'
@@ -129,8 +129,8 @@ echo ""
 echo "=== Initialization Complete ==="
 echo ""
 echo "Next steps:"
-echo "  1. docker compose -f docker-compose.dev.yml up -d"
-echo "  2. cd rust-backend && cargo run -p api"
+echo "  1. docker compose -f compose/dev.yml up -d"
+echo "  2. cd backend && cargo run -p api"
 echo "  3. cd frontend && bun run dev"
 echo ""
 echo "Verify versions:"
@@ -205,7 +205,7 @@ bun --version       # Should show latest
 uv --version        # Should show latest
 
 # Verify workspace
-cd rust-backend
+cd backend
 cargo build --workspace
 ls crates/           # Should show: api core db python-sidecar
 
@@ -235,7 +235,7 @@ To use this as a template for new projects:
    ```
    your-project/
    ├── scripts/install.sh
-   ├── rust-backend/ (empty, will be populated)
+   ├── backend/ (empty, will be populated)
    │   └── crates/
    │       └── python-sidecar/ (your FastAPI sidecar crate)
    ├── frontend/ (your Astro project)
@@ -270,7 +270,7 @@ export PATH="$BUN_INSTALL/bin:$PATH"
 
 ### Workspace build fails
 ```bash
-cd rust-backend
+cd backend
 cargo clean
 cargo build --workspace
 ```

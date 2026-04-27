@@ -296,10 +296,10 @@ scaffold_generated_tests() {
 
     # Rust unit + integration + smoke tests
     for crate in api core db python-sidecar; do
-        mkdir -p "rust-backend/crates/$crate/tests"
+        mkdir -p "backend/crates/$crate/tests"
 
-        if [ ! -f "rust-backend/crates/$crate/tests/unit_generated.rs" ]; then
-            cat > "rust-backend/crates/$crate/tests/unit_generated.rs" << 'EOF'
+        if [ ! -f "backend/crates/$crate/tests/unit_generated.rs" ]; then
+            cat > "backend/crates/$crate/tests/unit_generated.rs" << 'EOF'
 #[test]
 fn generated_unit_test_placeholder() {
     assert_eq!(2 + 2, 4);
@@ -308,8 +308,8 @@ EOF
         fi
     done
 
-    if [ ! -f "rust-backend/crates/api/tests/integration_health_route.rs" ]; then
-        cat > "rust-backend/crates/api/tests/integration_health_route.rs" << 'EOF'
+    if [ ! -f "backend/crates/api/tests/integration_health_route.rs" ]; then
+        cat > "backend/crates/api/tests/integration_health_route.rs" << 'EOF'
 #[test]
 fn health_route_path_is_stable() {
     let health_path = "/health";
@@ -318,8 +318,8 @@ fn health_route_path_is_stable() {
 EOF
     fi
 
-    if [ ! -f "rust-backend/crates/api/tests/smoke_generated.rs" ]; then
-        cat > "rust-backend/crates/api/tests/smoke_generated.rs" << 'EOF'
+    if [ ! -f "backend/crates/api/tests/smoke_generated.rs" ]; then
+        cat > "backend/crates/api/tests/smoke_generated.rs" << 'EOF'
 #[test]
 fn generated_workspace_smoke_test() {
     assert!(true);
@@ -373,8 +373,8 @@ create_rust_workspace() {
     echo ""
     echo -e "${YELLOW}2. Creating Rust workspace...${NC}"
     
-    mkdir -p rust-backend
-    pushd rust-backend > /dev/null
+    mkdir -p backend
+    pushd backend > /dev/null
     
 # Create workspace Cargo.toml if not exists
         if [ ! -f Cargo.toml ]; then
@@ -489,8 +489,8 @@ echo ""
 echo "Architecture: Rust-centric with Python sidecar (Unix socket)"
 echo ""
 echo "Next steps:"
-echo "  1. docker compose -f docker-compose.dev.yml up -d"
-echo "  2. cd rust-backend && cargo run -p api"
+echo "  1. docker compose -f compose/dev.yml up -d"
+echo "  2. cd backend && cargo run -p api"
 echo "     (starts Axum on port 8001)"
 echo "  3. cd frontend && bun run dev"
 echo ""

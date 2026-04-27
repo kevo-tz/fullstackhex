@@ -46,7 +46,7 @@ The script installs/updates Rust, Bun, and uv, validates Docker prerequisites, s
 
 3. **Sets up environment:**
    - Creates `.env` (from `.env.example` if present, or empty)
-   - Configures Unix socket path for Python sidecar (`PYTHON_SIDECAR_SOCKET`)
+   - Configures Unix socket path for Python sidecar (**PYTHON_SIDECAR_SOCKET**)
    - Adds `VITE_RUST_BACKEND_URL=http://localhost:8001`
 
 4. **Scaffolds Astro frontend** (automated, idempotent):

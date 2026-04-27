@@ -97,10 +97,10 @@ Primary relational database for the application.
 |----------|-------|
 | Image | `postgres:18-alpine` |
 | Container | `fullstackhex_db` |
-| Port | `5432` (configurable: `POSTGRES_PORT`) |
-| Username | `app_user` (configurable: `POSTGRES_USER`) |
-| Password | `CHANGE_ME` (set via `POSTGRES_PASSWORD` in `.env`) |
-| Database | `app_database` (configurable: `POSTGRES_DB`) |
+| Port | `5432` (configurable: **POSTGRES_PORT**) |
+| Username | `app_user` (configurable: **POSTGRES_USER**) |
+| Password | `CHANGE_ME` (set via **POSTGRES_PASSWORD** in `.env`) |
+| Database | `app_database` (configurable: **POSTGRES_DB**) |
 
 **Connection string:** `postgres://app_user:CHANGE_ME@localhost:5432/app_database`
 
@@ -116,9 +116,9 @@ In-memory cache and session store.
 |----------|-------|
 | Image | `redis:8-alpine` |
 | Container | `fullstackhex_redis` |
-| Port | `6379` (configurable: `REDIS_PORT`) |
-| Max Memory | `512mb` (configurable: `REDIS_MAX_MEMORY`) |
-| Eviction Policy | `allkeys-lru` (configurable: `REDIS_MAXMEMORY_POLICY`) |
+| Port | `6379` (configurable: **REDIS_PORT**) |
+| Max Memory | `512mb` (configurable: **REDIS_MAX_MEMORY**) |
+| Eviction Policy | `allkeys-lru` (configurable: **REDIS_MAXMEMORY_POLICY**) |
 
 **Connection string:** `redis://localhost:6379`
 
@@ -138,10 +138,10 @@ Open-source S3-compatible object storage server.
 |----------|-------|
 | Image | `rustfs/rustfs:latest` |
 | Container | `fullstackhex_rustfs` |
-| API Port | `9000` (configurable: `RUSTFS_API_PORT`) |
-| Console Port | `9001` (configurable: `RUSTFS_CONSOLE_PORT`) |
-| Access Key | `CHANGE_ME` (set via `RUSTFS_ACCESS_KEY` in `.env`) |
-| Secret Key | `CHANGE_ME` (set via `RUSTFS_SECRET_KEY` in `.env`) |
+| API Port | `9000` (configurable: **RUSTFS_API_PORT**) |
+| Console Port | `9001` (configurable: **RUSTFS_CONSOLE_PORT**) |
+| Access Key | `CHANGE_ME` (set via **RUSTFS_ACCESS_KEY** in `.env`) |
+| Secret Key | `CHANGE_ME` (set via **RUSTFS_SECRET_KEY** in `.env`) |
 | Console | Enabled (web UI at `http://localhost:9001`) |
 
 **Endpoint:** `http://localhost:9000`
@@ -500,8 +500,8 @@ docker exec -it fullstackhex_rustfs rustfs client mb /my-bucket
 
 1. Open `http://localhost:9001`
 2. Login with:
-   - Access Key: value of `RUSTFS_ACCESS_KEY` from your `.env`
-   - Secret Key: value of `RUSTFS_SECRET_KEY` from your `.env`
+   - Access Key: value of **RUSTFS_ACCESS_KEY** from your `.env`
+   - Secret Key: value of **RUSTFS_SECRET_KEY** from your `.env`
 3. Create buckets, upload files, manage permissions
 
 ## Troubleshooting
@@ -716,7 +716,7 @@ GRAFANA_ADMIN_PASSWORD=CHANGE_ME
 GRAFANA_DOMAIN=localhost
 ```
 
-> **Note:** `GRAFANA_ADMIN_PASSWORD` must be set — `compose/monitor.yml` uses `:?` syntax and will fail at startup if missing.
+> **Note:** **GRAFANA_ADMIN_PASSWORD** must be set — `compose/monitor.yml` uses `:?` syntax and will fail at startup if missing.
 
 ---
 

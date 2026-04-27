@@ -405,10 +405,10 @@ EOF
         echo -e "${GREEN}✓ Workspace Cargo.toml already exists${NC}"
     fi
     
-    # Create crates directory
-    mkdir -p crates
-    
-# Create individual crates if they don't exist
+# Create migration directory for sqlx
+    mkdir -p crates/db/migrations
+
+    # Create individual crates if they don't exist
         for crate in api core db python-sidecar; do
             if [ ! -d "crates/$crate" ]; then
                 echo "Creating crate: $crate..."

@@ -53,4 +53,5 @@ Start here for the FullStackHex documentation. Documents are listed in recommend
 
 ## Related Docs
 
-- [SETUP.md](./SETUP.md) - Start here for first-time setup
+- [Previous: performance-budget.md](./performance-budget.md) - Performance targets and CI gates
+- [All Docs](./INDEX.md) - Full documentation index

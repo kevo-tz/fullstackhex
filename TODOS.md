@@ -102,7 +102,7 @@ If any target is missed, it becomes a P1 item.
 **Depends on:** Fix naming inconsistency (need correct directory names)
 **Blocked by:** None
 
-**Acceptance Criteria:** Fresh clone + `install.sh` produces: `backend/`, `frontend/`, `python-sidecar/`, `migration/` (for sqlx), `tests/` directories
+**Acceptance Criteria:** Fresh clone + `install.sh` produces: `backend/`, `frontend/`, `python-sidecar/`, `backend/crates/db/migrations/` (for sqlx), `tests/` directories.
 
 ### `production/` folder structure (P1)
 
@@ -628,12 +628,12 @@ SIGTERM received
 
 | Priority | Items | Key Focus |
 |----------|-------|-----------|
-| P0 | 1 | Performance budget — define targets before any code ships |
-| P1 | 11 | Naming fix, production/, Podman secrets, rollback, graceful shutdown, worker pool sizing, db pool, structured logs, metrics, load testing, IPC tests |
-| P2 | 13 | Compose org, install audit, CI→VPS, circuit breaker, Postgres keepalive, SSR errors, sqlx gate, post-deploy smoke, justfile, resource limits, connection pool metrics, E2E health test |
+| P0 | 1 | ✓ Complete — Performance budget targets defined in `docs/performance-budget.md` |
+| P1 | 11 | Naming fix ✓, production/, Podman secrets, rollback, graceful shutdown, worker pool sizing, db pool, structured logs, metrics, load testing, IPC tests |
+| P2 | 13 | Compose org ✓, install audit, CI→VPS, circuit breaker, Postgres keepalive, SSR errors, sqlx gate, post-deploy smoke, justfile, resource limits, connection pool metrics, E2E health test |
 | P3 | 3 | ADRs, backup runbook, secrets rotation |
 
-**Total: 28 items across 6 areas**
+**Total: 25 items across 6 areas (3 completed)**
 
 ## Dependency Graph
 
@@ -677,4 +677,8 @@ Section 7 (sec/ops): Resource limits ──────────────�
 
 ## Completed
 
-(No completed items yet)
+| Item | Priority | Status | Notes |
+|------|---------|--------|-------|
+| Performance Budget | P0 | ✓ | Moved to `docs/performance-budget.md`; targets defined (p50 < 5ms, p99 < 20ms, etc.) |
+| Fix naming inconsistency | P1 | ✓ | All `rust-backend/` → `backend/` references updated in 18 files |
+| Docker Compose organization | P2 | ✓ | Compose files moved to `compose/`; all docs updated |

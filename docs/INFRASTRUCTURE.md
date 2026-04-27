@@ -12,7 +12,7 @@ Canonical reference for recreating the development infrastructure from scratch.
    - [RustFS (S3-Compatible)](#rustfs-s3-compatible)
    - [Optional Tools](#optional-tools-profiles)
 4. [Environment Variables](#environment-variables)
-5. [Complete docker-compose.dev.yml](#complete-docker-composedevyml)
+5. [Complete compose/dev.yml](#complete-compose-devyml)
 6. [Common Commands](#common-commands)
 7. [Recreating from Scratch](#recreating-from-scratch)
 8. [RustFS Usage](#rustfs-usage)
@@ -35,18 +35,18 @@ cd fullstackhex
 cp .env.example .env
 
 # Start all services
-docker compose -f docker-compose.dev.yml up -d
+docker compose -f compose/dev.yml up -d
 
 # Verify
-docker compose -f docker-compose.dev.yml ps
+docker compose -f compose/dev.yml ps
 
 # Optional: monitoring stack (Prometheus + Grafana)
-docker compose -f docker-compose.monitor.yml up -d
+docker compose -f compose/monitor.yml up -d
 ```
 
 ### Monitoring Overlay
 
-The monitoring stack is defined in `docker-compose.monitor.yml` and is designed to run alongside the main stack.
+The monitoring stack is defined in `compose/monitor.yml` and is designed to run alongside the main stack.
 
 - Prometheus config: `monitoring/prometheus.yml`
 - Grafana datasource provisioning: `monitoring/grafana/provisioning/datasources/prometheus.yml`
@@ -175,7 +175,7 @@ Enable with `--profile tools`:
 
 ```bash
 # Start with optional tools
-docker compose -f docker-compose.dev.yml --profile tools up -d
+docker compose -f compose/dev.yml --profile tools up -d
 ```
 
 ## Environment Variables
@@ -229,13 +229,13 @@ ADMINER_PORT=8080
 REDIS_COMMANDER_PORT=8081
 ```
 
-## Complete docker-compose.dev.yml
+## Complete compose/dev.yml
 
 This is the canonical reference. Always check this file for the latest configuration.
 
 ```yaml
 # Development Infrastructure for FullStackHex
-# Usage: docker compose -f docker-compose.dev.yml up -d
+# Usage: docker compose -f compose/dev.yml up -d
 #
 # Services:
 #   - postgres:18-alpine  (port 5432) - Primary database
@@ -390,32 +390,32 @@ services:
 
 ```bash
 # Start all core services (detached)
-docker compose -f docker-compose.dev.yml up -d
+docker compose -f compose/dev.yml up -d
 
 # Start with optional tools
-docker compose -f docker-compose.dev.yml --profile tools up -d
+docker compose -f compose/dev.yml --profile tools up -d
 
 # Stop all services (keep data)
-docker compose -f docker-compose.dev.yml stop
+docker compose -f compose/dev.yml stop
 
 # Stop and remove containers (keep volumes)
-docker compose -f docker-compose.dev.yml down
+docker compose -f compose/dev.yml down
 
 # Stop and remove everything (INCLUDING volumes - data lost!)
-docker compose -f docker-compose.dev.yml down -v
+docker compose -f compose/dev.yml down -v
 ```
 
 ### Monitoring
 
 ```bash
 # Check service status
-docker compose -f docker-compose.dev.yml ps
+docker compose -f compose/dev.yml ps
 
 # View logs (all services)
-docker compose -f docker-compose.dev.yml logs -f
+docker compose -f compose/dev.yml logs -f
 
 # View logs (single service)
-docker compose -f docker-compose.dev.yml logs -f postgres
+docker compose -f compose/dev.yml logs -f postgres
 
 # Check health status
 docker inspect fullstackhex_db --format='{{json .State.Health}}' | jq
@@ -456,7 +456,7 @@ To completely rebuild the infrastructure:
 
 ```bash
 # 1. Stop and remove everything
-docker compose -f docker-compose.dev.yml down -v
+docker compose -f compose/dev.yml down -v
 
 # 2. Remove any orphaned volumes
 docker volume prune -f
@@ -465,13 +465,13 @@ docker volume prune -f
 docker network prune -f
 
 # 4. Recreate and start fresh
-docker compose -f docker-compose.dev.yml up -d
+docker compose -f compose/dev.yml up -d
 
 # 5. Verify health
-docker compose -f docker-compose.dev.yml ps
+docker compose -f compose/dev.yml ps
 
 # 6. Check logs for any startup errors
-docker compose -f docker-compose.dev.yml logs --tail=50
+docker compose -f compose/dev.yml logs --tail=50
 ```
 
 **What gets recreated:**
@@ -480,7 +480,7 @@ docker compose -f docker-compose.dev.yml logs --tail=50
 - 1 network (fullstackhex-network)
 
 **What persists:**
-- `docker-compose.dev.yml` (configuration)
+- `compose/dev.yml` (configuration)
 - `.env` (environment variables)
 - Application code (outside Docker)
 
@@ -528,13 +528,13 @@ RUSTFS_API_PORT=9002
 
 ```bash
 # Check logs for specific service
-docker compose -f docker-compose.dev.yml logs postgres
+docker compose -f compose/dev.yml logs postgres
 
 # Check if ports are already in use
 docker ps  # See all running containers
 
 # Restart a specific service
-docker compose -f docker-compose.dev.yml restart postgres
+docker compose -f compose/dev.yml restart postgres
 ```
 
 ### Data Persistence Issues
@@ -607,15 +607,15 @@ docker run --rm -v postgres_data:/data -v $(pwd):/backup alpine tar xzf /backup/
 
 ## Migration to Production
 
-Use `docker-compose.prod.yml` to run all services as Docker containers with no external port exposure (except Nginx).
+Use `compose/prod.yml` to run all services as Docker containers with no external port exposure (except Nginx).
 
 ### Production Services
 
 | Service | Image | Internal port | Notes |
 |---------|-------|---------------|-------|
 | nginx | `nginx:alpine` | 80 / 443 | TLS termination, reverse proxy |
-| rust-backend | `Dockerfile.rust` | 8001 | Depends on postgres, redis, python-sidecar |
-| python-sidecar | `Dockerfile.python` | Unix socket | Shares `sidecar_socket` volume with rust-backend |
+| backend | `Dockerfile.rust` | 8001 | Depends on postgres, redis, python-sidecar |
+| python-sidecar | `Dockerfile.python` | Unix socket | Shares `sidecar_socket` volume with backend |
 | frontend | `Dockerfile.frontend` | 4321 | Astro SSR node adapter |
 | postgres | `postgres:18-alpine` | 5432 | Internal only (no host binding) |
 | redis | `redis:8-alpine` | 6379 | Internal only |
@@ -631,7 +631,7 @@ volumes:
     driver: local
 ```
 
-Both `rust-backend` and `python-sidecar` mount this volume at `/tmp/sidecar`. The socket path becomes `/tmp/sidecar/python-sidecar.sock`. Set in `.env`:
+Both `backend` and `python-sidecar` mount this volume at `/tmp/sidecar`. The socket path becomes `/tmp/sidecar/python-sidecar.sock`. Set in `.env`:
 
 ```env
 PYTHON_SIDECAR_SOCKET=/tmp/sidecar/python-sidecar.sock
@@ -651,7 +651,7 @@ nginx/certs/privkey.pem
 ```bash
 cp .env.example .env
 # Edit .env — replace ALL CHANGE_ME values and set PYTHON_SIDECAR_SOCKET
-docker compose -f docker-compose.prod.yml up -d
+docker compose -f compose/prod.yml up -d
 ```
 
 ---
@@ -667,7 +667,7 @@ Handles TLS termination and routing:
 | Route | Upstream |
 |-------|----------|
 | `/` | `frontend:4321` (Astro SSR) |
-| `/api/` | `rust-backend:8001` (Axum) |
+| `/api/` | `backend:8001` (Axum) |
 
 Key features:
 - HTTP → HTTPS redirect (port 80 → 443)
@@ -684,10 +684,10 @@ Minimal config for serving an Astro **static** build (no SSR) at port 4321. Not 
 
 ## Monitoring Stack
 
-The monitoring stack is in `docker-compose.monitor.yml` and joins the existing `fullstackhex-network`. Run it alongside either dev or prod:
+The monitoring stack is in `compose/monitor.yml` and joins the existing `fullstackhex-network`. Run it alongside either dev or prod:
 
 ```bash
-docker compose -f docker-compose.monitor.yml up -d
+docker compose -f compose/monitor.yml up -d
 ```
 
 ### Monitoring Services
@@ -716,7 +716,7 @@ GRAFANA_ADMIN_PASSWORD=CHANGE_ME
 GRAFANA_DOMAIN=localhost
 ```
 
-> **Note:** `GRAFANA_ADMIN_PASSWORD` must be set — `docker-compose.monitor.yml` uses `:?` syntax and will fail at startup if missing.
+> **Note:** `GRAFANA_ADMIN_PASSWORD` must be set — `compose/monitor.yml` uses `:?` syntax and will fail at startup if missing.
 
 ---
 
@@ -724,10 +724,10 @@ GRAFANA_DOMAIN=localhost
 
 ```bash
 # Pull latest images
-docker compose -f docker-compose.dev.yml pull
+docker compose -f compose/dev.yml pull
 
 # Recreate containers with new images
-docker compose -f docker-compose.dev.yml up -d --force-recreate
+docker compose -f compose/dev.yml up -d --force-recreate
 
 # Clean up old images
 docker image prune -f

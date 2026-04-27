@@ -1,5 +1,5 @@
 # Monitoring stack for FullStackHex
-# Usage: docker compose -f docker-compose.monitor.yml up -d
+# Usage: docker compose -f compose/monitor.yml up -d
 # Note: joins the existing fullstackhex-network from app compose files.
 
 networks:

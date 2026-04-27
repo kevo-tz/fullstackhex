@@ -29,7 +29,7 @@ Start here for the FullStackHex documentation. Documents are listed in recommend
 
 4. **[INFRASTRUCTURE.md](./INFRASTRUCTURE.md)** - Docker setup and config
    - PostgreSQL 18, Redis 8, RustFS (S3-compatible)
-   - Complete `docker-compose.dev.yml` reference
+   - Complete `compose/dev.yml` reference
    - Environment variables and volumes
    - Common commands and troubleshooting
 
@@ -47,6 +47,7 @@ Start here for the FullStackHex documentation. Documents are listed in recommend
 | SERVICES.md | Service API details | 4 min |
 | INFRASTRUCTURE.md | Docker/infra reference | 5 min |
 | INITIALIZATION.md | Template for new projects | 3 min |
+| performance-budget.md | Performance targets and CI gates | 2 min |
 
 ## Related Docs
 

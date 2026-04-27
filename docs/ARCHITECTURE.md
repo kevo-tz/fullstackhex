@@ -113,7 +113,7 @@ frontend/
 │           └── health.ts    # Astro server route proxying Rust health
 └── tests/                   # Bun test suites (unit, integration, smoke)
 
-rust-backend/
+backend/
 ├── Cargo.toml              # Workspace root
 ├── crates/
 │   ├── api/               # HTTP API layer (Axum routes)

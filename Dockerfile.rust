@@ -14,13 +14,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy workspace manifests first for layer caching
-COPY rust-backend/Cargo.toml rust-backend/Cargo.lock ./
+COPY backend/Cargo.toml backend/Cargo.lock ./
 
 # Copy all crate manifests (dependency resolution only)
-COPY rust-backend/crates/api/Cargo.toml ./crates/api/Cargo.toml
-COPY rust-backend/crates/core/Cargo.toml ./crates/core/Cargo.toml
-COPY rust-backend/crates/db/Cargo.toml ./crates/db/Cargo.toml
-COPY rust-backend/crates/python-sidecar/Cargo.toml ./crates/python-sidecar/Cargo.toml
+COPY backend/crates/api/Cargo.toml ./crates/api/Cargo.toml
+COPY backend/crates/core/Cargo.toml ./crates/core/Cargo.toml
+COPY backend/crates/db/Cargo.toml ./crates/db/Cargo.toml
+COPY backend/crates/python-sidecar/Cargo.toml ./crates/python-sidecar/Cargo.toml
 
 # Create stub source files so cargo can resolve deps without full source
 # api has a binary (main.rs); all others are lib crates
@@ -33,7 +33,7 @@ RUN mkdir -p crates/api/src && echo 'fn main() {}' > crates/api/src/main.rs && \
 RUN cargo fetch
 
 # Now copy the real source and build release binary
-COPY rust-backend/crates ./crates
+COPY backend/crates ./crates
 
 RUN cargo build --release --workspace
 

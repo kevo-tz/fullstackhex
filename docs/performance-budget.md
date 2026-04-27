@@ -44,3 +44,8 @@ When adding performance targets:
 1. Define metric, target, and measurement command in this file
 2. Add to CI baseline script
 3. Document in `scripts/bench.sh`
+
+## Related Docs
+
+- [Previous: INITIALIZATION.md](./INITIALIZATION.md) - Project initialization template
+- [All Docs](./INDEX.md) - Full documentation index

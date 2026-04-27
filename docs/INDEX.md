@@ -38,6 +38,8 @@ Start here for the FullStackHex documentation. Documents are listed in recommend
    - Verification steps
    - Troubleshooting
 
+6. **[performance-budget.md](./performance-budget.md)** - Performance targets and CI gates
+
 ## Quick Reference
 
 | Document | Purpose | Time to Read |

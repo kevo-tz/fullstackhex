@@ -50,7 +50,19 @@ install_bun() {
     else
         echo -e "${YELLOW}Installing Bun...${NC}"
         curl -fsSL https://bun.sh/install | bash
-        export PATH="$HOME/.bun/bin:$PATH"
+        
+        # Source common shell configs to ensure bun is on PATH
+        for config in "$HOME/.bashrc" "$HOME/.zshrc" "$HOME/.profile" "$HOME/.bash_profile"; do
+            if [ -f "$config" ]; then
+                # shellcheck disable=SC1090
+                source "$config" 2>/dev/null || true
+            fi
+        done
+        
+        # Ensure bun bin is on PATH
+        if [ -d "$HOME/.bun/bin" ]; then
+            export PATH="$HOME/.bun/bin:$PATH"
+        fi
         echo -e "${GREEN}✓ Bun installed: v$(bun --version)${NC}"
     fi
     bun upgrade
@@ -105,7 +117,14 @@ install_uv() {
     else
         echo -e "${YELLOW}Installing uv (Python package manager)...${NC}"
         curl -LsSf https://astral.sh/uv/install.sh | sh
-        export PATH="$HOME/.cargo/bin:$PATH"
+        
+        # uv installs to $HOME/.local/bin by default
+        # Also check cargo/bin as fallback
+        if [ -x "$HOME/.local/bin/uv" ]; then
+            export PATH="$HOME/.local/bin:$PATH"
+        elif [ -x "$HOME/.cargo/bin/uv" ]; then
+            export PATH="$HOME/.cargo/bin:$PATH"
+        fi
         echo -e "${GREEN}✓ uv installed: $(uv --version)${NC}"
     fi
 }
@@ -461,6 +480,24 @@ setup_environment() {
         echo -e "${GREEN}✓ Added Rust backend URL to .env${NC}"
     else
         echo -e "${GREEN}✓ Rust backend URL already in .env${NC}"
+    fi
+
+    if ! grep -q "ASTRO_PORT" .env 2>/dev/null; then
+        echo "" >> .env
+        echo "# Astro dev server port" >> .env
+        echo "ASTRO_PORT=4321" >> .env
+        echo -e "${GREEN}✓ Added Astro port to .env${NC}"
+    else
+        echo -e "${GREEN}✓ Astro port already in .env${NC}"
+    fi
+
+    if ! grep -q "PUBLIC_API_URL" .env 2>/dev/null; then
+        echo "" >> .env
+        echo "# Public API URL for frontend" >> .env
+        echo "PUBLIC_API_URL=http://localhost:8001" >> .env
+        echo -e "${GREEN}✓ Added public API URL to .env${NC}"
+    else
+        echo -e "${GREEN}✓ Public API URL already in .env${NC}"
     fi
 }
 

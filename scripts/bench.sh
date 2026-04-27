@@ -28,6 +28,7 @@ check_deps() {
     if ! command -v bombardier &> /dev/null; then
         echo -e "${RED}✗ bombardier not found${NC}"
         echo -e "  Install: go install github.com/codesenberg/bombardier@latest"
+        echo -e "  Or run: $0 --install-deps"
         missing=1
     else
         echo -e "${GREEN}✓ bombardier found${NC}"
@@ -61,8 +62,8 @@ benchmark() {
     local output=$(bombardier -c "$CONCURRENT" -d "$DURATION" "$url" 2>&1)
     
     # Parse results (bombardier outputs to stderr)
-    local p50=$(echo "$output" | grep -oP 'Mean:\s*\K[0-9.]+' | head -1)
-    local p99=$(echo "$output" | grep -oP '99%\s*\K[0-9.]+' | head -1)
+    local p50=$(echo "$output" | grep -oP 'p50:\s*\K[0-9.]+' | head -1)
+    local p99=$(echo "$output" | grep -oP 'p99:\s*\K[0-9.]+' | head -1)
     local rps=$(echo "$output" | grep -oP 'Requests/sec:\s*\K[0-9.]+' | head -1)
     
     # Convert ms toms (bombardier outputs in ms)
@@ -119,8 +120,34 @@ benchmark_frontend_ttfb() {
     fi
 }
 
+# Install dependencies
+install_deps() {
+    echo -e "${YELLOW}Installing dependencies...${NC}"
+    
+    if ! command -v go &> /dev/null; then
+        echo -e "${RED}✗ Go not found. Install Go first: https://go.dev/dl/${NC}"
+        exit 1
+    fi
+    
+    echo -e "Installing bombardier..."
+    go install github.com/codesenberg/bombardier@latest
+    
+    if command -v bombardier &> /dev/null; then
+        echo -e "${GREEN}✓ bombardier installed successfully${NC}"
+    else
+        echo -e "${RED}✗ Failed to install bombardier${NC}"
+        exit 1
+    fi
+}
+
 # Main
 main() {
+    # Check for --install-deps flag
+    if [[ "$1" == "--install-deps" ]]; then
+        install_deps
+        exit 0
+    fi
+    
     check_deps
     
     echo -e "${YELLOW}Configuration:${NC}"

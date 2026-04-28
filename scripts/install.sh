@@ -582,13 +582,22 @@ EOF
 # Create migration directory for sqlx
     mkdir -p crates/db/migrations
 
-    # Create individual crates if they don't exist
+    # Create individual crates if they don't exist or are invalid
         for crate in api core db python-sidecar; do
-            if [ ! -d "crates/$crate" ]; then
+            local crate_valid=false
+            if [ -d "crates/$crate" ] && [ -f "crates/$crate/Cargo.toml" ]; then
+                crate_valid=true
+            fi
+
+            if [ "$crate_valid" = true ]; then
+                echo -e "${GREEN}✓ Crate already exists: $crate${NC}"
+            else
+                if [ -d "crates/$crate" ]; then
+                    echo "Removing invalid crate directory: $crate..."
+                    rm -rf "crates/$crate"
+                fi
                 echo "Creating crate: $crate..."
                 cargo new --lib --edition 2024 "crates/$crate"
-            else
-                echo -e "${GREEN}✓ Crate already exists: $crate${NC}"
             fi
         done
     

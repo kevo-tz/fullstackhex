@@ -12,6 +12,4 @@ providers:
     updateIntervalSeconds: 10
     allowUiUpdates: true
     options:
-      path: /etc/grafana/provisioning/dashboards
-      # Alternative: use databases path inside container
-      # path: /var/lib/grafana/dashboards
+        path: /var/lib/grafana/dashboards

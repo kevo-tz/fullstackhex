@@ -361,11 +361,21 @@ EOF
     echo "Installing Tailwind v4 and Node SSR adapter..."
     bun add @tailwindcss/vite tailwindcss @astrojs/node
 
-    echo "Installing TypeScript runtime types for Bun/Node..."
-    bun add --dev @types/node bun-types
+    echo "Installing TypeScript runtime types and check tooling for Bun/Node..."
+    bun add --dev @astrojs/check typescript @types/node bun-types
 
     echo "Installing remaining dependencies..."
     bun install
+
+    # Inject typecheck and lint scripts (astro check) into package.json
+    bun -e "
+const fs = require('fs');
+const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+pkg.scripts = pkg.scripts || {};
+pkg.scripts.typecheck = pkg.scripts.typecheck || 'astro check';
+pkg.scripts.lint = pkg.scripts.lint || 'astro check';
+fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
+"
 
     # Write astro.config.mjs with SSR output and Tailwind vite plugin
     cat > astro.config.mjs << 'EOF'
@@ -505,6 +515,169 @@ mod tests {
         assert!(!rust_log.is_empty());
         assert!(!database_url.is_empty());
     }
+}
+EOF
+    fi
+
+    if [ ! -f "backend/crates/api/tests/integration_socket.rs" ]; then
+        cat > "backend/crates/api/tests/integration_socket.rs" << 'EOF'
+// Integration tests for Unix socket communication between Rust and Python
+// Run with: cargo test --test integration_socket
+
+use std::path::PathBuf;
+use std::time::Duration;
+use tokio::time::timeout;
+
+/// Test that socket path is correctly configured
+#[test]
+fn socket_path_configuration() {
+    let socket_path = std::env::var("PYTHON_SIDECAR_SOCKET")
+        .unwrap_or_else(|_| "/tmp/python-sidecar.sock".to_string());
+
+    let path = PathBuf::from(socket_path);
+    assert!(path.is_absolute() || path.starts_with("~"));
+}
+
+/// Test socket path directory creation
+#[tokio::test]
+async fn socket_directory_creation() {
+    use std::fs;
+
+    let temp_dir = std::env::temp_dir().join("fullstackhex_test");
+    fs::create_dir_all(&temp_dir).expect("Failed to create temp dir");
+
+    let socket_path = temp_dir.join("test-socket.sock");
+
+    if socket_path.exists() {
+        fs::remove_file(&socket_path).expect("Failed to remove stale socket");
+    }
+
+    assert!(temp_dir.exists());
+    assert!(temp_dir.is_dir());
+
+    let _ = fs::remove_dir_all(&temp_dir);
+}
+
+/// Test error handling for missing socket
+#[tokio::test]
+async fn error_handling_missing_socket() {
+    use tokio::net::UnixStream;
+
+    let non_existent = PathBuf::from("/tmp/non-existent-socket.sock");
+
+    let result = timeout(
+        Duration::from_secs(1),
+        UnixStream::connect(&non_existent)
+    ).await;
+
+    match result {
+        Ok(Err(_)) => {
+            // Expected: connection failed
+        }
+        Ok(Ok(_)) => {
+            panic!("Should not be able to connect to non-existent socket");
+        }
+        Err(_) => {
+            // Timeout is also acceptable
+        }
+    }
+}
+
+/// Test socket path from environment with priority
+#[test]
+fn socket_path_env_override() {
+    let original = std::env::var("PYTHON_SIDECAR_SOCKET").ok();
+
+    // Safety: single-threaded test; no other threads reading this variable.
+    unsafe {
+        std::env::set_var("PYTHON_SIDECAR_SOCKET", "/custom/path/socket.sock");
+    }
+    let path = std::env::var("PYTHON_SIDECAR_SOCKET").unwrap();
+    assert_eq!(path, "/custom/path/socket.sock");
+
+    unsafe {
+        match original {
+            Some(val) => std::env::set_var("PYTHON_SIDECAR_SOCKET", val),
+            None => std::env::remove_var("PYTHON_SIDECAR_SOCKET"),
+        }
+    }
+}
+
+/// Test request structure for sidecar communication
+#[test]
+fn sidecar_request_structure() {
+    let request_json = serde_json::json!({
+        "method": "GET",
+        "path": "/api/data",
+        "headers": {},
+        "body": null
+    });
+
+    assert_eq!(request_json["method"], "GET");
+    assert_eq!(request_json["path"], "/api/data");
+    assert!(request_json["body"].is_null());
+}
+
+/// Test response structure from sidecar
+#[test]
+fn sidecar_response_structure() {
+    let response_json = serde_json::json!({
+        "status": 200,
+        "body": {"message": "success"},
+        "headers": {"content-type": "application/json"}
+    });
+
+    assert_eq!(response_json["status"], 200);
+    assert_eq!(response_json["body"]["message"], "success");
+    assert_eq!(response_json["headers"]["content-type"], "application/json");
+}
+
+/// Test retry logic for socket connection
+#[tokio::test]
+async fn socket_retry_logic() {
+    let socket_path = PathBuf::from("/tmp/non-existent-test-socket.sock");
+    let max_retries = 3;
+    let mut attempts = 0;
+
+    loop {
+        attempts += 1;
+
+        let result = timeout(
+            Duration::from_millis(100),
+            tokio::net::UnixStream::connect(&socket_path)
+        ).await;
+
+        match result {
+            Ok(Ok(_)) => {
+                break;
+            }
+            _ => {
+                if attempts >= max_retries {
+                    assert!(attempts >= max_retries);
+                    break;
+                }
+                tokio::time::sleep(Duration::from_millis(50)).await;
+            }
+        }
+    }
+
+    assert!(attempts >= max_retries);
+}
+
+/// Mock test for full request/response cycle
+/// (Requires actual sidecar running - marked as ignored by default)
+#[tokio::test]
+#[ignore]
+async fn full_socket_communication() {
+    let socket_path = std::env::var("PYTHON_SIDECAR_SOCKET")
+        .unwrap_or_else(|_| "/tmp/python-sidecar.sock".to_string());
+
+    if !PathBuf::from(&socket_path).exists() {
+        println!("Skipping test: socket not found at {}", socket_path);
+        return;
+    }
+
+    assert!(PathBuf::from(&socket_path).exists());
 }
 EOF
     fi

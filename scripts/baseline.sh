@@ -14,10 +14,10 @@ BLUE='\033[0;34m'
 NC='\033[0m'
 
 # Configuration
-BASLINE_DIR=".performance"
-BASLINE_FILE="$BASLINE_DIR/baseline.json"
-RESULTS_FILE="$BASLINE_DIR/results-$(date +%Y%m%d_%H%M%S).json"
-HTML_REPORT="$BASLINE_DIR/report.html"
+BASELINE_DIR=".performance"
+BASELINE_FILE="$BASELINE_DIR/baseline.json"
+RESULTS_FILE="$BASELINE_DIR/results-$(date +%Y%m%d_%H%M%S).json"
+HTML_REPORT="$BASELINE_DIR/report.html"
 
 # Parse arguments
 SAVE=false
@@ -68,7 +68,7 @@ echo ""
 echo -e "${YELLOW}Parsing results...${NC}"
 
 # Create baseline directory if needed
-mkdir -p "$BASLINE_DIR"
+mkdir -p "$BASELINE_DIR"
 
 # Save results (simplified - in real implementation, parse bench.sh output)
 cat > "$RESULTS_FILE" << EOF
@@ -88,18 +88,18 @@ echo -e "${GREEN}✓ Results saved to $RESULTS_FILE${NC}"
 
 # Save as baseline if requested
 if [ "$SAVE" = true ]; then
-    cp "$RESULTS_FILE" "$BASLINE_FILE"
-    git add "$BASLINE_FILE"
+    cp "$RESULTS_FILE" "$BASELINE_FILE"
+    git add "$BASELINE_FILE"
     git commit -m "perf: update performance baseline
 
 Baseline taken at $(date -Iseconds)
 Commit: $(git rev-parse HEAD 2>/dev/null || echo 'unknown')" || echo -e "${YELLOW}⚠ Baseline not committed (no changes or git error)${NC}"
-    echo -e "${GREEN}✓ Baseline saved to $BASLINE_FILE${NC}"
+    echo -e "${GREEN}✓ Baseline saved to $BASELINE_FILE${NC}"
 fi
 
 # Compare with baseline
 if [ "$COMPARE" = true ]; then
-    if [ ! -f "$BASLINE_FILE" ]; then
+    if [ ! -f "$BASELINE_FILE" ]; then
         echo -e "${RED}✗ No baseline found. Run: $0 --save${NC}"
         exit 1
     fi
@@ -108,7 +108,7 @@ if [ "$COMPARE" = true ]; then
     echo -e "${YELLOW}Comparing with baseline...${NC}"
     echo ""
 
-    BASELINE_TIME=$(jq -r '.timestamp' "$BASLINE_FILE")
+    BASELINE_TIME=$(jq -r '.timestamp' "$BASELINE_FILE")
     echo -e "Baseline from: $BASELINE_TIME"
 
     # Simplified comparison (in real implementation, parse and compare metrics)
@@ -178,5 +178,5 @@ echo -e "${BLUE}========================================${NC}"
 echo ""
 echo "Files:"
 echo "  Results: $RESULTS_FILE"
-echo "  Baseline: $BASLINE_FILE (if saved)"
+echo "  Baseline: $BASELINE_FILE (if saved)"
 echo "  Report: $HTML_REPORT"

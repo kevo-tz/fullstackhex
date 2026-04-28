@@ -114,12 +114,11 @@ install_bun() {
     # Verify bun is now accessible
     if command -v bun &> /dev/null; then
         log_success "Bun installed: v$(bun --version)"
+        bun upgrade
     else
         log_warning "Bun installed but not on PATH. Run: source $rc_file"
         log_warning "  Or restart your shell."
     fi
-
-    bun upgrade
 }
 
 # Check Python (don't auto-install, just check)

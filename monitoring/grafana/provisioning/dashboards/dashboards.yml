@@ -1,0 +1,17 @@
+# Grafana dashboard provisioning configuration
+# Auto-discovers dashboards on startup
+
+apiVersion: 1
+
+providers:
+  - name: 'FullStackHex'
+    orgId: 1
+    folder: ''
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 10
+    allowUiUpdates: true
+    options:
+      path: /etc/grafana/provisioning/dashboards
+      # Alternative: use databases path inside container
+      # path: /var/lib/grafana/dashboards

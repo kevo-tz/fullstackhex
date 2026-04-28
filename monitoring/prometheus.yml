@@ -1,0 +1,62 @@
+# Prometheus configuration for FullStackHex
+# Scrapes metrics from Rust backend and node-exporter
+
+global:
+  scrape_interval: 15s
+  evaluation_interval 15s
+  external_labels:
+    monitoring: 'fullstackhex'
+
+# Alertmanager configuration (optional)
+# alerting:
+#   alertmanagers:
+#     - static_configs:
+#         - targets:
+#           - alertmanager:9093
+
+scrape_configs:
+  # Rust Backend - Axum metrics endpoint
+  - job_name: 'rust-backend'
+    scrape_interval: 5s
+    static_configs:
+      - targets: ['backend:8001']
+    metrics_path: '/metrics'
+    # Add labels
+    labels:
+      service: 'rust-api'
+      tier: 'backend'
+
+  # Node Exporter - system metrics
+  - job_name: 'node-exporter'
+    scrape_interval: 15s
+    static_configs:
+      - targets: ['node-exporter:9100']
+    labels:
+      service: 'system'
+      tier: 'infrastructure'
+
+  # Python Sidecar (if exposes metrics in future)
+  # - job_name: 'python-sidecar'
+  #   scrape_interval: 10s
+  #   static_configs:
+  #     - targets: ['python-sidecar:8002']
+  #   metrics_path: '/metrics'
+
+  # Frontend (if adds metrics endpoint)
+  # - job_name: 'frontend'
+  #   scrape_interval: 15s
+  #   static_configs:
+  #     - targets: ['frontend:4321']
+  #   metrics_path: '/metrics'
+
+  # Redis (if using redis_exporter)
+  # - job_name: 'redis'
+  #   scrape_interval: 15s
+  #   static_configs:
+  #     - targets: ['redis-exporter:9121']
+
+  # PostgreSQL (if using postgres_exporter)
+  # - job_name: 'postgres'
+  #   scrape_interval: 15s
+  #   static_configs:
+  #     - targets: ['postgres-exporter:9187']

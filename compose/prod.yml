@@ -9,7 +9,7 @@
 #   - nginx          (ports 80, 443)  - Reverse proxy + TLS termination
 #   - backend        (internal :8001) - Rust/Axum API server
 #   - python-sidecar (internal socket) - Python FastAPI sidecar (managed by Rust)
-#   - frontend       (internal :4321) - Astro static site
+#   - frontend       (internal :4321) - Astro SSR Node server
 #   - postgres       (internal :5432) - Primary database
 #   - redis          (internal :6379) - Cache layer
 #   - rustfs         (internal :9000) - S3-compatible object storage

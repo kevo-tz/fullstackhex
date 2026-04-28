@@ -14,7 +14,7 @@ FullStackHex uses GitHub Actions for continuous integration and deployment. The 
 ### 2. Build
 - **Rust**: `cargo build --workspace`
 - **Frontend**: `bun run build`
-- **Python**: `uv pip install -r requirements.txt`
+- **Python**: `uv sync --all-extras`
 
 ### 3. Test
 - **Rust**: `cargo test --workspace`
@@ -163,8 +163,8 @@ cargo update -p tokio   # Update specific package
 
 ```bash
 cd python-sidecar
-uv pip compile pyproject.toml > requirements.txt
-uv pip sync requirements.txt
+uv sync --all-extras
+uv lock
 ```
 
 ### Frontend Dependencies

@@ -1,9 +1,9 @@
 #!/bin/bash
 set -e
 
-# FullStackHex Performance Benchmark Script
-# Usage: ./scripts/bench.sh
-# Requires: bombardier (install via: go install github.com/codesenberg/bombardier@latest)
+# FullStackHex Performance Benchmark Script (Lite version)
+# Usage: ./scripts/bench-lite.sh
+# Requires: ab (Apache Bench) - install via: apt-get install apache2-utils (Linux) or yum install httpd-tools (RHEL)
 
 # Source common functions and configuration
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -12,29 +12,32 @@ source "$SCRIPT_DIR/config.sh"
 
 # Configuration is now sourced from config.sh
 
-log_info "FullStackHex Performance Benchmarks"
+log_info "FullStackHex Performance Benchmarks (Lite - using Apache Bench)"
 echo ""
 
 # Check dependencies
 check_deps() {
     local missing=0;
-    
-    if ! command -v bombardier &> /dev/null; then
-        log_error "bombardier not found"
-        log_info "Install: go install github.com/codesenberg/bombardier@latest"
-        log_info "Or run: $0 --install-deps"
+ 
+    if ! command -v ab &> /dev/null; then
+        log_error "ab (Apache Bench) not found"
+        log_info "Install:"
+        log_info "  Linux (Debian/Ubuntu): sudo apt-get install apache2-utils"
+        log_info "  Linux (RHEL/CentOS): sudo yum install httpd-tools"
+        log_info "  macOS: ab is included with Apache (or brew install httpd)"
         missing=1
     else
-        log_success "bombardier found"
+        local version=$(ab -V 2>&1 | head -1)
+        log_success "ab found: $version"
     fi
-    
+ 
     if ! command -v curl &> /dev/null; then
         log_error "curl not found"
         missing=1
     else
         log_success "curl found"
     fi
-    
+ 
     if [ $missing -eq 1 ]; then
         exit 1
     fi
@@ -43,9 +46,9 @@ check_deps() {
 # Check if services are running
 check_services() {
     local failed=0
-
+ 
     log_info "Checking services..."
-
+ 
     # Check Rust backend
     if check_service_http "Rust backend" "$RUST_BACKEND_URL/health" 5 false; then
         log_success "Rust backend responding at $RUST_BACKEND_URL"
@@ -54,7 +57,7 @@ check_services() {
         log_warning "Start with: cd backend && cargo run -p api"
         failed=1
     fi
-
+ 
     # Check Frontend
     if check_service_http "Frontend" "$FRONTEND_URL" 5 false; then
         log_success "Frontend responding at $FRONTEND_URL"
@@ -63,16 +66,16 @@ check_services() {
         log_warning "Start with: cd frontend && bun run dev"
         failed=1
     fi
-
+ 
     if [ $failed -eq 1 ]; then
         log_error "Please start all services before running benchmarks."
         exit 1
     fi
-
+ 
     echo ""
 }
 
-# Benchmark function
+# Benchmark function using ab
 benchmark() {
     local name="$1"
     local url="$2"
@@ -81,38 +84,53 @@ benchmark() {
     
     log_info "Benchmark: $name"
     log_info "URL: $url"
-    log_info "Duration: $DURATION, Concurrent: $CONCURRENT"
+    log_info "Requests: $REQUESTS, Concurrent: $CONCURRENT"
     echo ""
     
-    local output=$(bombardier -c "$CONCURRENT" -d "$DURATION" "$url" 2>&1)
+    # Run ab and capture output
+    local output=$(ab -n "$REQUESTS" -c "$CONCURRENT" -r -k "$url" 2>&1)
     
-    # Parse results (bombardier outputs to stderr)
-    local p50=$(echo "$output" | awk '/p50:/ {for(i=1;i<=NF;i++) if($i == "p50:") {gsub(/ms|,/, "", $(i+1)); print $(i+1); exit}}')
-    local p99=$(echo "$output" | awk '/p99:/ {for(i=1;i<=NF;i++) if($i == "p99:") {gsub(/ms|,/, "", $(i+1)); print $(i+1); exit}}')
-    local rps=$(echo "$output" | awk '/Requests\/sec:/ {for(i=1;i<=NF;i++) if($i == "Requests/sec:") {print $(i+1); exit}}')
+    # Parse p50 and p99 from "Percentage of requests served within a certain time" table
+    # Format: "  50%    123" (ms)
+    local p50=$(echo "$output" | awk '/^ +50% / {print $2}' | head -1)
+    local p99=$(echo "$output" | awk '/^ +99% / {print $2}' | head -1)
     
-    # Note: bombardier outputs latency in ms (no conversion needed)
-    p50="${p50:-0}"
-    p99="${p99:-0}"
+    # If p50/p99 not found, try alternative format
+    if [ -z "$p50" ]; then
+        p50=$(echo "$output" | grep -oP '^\s+50%\s+\K\d+' | head -1)
+    fi
+    if [ -z "$p99" ]; then
+        p99=$(echo "$output" | grep -oP '^\s+99%\s+\K\d+' | head -1)
+    fi
+    
+    # Fallback: use mean time if percentiles not available
+    if [ -z "$p50" ] || [ -z "$p99" ]; then
+        log_warning "Could not parse p50/p99 from ab output, using mean time"
+        local mean=$(echo "$output" | awk '/^Time per request:/ {print $4; exit}' | head -1)
+        p50=${p50:-$mean}
+        p99=${p99:-$mean}
+    fi
     
     log_info "Results:"
     log_info "  p50: ${p50}ms (target: <${expected_p50}ms)"
     log_info "  p99: ${p99}ms (target: <${expected_p99}ms)"
-    log_info "  RPS: ${rps}"
     
-    # Check against targets
+    # Check against targets (convert to integers for comparison)
+    local p50_int=$(echo "$p50" | cut -d. -f1)
+    local p99_int=$(echo "$p99" | cut -d. -f1)
+    local expected_p50_int=$(echo "$expected_p50" | cut -d. -f1)
+    local expected_p99_int=$(echo "$expected_p99" | cut -d. -f1)
+    
     local passed=0
-    local p50_passed=$(echo "$p50 < $expected_p50" | bc -l 2>/dev/null || echo "0")
-    local p99_passed=$(echo "$p99 < $expected_p99" | bc -l 2>/dev/null || echo "0")
     
-    if [ "$p50_passed" = "1" ]; then
+    if [ -n "$p50_int" ] && [ "$p50_int" -lt "$expected_p50_int" ] 2>/dev/null; then
         log_success "p50 PASSED"
     else
         log_error "p50 FAILED"
         passed=1
     fi
     
-    if [ "$p99_passed" = "1" ]; then
+    if [ -n "$p99_int" ] && [ "$p99_int" -lt "$expected_p99_int" ] 2>/dev/null; then
         log_success "p99 PASSED"
     else
         log_error "p99 FAILED"
@@ -120,12 +138,12 @@ benchmark() {
     fi
     
     # Return structured result for JSON output
-    echo "{\"name\":\"$name\",\"url\":\"$url\",\"p50_ms\":$p50,\"p99_ms\":$p99,\"rps\":\"$rps\",\"p50_target_ms\":$expected_p50,\"p99_target_ms\":$expected_p99,\"p50_passed\":$p50_passed,\"p99_passed\":$p99_passed,\"passed\":$[ $passed -eq 0 ]}"
+    echo "{\"name\":\"$name\",\"url\":\"$url\",\"p50_ms\":$p50,\"p99_ms\":$p99,\"p50_target_ms\":$expected_p50,\"p99_target_ms\":$expected_p99,\"p50_passed\":$p50_passed,\"p99_passed\":$p99_passed,\"passed\":$[ $passed -eq 0 ]}"
     
     return $passed
 }
 
-# Frontend TTFB benchmark
+# Frontend TTFB benchmark using curl
 benchmark_frontend_ttfb() {
     log_info "Benchmark: Frontend TTFB (SSR)"
     log_info "URL: $FRONTEND_URL"
@@ -138,6 +156,9 @@ benchmark_frontend_ttfb() {
     
     local passed=$(echo "$ttfb < $expected_s" | bc -l 2>/dev/null || echo "0")
     
+    # Return structured result for JSON output
+    echo "{\"name\":\"Frontend TTFB\",\"url\":\"$FRONTEND_URL\",\"ttfb_s\":$ttfb,\"ttfb_target_s\":$expected_s,\"passed\":$[ $passed -eq 0 ]}"
+    
     if [ "$passed" = "1" ]; then
         log_success "TTFB PASSED"
         return 0
@@ -147,40 +168,13 @@ benchmark_frontend_ttfb() {
     fi
 }
 
-# Install dependencies
-install_deps() {
-    log_info "Installing dependencies..."
-    
-    if ! command -v go &> /dev/null; then
-        log_error "Go not found. Install Go first: https://go.dev/dl/${NC}"
-        exit 1
-    fi
-    
-    log_info "Installing bombardier..."
-    go install github.com/codesenberg/bombardier@latest
-    
-    if command -v bombardier &> /dev/null; then
-        log_success "bombardier installed successfully"
-    else
-        log_error "Failed to install bombardier"
-        exit 1
-    fi
-}
-
 # Main
 main() {
-    # Check for --install-deps flag
-    if [[ "$1" == "--install-deps" ]]; then
-        install_deps
-        exit 0
-    fi
-    
     # Check for --help flag
     if [[ "$1" == "--help" || "$1" == "-h" ]]; then
-        echo "Usage: $0 [--install-deps] [--json]"
+        echo "Usage: $0 [--json]"
         echo ""
         echo "Options:"
-        echo "  --install-deps   Install required dependencies (bombardier)"
         echo "  --json           Output results in JSON format"
         echo "  --help, -h       Show this help message"
         exit 0
@@ -200,7 +194,7 @@ main() {
         log_info "Configuration:"
         log_info "  RUST_BACKEND_URL: $RUST_BACKEND_URL"
         log_info "  FRONTEND_URL: $FRONTEND_URL"
-        log_info "  Duration: $DURATION"
+        log_info "  Requests: $REQUESTS"
         log_info "  Concurrent: $CONCURRENT"
     fi
     
@@ -231,7 +225,7 @@ main() {
         echo "    {"
         echo "      \"name\": \"Rust /health endpoint\","
         echo "      \"url\": \"$RUST_BACKEND_URL/health\","
-        echo "      \"duration\": \"$DURATION\","
+        echo "      \"requests\": \"$REQUESTS\","
         echo "      \"concurrent\": \"$CONCURRENT\","
         echo "      \"result\": \"$health_result\""
         echo "    },"

@@ -130,6 +130,149 @@ Python sidecar binds to `/tmp/python-sidecar.sock`. Rust communicates through th
 - Security (only local processes can connect)
 - Simple integration with FastAPI/Uvicorn
 
+### How Rust Spawns Python Subprocess
+
+```rust
+// backend/crates/python-sidecar/src/lib.rs
+use std::process::{Command, Child};
+use std::path::PathBuf;
+
+pub struct PythonSidecar {
+    process: Option<Child>,
+    socket_path: PathBuf,
+}
+
+impl PythonSidecar {
+    pub fn start(socket_path: PathBuf) -> Result<Self, std::io::Error> {
+        // Ensure socket directory exists
+        if let Some(parent) = socket_path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+
+        // Remove stale socket file if exists
+        if socket_path.exists() {
+            std::fs::remove_file(&socket_path)?;
+        }
+
+        // Spawn Python FastAPI with Uvicorn
+        let child = Command::new("uvicorn")
+            .args([
+                "app:app",
+                "--host", "unix://" + socket_path.to_str().unwrap(),
+                "--workers", "1",
+            ])
+            .current_dir("python-sidecar")
+            .spawn()?;
+
+        Ok(Self {
+            process: Some(child),
+            socket_path,
+        })
+    }
+}
+
+impl Drop for PythonSidecar {
+    fn drop(&mut self) {
+        if let Some(mut child) = self.process.take() {
+            let _ = child.kill();
+            let _ = child.wait();
+        }
+        // Clean up socket file
+        if self.socket_path.exists() {
+            let _ = std::fs::remove_file(&self.socket_path);
+        }
+    }
+}
+```
+
+### Sending HTTP Requests Over Unix Socket
+
+```rust
+// Using hyper with Unix socket support
+use hyper::Client;
+use hyper::client::connect::dns::local::Local;
+use hyper_unix_connector::UnixClient;
+
+async fn call_python_sidecar(socket_path: &str, path: &str) -> Result<String, Box<dyn std::error::Error>> {
+    // Create Unix socket connector
+    let connector = UnixClient::new(socket_path)?;
+    let client = Client::builder().build::<_, hyper::Body>(connector);
+
+    // Build request to Python sidecar
+    let url = format!("http://localhost{}", path);  // localhost is ignored for Unix sockets
+    let req = hyper::Request::builder()
+        .method("GET")
+        .uri(url)
+        .body(hyper::Body::empty())?;
+
+    // Send request
+    let resp = client.request(req).await?;
+    let body = hyper::body::to_bytes(resp.into_body()).await?;
+
+    Ok(String::from_utf8(body.to_vec())?)
+}
+```
+
+### Error Handling for Socket Failures
+
+```rust
+use std::error::Error;
+use tokio::time::{timeout, Duration};
+
+#[derive(Debug)]
+pub enum SidecarError {
+    SocketNotFound(PathBuf),
+    ConnectionFailed(String),
+    Timeout(String),
+    InvalidResponse(String),
+}
+
+async fn call_sidecar_with_retry(
+    socket_path: &PathBuf,
+    path: &str,
+    max_retries: u32,
+) -> Result<String, SidecarError> {
+    // Check if socket exists before trying
+    if !socket_path.exists() {
+        return Err(SidecarError::SocketNotFound(socket_path.clone()));
+    }
+
+    let mut last_error = None;
+
+    for attempt in 1..=max_retries {
+        match timeout(
+            Duration::from_secs(5),
+            call_python_sidecar(socket_path.to_str().unwrap(), path),
+        )
+        .await
+        {
+            Ok(Ok(response)) => return Ok(response),
+            Ok(Err(e)) => {
+                last_error = Some(SidecarError::ConnectionFailed(e.to_string()));
+                tokio::time::sleep(Duration::from_millis(100 * attempt as u64)).await;
+            }
+            Err(_) => {
+                last_error = Some(SidecarError::Timeout(path.to_string()));
+                tokio::time::sleep(Duration::from_millis(100 * attempt as u64)).await;
+            }
+        }
+    }
+
+    Err(last_error.unwrap_or(SidecarError::Timeout(path.to_string())))
+}
+```
+
+### Configuration via Environment
+
+```rust
+// Read socket path from environment
+fn get_socket_path() -> PathBuf {
+    std::env::var("PYTHON_SIDECAR_SOCKET")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| PathBuf::from("/tmp/python-sidecar.sock"))
+}
+```
+
 ## Port Mappings
 
 | Service | Port | Purpose |

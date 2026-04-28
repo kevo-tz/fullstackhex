@@ -1,8 +1,8 @@
 #!/bin/bash
 set -e
 
-# FullStackHex Performance Benchmark Script (Lite version)
-# Usage: ./scripts/bench-lite.sh
+# FullStackHex Performance Benchmark Script
+# Usage: ./scripts/bench.sh [--json]
 # Requires: ab (Apache Bench) - install via: apt-get install apache2-utils (Linux) or yum install httpd-tools (RHEL)
 
 # Source common functions and configuration

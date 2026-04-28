@@ -252,3 +252,128 @@ check_write_permission() {
     log_error "No write permission for: $path"
     return 1
 }
+
+# ============== Testability Functions ==============
+
+# Test mode - when enabled, skip actual system modifications
+TEST_MODE="${TEST_MODE:-false}"
+
+test_mode() {
+    [ "$TEST_MODE" = "true" ]
+}
+
+# Mock command execution for testing
+mock_command() {
+    local cmd="$1"
+    shift
+    
+    if test_mode; then
+        log_info "[MOCK] Would execute: $cmd $*"
+        return 0
+    fi
+    
+    "$cmd" "$@"
+}
+
+# Mock file operations - redirect to temp directory
+MOCK_FILE_DIR="${MOCK_FILE_DIR:-}"
+
+mock_read_file() {
+    local file="$1"
+    
+    if test_mode && [ -n "$MOCK_FILE_DIR" ]; then
+        local mock_file="$MOCK_FILE_DIR/$(basename "$file")"
+        if [ -f "$mock_file" ]; then
+            log_info "[MOCK] Reading: $file -> $mock_file"
+            cat "$mock_file"
+            return
+        fi
+    fi
+    
+    cat "$file"
+}
+
+mock_write_file() {
+    local file="$1"
+    local content="$2"
+    
+    if test_mode && [ -n "$MOCK_FILE_DIR" ]; then
+        local mock_file="$MOCK_FILE_DIR/$(basename "$file")"
+        log_info "[MOCK] Writing: $file -> $mock_file"
+        echo "$content" > "$mock_file"
+        return 0
+    fi
+    
+    echo "$content" > "$file"
+}
+
+# Mock environment variable
+mock_env() {
+    local var="$1"
+    local value="$2"
+    
+    if test_mode; then
+        log_info "[MOCK] Setting $var=$value"
+        export "$var"="$value"
+    fi
+}
+
+# Test assertion functions
+assert_equals() {
+    local expected="$1"
+    local actual="$2"
+    local message="${3:-Assertion failed}"
+    
+    if [ "$expected" = "$actual" ]; then
+        log_success "[PASS] $message"
+        return 0
+    else
+        log_error "[FAIL] $message"
+        log_error "  Expected: '$expected'"
+        log_error "  Actual:   '$actual'"
+        return 1
+    fi
+}
+
+assert_contains() {
+    local haystack="$1"
+    local needle="$2"
+    local message="${3:-Assertion failed}"
+    
+    if echo "$haystack" | grep -q "$needle"; then
+        log_success "[PASS] $message"
+        return 0
+    else
+        log_error "[FAIL] $message"
+        log_error "  Needle not found: '$needle'"
+        return 1
+    fi
+}
+
+assert_file_exists() {
+    local file="$1"
+    local message="${2:-File should exist}"
+    
+    if [ -f "$file" ]; then
+        log_success "[PASS] $message"
+        return 0
+    else
+        log_error "[FAIL] $message"
+        log_error "  File not found: $file"
+        return 1
+    fi
+}
+
+assert_command_exists() {
+    local cmd="$1"
+    local message="${2:-Command should exist}"
+    
+    if command -v "$cmd" >/dev/null 2>&1; then
+        log_success "[PASS] $message"
+        return 0
+    else
+        log_error "[FAIL] $message"
+        log_error "  Command not found: $cmd"
+        return 1
+    fi
+}

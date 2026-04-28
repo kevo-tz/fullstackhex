@@ -491,10 +491,23 @@ setup_environment() {
     
     # Add Unix socket path to .env if not present
     if ! grep -q "PYTHON_SIDECAR_SOCKET" .env 2>/dev/null; then
+        # CI environments get a temp path; local gets user-isolated path
+        if [ "${CI:-false}" = "true" ]; then
+            local socket_dir="${RUNNER_TEMP:-$PWD/.tmp}/sockets"
+            mkdir -p "$socket_dir"
+            local socket_path="$socket_dir/python-sidecar.sock"
+            echo -e "${YELLOW}⚠ CI detected: using temp socket path${NC}"
+        else
+            local socket_dir="$HOME/.fullstackhex/sockets"
+            mkdir -p "$socket_dir"
+            local socket_path="$socket_dir/python-sidecar.sock"
+        fi
+
         echo "" >> .env
         echo "# Python Sidecar (Unix socket)" >> .env
-        echo "PYTHON_SIDECAR_SOCKET=/tmp/python-sidecar.sock" >> .env
+        echo "PYTHON_SIDECAR_SOCKET=$socket_path" >> .env
         echo -e "${GREEN}✓ Added Unix socket config to .env${NC}"
+        echo -e "${YELLOW}  Socket path: $socket_path${NC}"
     else
         echo -e "${GREEN}✓ Unix socket config already in .env${NC}"
     fi

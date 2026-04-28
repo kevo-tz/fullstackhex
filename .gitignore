@@ -59,7 +59,6 @@ leankg.yaml
 backend/
 python-sidecar/
 frontend/
-monitoring/
 
 # Temporary tooling shims
 .tmp/

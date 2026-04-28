@@ -159,6 +159,9 @@ jobs:
         with:
           python-version: "3.14"
 
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+
       - name: Generate project scaffold
         run: |
           chmod +x scripts/install.sh

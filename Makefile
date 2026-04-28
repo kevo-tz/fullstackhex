@@ -41,9 +41,9 @@ help:
 up:
 	$(COMPOSE_DEV) up -d
 	$(COMPOSE_MON) up -d
-	@echo "Services started. Access:"
-	@echo "  Frontend: http://localhost:4321"
-	@echo "  Backend:  http://localhost:8001"
+	@echo "Infrastructure services started. To run the app:"
+	@echo "  Backend:  cd backend && cargo run -p api"
+	@echo "  Frontend: cd frontend && bun run dev"
 	@echo "  Grafana:  http://localhost:3000"
 
 down:
@@ -54,10 +54,12 @@ restart: down up
 
 # Logs
 logs-backend:
-	$(COMPOSE_DEV) logs -f backend
+	@echo "Rust backend runs directly (not in compose)."
+	@echo "  Follow logs with: cd backend && cargo run -p api 2>&1 | tee backend.log"
 
 logs-frontend:
-	$(COMPOSE_DEV) logs -f frontend
+	@echo "Astro frontend runs directly (not in compose)."
+	@echo "  Follow logs with: cd frontend && bun run dev"
 
 logs-db:
 	$(COMPOSE_DEV) logs -f postgres

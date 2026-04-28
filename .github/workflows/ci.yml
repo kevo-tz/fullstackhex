@@ -204,4 +204,4 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          config-path: gitleaks.toml
+          config-path: .github/gitleaks.toml

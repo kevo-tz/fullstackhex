@@ -23,7 +23,7 @@ echo ""
 
 # Check dependencies
 check_deps() {
-    local missing=0
+    local missing=0;
     
     if ! command -v bombardier &> /dev/null; then
         echo -e "${RED}✗ bombardier not found${NC}"
@@ -44,6 +44,40 @@ check_deps() {
     if [ $missing -eq 1 ]; then
         exit 1
     fi
+}
+
+# Check if services are running
+check_services() {
+    local failed=0
+
+    echo ""
+    echo -e "${YELLOW}Checking services...${NC}"
+
+    # Check Rust backend
+    if curl --silent --fail "$RUST_BACKEND_URL/health" > /dev/null 2>&1; then
+        echo -e "${GREEN}✓ Rust backend responding at $RUST_BACKEND_URL${NC}"
+    else
+        echo -e "${RED}✗ Rust backend not responding at $RUST_BACKEND_URL${NC}"
+        echo -e "${YELLOW}  Start with: cd backend && cargo run -p api${NC}"
+        failed=1
+    fi
+
+    # Check Frontend
+    if curl --silent --fail "$FRONTEND_URL" > /dev/null 2>&1; then
+        echo -e "${GREEN}✓ Frontend responding at $FRONTEND_URL${NC}"
+    else
+        echo -e "${RED}✗ Frontend not responding at $FRONTEND_URL${NC}"
+        echo -e "${YELLOW}  Start with: cd frontend && bun run dev${NC}"
+        failed=1
+    fi
+
+    if [ $failed -eq 1 ]; then
+        echo ""
+        echo -e "${RED}Please start all services before running benchmarks.${NC}"
+        exit 1
+    fi
+
+    echo ""
 }
 
 # Benchmark function
@@ -149,6 +183,7 @@ main() {
     fi
     
     check_deps
+    check_services
     
     echo -e "${YELLOW}Configuration:${NC}"
     echo -e "  RUST_BACKEND_URL: $RUST_BACKEND_URL"

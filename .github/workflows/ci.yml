@@ -27,8 +27,8 @@ jobs:
           python-version: "3.14"
 
       - name: Bootstrap generated workspace when missing
+        working-directory: ${{ github.workspace }}
         run: |
-          cd "$GITHUB_WORKSPACE"
           if [ ! -d "$GITHUB_WORKSPACE/backend" ] || [ ! -d "$GITHUB_WORKSPACE/python-sidecar" ] || [ ! -d "$GITHUB_WORKSPACE/frontend" ]; then
             chmod +x "$GITHUB_WORKSPACE/scripts/install.sh"
             "$GITHUB_WORKSPACE/scripts/install.sh"
@@ -75,8 +75,8 @@ jobs:
           python-version: "3.14"
 
       - name: Bootstrap generated workspace when missing
+        working-directory: ${{ github.workspace }}
         run: |
-          cd "$GITHUB_WORKSPACE"
           if [ ! -d "$GITHUB_WORKSPACE/backend" ] || [ ! -d "$GITHUB_WORKSPACE/python-sidecar" ] || [ ! -d "$GITHUB_WORKSPACE/frontend" ]; then
             chmod +x "$GITHUB_WORKSPACE/scripts/install.sh"
             "$GITHUB_WORKSPACE/scripts/install.sh"
@@ -113,8 +113,8 @@ jobs:
           python-version: "3.14"
 
       - name: Bootstrap generated workspace when missing
+        working-directory: ${{ github.workspace }}
         run: |
-          cd "$GITHUB_WORKSPACE"
           if [ ! -d "$GITHUB_WORKSPACE/backend" ] || [ ! -d "$GITHUB_WORKSPACE/python-sidecar" ] || [ ! -d "$GITHUB_WORKSPACE/frontend" ]; then
             chmod +x "$GITHUB_WORKSPACE/scripts/install.sh"
             "$GITHUB_WORKSPACE/scripts/install.sh"

@@ -453,7 +453,9 @@ mod tests {
     fn environment_variables_loaded() {
         // Test that required env vars have defaults or are set
         // Safety: single-threaded test; no other threads reading this variable.
-        unsafe { std::env::set_var("RUST_LOG", "info"); }
+        unsafe {
+            std::env::set_var("RUST_LOG", "info");
+        }
         let log_level = std::env::var("RUST_LOG").unwrap_or_else(|_| "info".to_string());
         assert_eq!(log_level, "info");
     }
@@ -510,7 +512,8 @@ mod tests {
 
         // These should have defaults or be set
         let rust_log = env::var("RUST_LOG").unwrap_or_else(|_| "info".to_string());
-        let database_url = env::var("DATABASE_URL").unwrap_or_else(|_| "postgres://localhost/test".to_string());
+        let database_url =
+            env::var("DATABASE_URL").unwrap_or_else(|_| "postgres://localhost/test".to_string());
 
         assert!(!rust_log.is_empty());
         assert!(!database_url.is_empty());
@@ -565,10 +568,7 @@ async fn error_handling_missing_socket() {
 
     let non_existent = PathBuf::from("/tmp/non-existent-socket.sock");
 
-    let result = timeout(
-        Duration::from_secs(1),
-        UnixStream::connect(&non_existent)
-    ).await;
+    let result = timeout(Duration::from_secs(1), UnixStream::connect(&non_existent)).await;
 
     match result {
         Ok(Err(_)) => {
@@ -644,8 +644,9 @@ async fn socket_retry_logic() {
 
         let result = timeout(
             Duration::from_millis(100),
-            tokio::net::UnixStream::connect(&socket_path)
-        ).await;
+            tokio::net::UnixStream::connect(&socket_path),
+        )
+        .await;
 
         match result {
             Ok(Ok(_)) => {

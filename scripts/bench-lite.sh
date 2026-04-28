@@ -105,12 +105,12 @@ benchmark() {
     local p50=$(echo "$output" | awk '/^ +50% / {print $2}' | head -1)
     local p99=$(echo "$output" | awk '/^ +99% / {print $2}' | head -1)
 
-    # If p50/p99 not found, try alternative format
+    # If p50/p99 not found, try alternative format using portable awk-only parsing
     if [ -z "$p50" ]; then
-        p50=$(echo "$output" | grep -oP '^\s+50%\s+\K\d+' | head -1)
+        p50=$(echo "$output" | awk '/^ +50% / {for (i = 1; i <= NF; i++) if ($i ~ /^[0-9]+$/) {print $i; exit}}' | head -1)
     fi
     if [ -z "$p99" ]; then
-        p99=$(echo "$output" | grep -oP '^\s+99%\s+\K\d+' | head -1)
+        p99=$(echo "$output" | awk '/^ +99% / {for (i = 1; i <= NF; i++) if ($i ~ /^[0-9]+$/) {print $i; exit}}' | head -1)
     fi
 
     # Fallback: use mean time if percentiles not available
@@ -160,13 +160,12 @@ benchmark_frontend_ttfb() {
     local ttfb=$(curl -w "%{time_starttransfer}" -o /dev/null -s "$FRONTEND_URL")
     local expected=0.1  # 100ms
 
-    # Convert to milliseconds for display
-    local ttfb_ms=$(echo "$ttfb * 1000" | bc -l 2>/dev/null || echo "0")
+    # Convert to milliseconds for display without requiring bc
+    local ttfb_ms
+    ttfb_ms=$(awk -v ttfb="$ttfb" 'BEGIN { printf "%.3f", ttfb * 1000 }')
     echo -e "TTFB: ${ttfb}s (${ttfb_ms}ms) (target: <${expected}s)"
 
-    local passed=$(echo "$ttfb < $expected" | bc -l 2>/dev/null || echo "0")
-
-    if [ "$passed" = "1" ]; then
+    if awk -v ttfb="$ttfb" -v expected="$expected" 'BEGIN { exit !(ttfb < expected) }'; then
         echo -e "${GREEN}✓ TTFB PASSED${NC}"
         return 0
     else

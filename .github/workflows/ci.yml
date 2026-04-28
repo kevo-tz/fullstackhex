@@ -29,7 +29,7 @@ jobs:
       - name: Bootstrap generated workspace when missing
         working-directory: ${{ github.workspace }}
         run: |
-          if [ ! -d "$GITHUB_WORKSPACE/backend" ] || [ ! -d "$GITHUB_WORKSPACE/python-sidecar" ] || [ ! -d "$GITHUB_WORKSPACE/frontend" ]; then
+          if [ ! -f "$GITHUB_WORKSPACE/backend/Cargo.toml" ] || [ ! -f "$GITHUB_WORKSPACE/python-sidecar/pyproject.toml" ] || [ ! -f "$GITHUB_WORKSPACE/frontend/package.json" ]; then
             chmod +x "$GITHUB_WORKSPACE/scripts/install.sh"
             "$GITHUB_WORKSPACE/scripts/install.sh"
           fi
@@ -77,7 +77,7 @@ jobs:
       - name: Bootstrap generated workspace when missing
         working-directory: ${{ github.workspace }}
         run: |
-          if [ ! -d "$GITHUB_WORKSPACE/backend" ] || [ ! -d "$GITHUB_WORKSPACE/python-sidecar" ] || [ ! -d "$GITHUB_WORKSPACE/frontend" ]; then
+          if [ ! -f "$GITHUB_WORKSPACE/backend/Cargo.toml" ] || [ ! -f "$GITHUB_WORKSPACE/python-sidecar/pyproject.toml" ] || [ ! -f "$GITHUB_WORKSPACE/frontend/package.json" ]; then
             chmod +x "$GITHUB_WORKSPACE/scripts/install.sh"
             "$GITHUB_WORKSPACE/scripts/install.sh"
           fi
@@ -115,7 +115,7 @@ jobs:
       - name: Bootstrap generated workspace when missing
         working-directory: ${{ github.workspace }}
         run: |
-          if [ ! -d "$GITHUB_WORKSPACE/backend" ] || [ ! -d "$GITHUB_WORKSPACE/python-sidecar" ] || [ ! -d "$GITHUB_WORKSPACE/frontend" ]; then
+          if [ ! -f "$GITHUB_WORKSPACE/backend/Cargo.toml" ] || [ ! -f "$GITHUB_WORKSPACE/python-sidecar/pyproject.toml" ] || [ ! -f "$GITHUB_WORKSPACE/frontend/package.json" ]; then
             chmod +x "$GITHUB_WORKSPACE/scripts/install.sh"
             "$GITHUB_WORKSPACE/scripts/install.sh"
           fi

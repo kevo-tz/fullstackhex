@@ -16,6 +16,7 @@
 
 networks:
   fullstackhex-network:
+    name: fullstackhex-network
     driver: bridge
     ipam:
       config:
@@ -144,7 +145,7 @@ services:
     expose:
       - "4321"
     healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://localhost:4321/"]
+      test: ["CMD", "node", "-e", "const http=require('http');const req=http.get('http://localhost:4321/',res=>process.exit(res.statusCode>=200&&res.statusCode<400?0:1));req.on('error',()=>process.exit(1));req.setTimeout(4000,()=>{req.destroy();process.exit(1);});"]
       interval: 30s
       timeout: 5s
       retries: 3

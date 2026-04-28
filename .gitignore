@@ -30,6 +30,10 @@ nginx/certs/*.pem
 nginx/certs/*.key
 nginx/certs/*.crt
 nginx/certs/*.p12
+compose/nginx/certs/*.pem
+compose/nginx/certs/*.key
+compose/nginx/certs/*.crt
+compose/nginx/certs/*.p12
 
 # OS files
 .DS_Store

@@ -111,8 +111,10 @@ benchmark() {
     
     # Check against targets
     local passed=0
-    local p50_passed=$(echo "$p50 < $expected_p50" | bc -l 2>/dev/null || echo "0")
-    local p99_passed=$(echo "$p99 < $expected_p99" | bc -l 2>/dev/null || echo "0")
+    local p50_passed=0
+    local p99_passed=0
+    if awk -v p50="$p50" -v ep50="$expected_p50" 'BEGIN { exit !(p50 < ep50) }'; then p50_passed=1; fi
+    if awk -v p99="$p99" -v ep99="$expected_p99" 'BEGIN { exit !(p99 < ep99) }'; then p99_passed=1; fi
     
     if [ "$p50_passed" = "1" ]; then
         echo -e "  ${GREEN}✓ p50 PASSED${NC}"
@@ -143,9 +145,7 @@ benchmark_frontend_ttfb() {
     
     echo -e "TTFB: ${ttfb}s (target: <${expected}s)"
     
-    local passed=$(echo "$ttfb < $expected" | bc -l 2>/dev/null || echo "0")
-    
-    if [ "$passed" = "1" ]; then
+    if awk -v ttfb="$ttfb" -v expected="$expected" 'BEGIN { exit !(ttfb < expected) }'; then
         echo -e "${GREEN}✓ TTFB PASSED${NC}"
         return 0
     else

@@ -13,6 +13,7 @@
 
 networks:
   fullstackhex-network:
+    name: fullstackhex-network
     driver: bridge
     ipam:
       config:

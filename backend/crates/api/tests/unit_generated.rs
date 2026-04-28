@@ -15,12 +15,9 @@ mod tests {
 
     #[test]
     fn environment_variables_loaded() {
-        // Test that required env vars have defaults or are set
-        // Safety: single-threaded test; no other threads reading this variable.
-        unsafe {
-            std::env::set_var("RUST_LOG", "info");
-        }
-        let log_level = std::env::var("RUST_LOG").unwrap_or_else(|_| "info".to_string());
+        // Test that env lookup logic falls back to the default when a variable is unset.
+        let log_level = std::env::var("UNIT_GENERATED_TEST_RUST_LOG_UNSET")
+            .unwrap_or_else(|_| "info".to_string());
         assert_eq!(log_level, "info");
     }
 }

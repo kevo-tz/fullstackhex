@@ -40,6 +40,6 @@ openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
 ## Security Notes
 
 - Never commit private keys to version control
-- Add `compose/nginx/certs/` to your `.gitignore`
+- `.gitignore` already ignores `compose/nginx/certs/*.pem`, `*.key`, `*.crt`, and `*.p12` — no manual update needed
 - Use strong file permissions (600 for privkey.pem)
 - Consider using Docker secrets or a vault for production

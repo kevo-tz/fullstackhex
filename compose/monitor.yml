@@ -30,6 +30,8 @@ services:
       - "--web.enable-lifecycle"
     networks:
       - fullstackhex-network
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:9090/-/healthy"]
       interval: 30s

@@ -122,7 +122,11 @@ check_redis() {
 
     while [ $(date +%s) -lt $end_time ]; do
         if command -v redis-cli &> /dev/null; then
-            if redis-cli -h localhost -p "${REDIS_PORT:-6379}" -a "${REDIS_PASSWORD:-CHANGE_ME}" ping > /dev/null 2>&1; then
+            local redis_args=(-h localhost -p "${REDIS_PORT:-6379}")
+            if [ -n "${REDIS_PASSWORD:-}" ]; then
+                redis_args+=(-a "$REDIS_PASSWORD")
+            fi
+            if redis-cli "${redis_args[@]}" ping > /dev/null 2>&1; then
                 echo -e "${GREEN}✓ $name is healthy${NC}"
                 return 0
             fi

@@ -19,7 +19,9 @@ scrape_configs:
   - job_name: 'rust-backend'
     scrape_interval: 5s
     static_configs:
-      - targets: ['backend:8001']
+      - targets:
+          - 'backend:8001'
+          - 'host.docker.internal:8001' # For dev when backend runs on the host; on Linux, map host.docker.internal via extra_hosts: host-gateway.
     metrics_path: '/metrics'
     # Add labels
     labels:

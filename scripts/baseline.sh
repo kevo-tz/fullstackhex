@@ -44,6 +44,14 @@ echo -e "${BLUE}  FullStackHex - Baseline Profiling${NC}"
 echo -e "${BLUE}========================================${NC}"
 echo ""
 
+# Check required dependencies
+if ! command -v jq &> /dev/null; then
+    echo -e "${RED}✗ jq not found${NC}"
+    echo -e "  Install: sudo apt-get install jq  (Debian/Ubuntu)"
+    echo -e "           brew install jq           (macOS)"
+    exit 1
+fi
+
 # Ensure services are running
 echo -e "${YELLOW}Checking services...${NC}"
 if ! ./scripts/verify-health.sh > /dev/null 2>&1; then

@@ -18,7 +18,7 @@ echo ""
 # Check dependencies
 check_deps() {
     local missing=0;
- 
+  
     if ! command -v ab &> /dev/null; then
         log_error "ab (Apache Bench) not found"
         log_info "Install:"
@@ -30,14 +30,25 @@ check_deps() {
         local version=$(ab -V 2>&1 | head -1)
         log_success "ab found: $version"
     fi
- 
+  
     if ! command -v curl &> /dev/null; then
         log_error "curl not found"
         missing=1
     else
         log_success "curl found"
     fi
- 
+
+    if ! command -v bc &> /dev/null; then
+        log_error "bc not found"
+        log_info "Install:"
+        log_info "  Linux (Debian/Ubuntu): sudo apt-get install bc"
+        log_info "  Linux (RHEL/CentOS): sudo yum install bc"
+        log_info "  macOS: brew install bc"
+        missing=1
+    else
+        log_success "bc found"
+    fi
+  
     if [ $missing -eq 1 ]; then
         exit 1
     fi
@@ -84,11 +95,11 @@ benchmark() {
     
     log_info "Benchmark: $name"
     log_info "URL: $url"
-    log_info "Requests: $REQUESTS, Concurrent: $CONCURRENT"
+    log_info "Requests: $BENCHLITE_REQUESTS, Concurrent: $BENCHLITE_CONCURRENT"
     echo ""
     
     # Run ab and capture output
-    local output=$(ab -n "$REQUESTS" -c "$CONCURRENT" -r -k "$url" 2>&1)
+    local output=$(ab -n "$BENCHLITE_REQUESTS" -c "$BENCHLITE_CONCURRENT" -r -k "$url" 2>&1)
     
     # Parse p50 and p99 from "Percentage of requests served within a certain time" table
     # Format: "  50%    123" (ms)
@@ -123,8 +134,12 @@ benchmark() {
     
     local passed=0
     
+    local p50_passed=0
+    local p99_passed=0
+    
     if [ -n "$p50_int" ] && [ "$p50_int" -lt "$expected_p50_int" ] 2>/dev/null; then
         log_success "p50 PASSED"
+        p50_passed=1
     else
         log_error "p50 FAILED"
         passed=1
@@ -132,6 +147,7 @@ benchmark() {
     
     if [ -n "$p99_int" ] && [ "$p99_int" -lt "$expected_p99_int" ] 2>/dev/null; then
         log_success "p99 PASSED"
+        p99_passed=1
     else
         log_error "p99 FAILED"
         passed=1

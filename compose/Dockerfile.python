@@ -3,34 +3,31 @@
 # Usage: docker build -f compose/Dockerfile.python -t fullstackhex/python-sidecar:latest .
 
 # Stage1: Builder - Install Python dependencies
-FROM python:3.13-slim-bookworm AS builder
+FROM python:3.14-slim-bookworm AS builder
 
 WORKDIR /app
 
-# Install system build dependencies
+# Install system build dependencies and uv
 RUN apt-get update && apt-get install -y \
     build-essential \
     pkg-config \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* \
+    && pip install --no-cache-dir uv
 
-# Copy requirements first (leverage Docker cache)
-COPY python-sidecar/requirements.txt ./
+# Copy pyproject.toml first (leverage Docker cache)
+COPY python-sidecar/pyproject.toml ./
 
-# Install Python dependencies
-RUN pip install --no-cache-dir --prefix=/install -r requirements.txt
+# Install Python dependencies into a prefix
+RUN uv pip install --system --no-cache fastapi uvicorn
 
 # Stage2: Runtime - Minimal image
-FROM python:3.13-slim-bookworm
+FROM python:3.14-slim-bookworm
 
 WORKDIR /app
 
-# Install runtime dependencies
-RUN apt-get update && apt-get install -y \
-    libstdc++6 \
-    && rm -rf /var/lib/apt/lists/*
-
-# Copy installed packages from builder
-COPY --from=builder /install /usr/local
+# Install uv for runtime installs and fastapi/uvicorn
+RUN pip install --no-cache-dir uv && \
+    uv pip install --system --no-cache fastapi uvicorn
 
 # Copy application source
 COPY python-sidecar/ ./python-sidecar/
@@ -40,9 +37,8 @@ WORKDIR /app/python-sidecar
 # Create socket directory
 RUN mkdir -p /tmp/sidecar
 
-EXPOSE 8002
-
+# Sidecar communicates over Unix socket — no TCP port exposed
 HEALTHCHECK --interval=30s --timeout=5s --retries=3 \
     CMD python -c "import socket; s=socket.socket(socket.AF_UNIX); s.connect('/tmp/sidecar/python-sidecar.sock')" || exit 1
 
-CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8002"]
+CMD ["uvicorn", "app.main:app", "--uds", "/tmp/sidecar/python-sidecar.sock"]

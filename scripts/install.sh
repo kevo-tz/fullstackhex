@@ -8,10 +8,31 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m'
 
+# Parse command-line arguments
+SKIP_PYTHON=false
+for arg in "$@"; do
+    case $arg in
+        --skip-python)
+            SKIP_PYTHON=true
+            shift
+            ;;
+        *)
+            echo -e "${RED}Unknown argument: $arg${NC}"
+            echo "Usage: $0 [--skip-python]"
+            exit 1
+            ;;
+    esac
+done
+
 echo -e "${BLUE}========================================${NC}"
 echo -e "${BLUE}  FullStackHex - Full Initialization${NC}"
 echo -e "${BLUE}========================================${NC}"
 echo ""
+
+if [ "$SKIP_PYTHON" = true ]; then
+    echo -e "${YELLOW}⚠ Python check and scaffolding skipped (--skip-python)${NC}"
+    echo ""
+fi
 
 # Detect OS
 detect_os() {
@@ -70,6 +91,11 @@ install_bun() {
 
 # Check Python (don't auto-install, just check)
 check_python() {
+    if [ "$SKIP_PYTHON" = true ]; then
+        echo -e "${YELLOW}⚠ Skipping Python check (--skip-python set)${NC}"
+        return 0
+    fi
+
     if command -v python3 &> /dev/null; then
         local version=$(python3 --version 2>&1)
         local major=$(python3 -c 'import sys; print(sys.version_info.major)')
@@ -507,14 +533,22 @@ echo ""
 
 install_rust
 install_bun
-check_python
+
+if [ "$SKIP_PYTHON" != true ]; then
+    check_python
+fi
+
 install_uv
 check_docker
 
 # Create workspace, scaffold frontend, and setup environment
 create_rust_workspace
 setup_environment
-scaffold_python_sidecar
+
+if [ "$SKIP_PYTHON" != true ]; then
+    scaffold_python_sidecar
+fi
+
 scaffold_frontend
 scaffold_generated_tests
 

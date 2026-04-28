@@ -65,3 +65,4 @@ backend/frontend/
 
 # Temporary tooling shims
 .tmp/
+.mcp.json

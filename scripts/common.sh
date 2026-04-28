@@ -2,11 +2,6 @@
 # FullStackHex Common Functions Library
 # Shared utility functions for all scripts
 
-# Add Go bin to PATH if not already present
-if [[ ":$PATH:" != *":$HOME/go/bin:"* ]]; then
-    export PATH="$PATH:$HOME/go/bin"
-fi
-
 # Colors
 RED='\033[0;31m'
 GREEN='\033[0;32m'

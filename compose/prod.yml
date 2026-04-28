@@ -43,7 +43,7 @@ services:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
       - ./nginx/certs:/etc/nginx/certs:ro
     depends_on:
-backend:
+      backend:
         condition: service_healthy
       frontend:
         condition: service_healthy
@@ -62,8 +62,8 @@ backend:
 
   backend:
     build:
-      context: .
-      dockerfile: Dockerfile.rust
+      context: ..
+      dockerfile: compose/Dockerfile.rust
     image: fullstackhex/backend:${VERSION:-latest}
     container_name: fullstackhex_rust
     restart: unless-stopped
@@ -107,8 +107,8 @@ backend:
 
   python-sidecar:
     build:
-      context: .
-      dockerfile: Dockerfile.python
+      context: ..
+      dockerfile: compose/Dockerfile.python
     image: fullstackhex/python-sidecar:${VERSION:-latest}
     container_name: fullstackhex_python
     restart: unless-stopped
@@ -134,8 +134,8 @@ backend:
 
   frontend:
     build:
-      context: .
-      dockerfile: Dockerfile.frontend
+      context: ..
+      dockerfile: compose/Dockerfile.frontend
       args:
         PUBLIC_API_URL: ${PUBLIC_API_URL:-https://api.example.com}
     image: fullstackhex/frontend:${VERSION:-latest}

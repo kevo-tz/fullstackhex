@@ -68,24 +68,68 @@ install_bun() {
     if command -v bun &> /dev/null; then
         local version=$(bun --version)
         echo -e "${GREEN}✓ Bun already installed: v$version${NC}"
-    else
-        echo -e "${YELLOW}Installing Bun...${NC}"
-        curl -fsSL https://bun.sh/install | bash
-        
-        # Source common shell configs to ensure bun is on PATH
-        for config in "$HOME/.bashrc" "$HOME/.zshrc" "$HOME/.profile" "$HOME/.bash_profile"; do
-            if [ -f "$config" ]; then
-                # shellcheck disable=SC1090
-                source "$config" 2>/dev/null || true
-            fi
-        done
-        
-        # Ensure bun bin is on PATH
-        if [ -d "$HOME/.bun/bin" ]; then
-            export PATH="$HOME/.bun/bin:$PATH"
-        fi
-        echo -e "${GREEN}✓ Bun installed: v$(bun --version)${NC}"
+        bun upgrade
+        return 0
     fi
+
+    echo -e "${YELLOW}Installing Bun...${NC}"
+    curl -fsSL https://bun.sh/install | bash
+
+    # Ensure bun bin is on PATH for current session
+    if [ -d "$HOME/.bun/bin" ]; then
+        export PATH="$HOME/.bun/bin:$PATH"
+    fi
+
+    # Detect active shell and its rc file
+    local shell_name
+    shell_name=$(basename "${SHELL:-/bin/sh}")
+    local rc_file=""
+    case "$shell_name" in
+        bash)
+            rc_file="$HOME/.bashrc"
+            ;;
+        zsh)
+            rc_file="$HOME/.zshrc"
+            ;;
+        fish)
+            rc_file="$HOME/.config/fish/config.fish"
+            ;;
+        *)
+            # Fallback to .profile for sh, dash, etc.
+            rc_file="$HOME/.profile"
+            ;;
+    esac
+
+    # Ensure PATH is persisted in the rc file
+    if [ -n "$rc_file" ]; then
+        # Check if already configured
+        if [ -f "$rc_file" ] && grep -q 'bun/bin' "$rc_file" 2>/dev/null; then
+            echo -e "${GREEN}✓ Bun PATH already configured in $rc_file${NC}"
+        else
+            mkdir -p "$(dirname "$rc_file")" 2>/dev/null || true
+            echo '' >> "$rc_file"
+            echo '# Added by FullStackHex install.sh' >> "$rc_file"
+            if [[ "$shell_name" = "fish" ]]; then
+                echo 'set -gx PATH "$HOME/.bun/bin" $PATH' >> "$rc_file"
+            else
+                echo 'export PATH="$HOME/.bun/bin:$PATH"' >> "$rc_file"
+            fi
+            echo -e "${GREEN}✓ Added Bun to PATH in $rc_file${NC}"
+        fi
+
+        # Source the rc file for the current session (best-effort)
+        # shellcheck disable=SC1090
+        source "$rc_file" 2>/dev/null || true
+    fi
+
+    # Verify bun is now accessible
+    if command -v bun &> /dev/null; then
+        echo -e "${GREEN}✓ Bun installed: v$(bun --version)${NC}"
+    else
+        echo -e "${YELLOW}⚠ Bun installed but not on PATH. Run: source $rc_file${NC}"
+        echo -e "${YELLOW}  Or restart your shell.${NC}"
+    fi
+
     bun upgrade
 }
 

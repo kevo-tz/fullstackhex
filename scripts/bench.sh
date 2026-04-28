@@ -210,8 +210,8 @@ main() {
         log_info "Configuration:"
         log_info "  RUST_BACKEND_URL: $RUST_BACKEND_URL"
         log_info "  FRONTEND_URL: $FRONTEND_URL"
-        log_info "  Requests: $REQUESTS"
-        log_info "  Concurrent: $CONCURRENT"
+log_info "  Requests: $BENCHLITE_REQUESTS"
+    log_info "  Concurrent: $BENCHLITE_CONCURRENT"
     fi
     
     # Initialize results for JSON output
@@ -241,8 +241,8 @@ main() {
         echo "    {"
         echo "      \"name\": \"Rust /health endpoint\","
         echo "      \"url\": \"$RUST_BACKEND_URL/health\","
-        echo "      \"requests\": \"$REQUESTS\","
-        echo "      \"concurrent\": \"$CONCURRENT\","
+        echo "      \"requests\": \"$BENCHLITE_REQUESTS\","
+        echo "      \"concurrent\": \"$BENCHLITE_CONCURRENT\","
         echo "      \"result\": \"$health_result\""
         echo "    },"
         echo "    {"

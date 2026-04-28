@@ -51,10 +51,7 @@ async fn error_handling_missing_socket() {
     let non_existent = PathBuf::from("/tmp/non-existent-socket.sock");
 
     // Attempting to connect to non-existent socket should fail
-    let result = timeout(
-        Duration::from_secs(1),
-        UnixStream::connect(&non_existent)
-    ).await;
+    let result = timeout(Duration::from_secs(1), UnixStream::connect(&non_existent)).await;
 
     match result {
         Ok(Err(_)) => {
@@ -133,8 +130,9 @@ async fn socket_retry_logic() {
 
         let result = timeout(
             Duration::from_millis(100),
-            tokio::net::UnixStream::connect(&socket_path)
-        ).await;
+            tokio::net::UnixStream::connect(&socket_path),
+        )
+        .await;
 
         match result {
             Ok(Ok(_)) => {

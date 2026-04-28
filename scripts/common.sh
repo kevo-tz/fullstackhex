@@ -43,6 +43,48 @@ command_exists() {
     command -v "$1" &> /dev/null
 }
 
+# Check PostgreSQL health
+check_postgres() {
+    if ! command_exists psql; then
+        log_error "psql not found - cannot check PostgreSQL"
+        log_info "Install: sudo apt-get install postgresql-client (Debian/Ubuntu)"
+        return 1
+    fi
+
+    local pg_host="${POSTGRES_HOST:-localhost}"
+    local pg_port="${POSTGRES_PORT:-5432}"
+    local pg_user="${POSTGRES_USER:-app_user}"
+    local pg_db="${POSTGRES_DB:-app_database}"
+
+    if PGPASSWORD="${POSTGRES_PASSWORD:-CHANGE_ME}" psql -h "$pg_host" -p "$pg_port" -U "$pg_user" -d "$pg_db" -c "SELECT 1" > /dev/null 2>&1; then
+        log_success "PostgreSQL is healthy"
+        return 0
+    else
+        log_error "PostgreSQL is not responding"
+        return 1
+    fi
+}
+
+# Check Redis health
+check_redis() {
+    if ! command_exists redis-cli; then
+        log_error "redis-cli not found - cannot check Redis"
+        log_info "Install: sudo apt-get install redis-tools (Debian/Ubuntu)"
+        return 1
+    fi
+
+    local redis_host="${REDIS_HOST:-localhost}"
+    local redis_port="${REDIS_PORT:-6379}"
+
+    if redis-cli -h "$redis_host" -p "$redis_port" ping > /dev/null 2>&1; then
+        log_success "Redis is healthy"
+        return 0
+    else
+        log_error "Redis is not responding"
+        return 1
+    fi
+}
+
 # Check service health with timeout
 check_service_http() {
     local name="$1"

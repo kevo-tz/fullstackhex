@@ -45,6 +45,12 @@ done
 
 log_info "FullStackHex - Health Check"
 
+# Check jq is available (needed for baseline.sh)
+if ! command -v jq &> /dev/null; then
+    log_warning "jq not found - some scripts may not work"
+    log_info "Install: sudo apt-get install jq"
+fi
+
 # Load environment variables
 load_env
 

@@ -77,15 +77,19 @@ fn socket_path_env_override() {
     // Save original value
     let original = std::env::var("PYTHON_SIDECAR_SOCKET").ok();
 
-    // Test with custom path
-    std::env::set_var("PYTHON_SIDECAR_SOCKET", "/custom/path/socket.sock");
+    // Safety: single-threaded test; no other threads reading this variable.
+    unsafe {
+        std::env::set_var("PYTHON_SIDECAR_SOCKET", "/custom/path/socket.sock");
+    }
     let path = std::env::var("PYTHON_SIDECAR_SOCKET").unwrap();
     assert_eq!(path, "/custom/path/socket.sock");
 
     // Restore original
-    match original {
-        Some(val) => std::env::set_var("PYTHON_SIDECAR_SOCKET", val),
-        None => std::env::remove_var("PYTHON_SIDECAR_SOCKET"),
+    unsafe {
+        match original {
+            Some(val) => std::env::set_var("PYTHON_SIDECAR_SOCKET", val),
+            None => std::env::remove_var("PYTHON_SIDECAR_SOCKET"),
+        }
     }
 }
 

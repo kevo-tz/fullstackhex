@@ -8,6 +8,26 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m'
 
+# Resolve and enforce repository root so generated paths are stable
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+if [ ! -f "$REPO_ROOT/scripts/install.sh" ] || [ ! -d "$REPO_ROOT/compose" ]; then
+    echo -e "${RED}Could not resolve repository root from script location.${NC}"
+    echo -e "${RED}Expected to find scripts/install.sh and compose/ under: $REPO_ROOT${NC}"
+    exit 1
+fi
+
+if [ "$PWD" != "$REPO_ROOT" ]; then
+    echo -e "${YELLOW}⚠ Switching to repository root: $REPO_ROOT${NC}"
+    cd "$REPO_ROOT"
+fi
+
+if [ -d "$REPO_ROOT/backend/frontend" ]; then
+    echo -e "${YELLOW}⚠ Found nested frontend at backend/frontend (likely accidental duplicate).${NC}"
+    echo -e "${YELLOW}  Canonical frontend path is: $REPO_ROOT/frontend${NC}"
+fi
+
 # Parse command-line arguments
 SKIP_PYTHON=false
 for arg in "$@"; do

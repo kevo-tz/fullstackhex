@@ -28,9 +28,10 @@ jobs:
 
       - name: Bootstrap generated workspace when missing
         run: |
-          if [ ! -d backend ] || [ ! -d python-sidecar ] || [ ! -d frontend ]; then
-            chmod +x scripts/install.sh
-            ./scripts/install.sh
+          cd "$GITHUB_WORKSPACE"
+          if [ ! -d "$GITHUB_WORKSPACE/backend" ] || [ ! -d "$GITHUB_WORKSPACE/python-sidecar" ] || [ ! -d "$GITHUB_WORKSPACE/frontend" ]; then
+            chmod +x "$GITHUB_WORKSPACE/scripts/install.sh"
+            "$GITHUB_WORKSPACE/scripts/install.sh"
           fi
 
       - name: Install Rust toolchain
@@ -75,9 +76,10 @@ jobs:
 
       - name: Bootstrap generated workspace when missing
         run: |
-          if [ ! -d backend ] || [ ! -d python-sidecar ] || [ ! -d frontend ]; then
-            chmod +x scripts/install.sh
-            ./scripts/install.sh
+          cd "$GITHUB_WORKSPACE"
+          if [ ! -d "$GITHUB_WORKSPACE/backend" ] || [ ! -d "$GITHUB_WORKSPACE/python-sidecar" ] || [ ! -d "$GITHUB_WORKSPACE/frontend" ]; then
+            chmod +x "$GITHUB_WORKSPACE/scripts/install.sh"
+            "$GITHUB_WORKSPACE/scripts/install.sh"
           fi
 
       - name: Install uv
@@ -112,9 +114,10 @@ jobs:
 
       - name: Bootstrap generated workspace when missing
         run: |
-          if [ ! -d backend ] || [ ! -d python-sidecar ] || [ ! -d frontend ]; then
-            chmod +x scripts/install.sh
-            ./scripts/install.sh
+          cd "$GITHUB_WORKSPACE"
+          if [ ! -d "$GITHUB_WORKSPACE/backend" ] || [ ! -d "$GITHUB_WORKSPACE/python-sidecar" ] || [ ! -d "$GITHUB_WORKSPACE/frontend" ]; then
+            chmod +x "$GITHUB_WORKSPACE/scripts/install.sh"
+            "$GITHUB_WORKSPACE/scripts/install.sh"
           fi
 
       - name: Setup Bun

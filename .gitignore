@@ -60,5 +60,8 @@ backend/
 python-sidecar/
 frontend/
 
+# Guard against accidental nested frontend scaffold when run from wrong cwd
+backend/frontend/
+
 # Temporary tooling shims
 .tmp/

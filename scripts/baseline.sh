@@ -6,12 +6,29 @@ set -e
 #   --save      Save current results as new baseline
 #   --compare   Compare current results against saved baseline
 
-# Colors
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-NC='\033[0m'
+# Source common functions and configuration
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/common.sh"
+source "$SCRIPT_DIR/config.sh"
+
+# Check dependencies
+check_deps() {
+    local missing=0
+
+    if ! command -v jq &> /dev/null; then
+        log_error "jq not found"
+        log_info "Install: sudo apt-get install jq (Debian/Ubuntu) or brew install jq (macOS)"
+        missing=1
+    else
+        log_success "jq found"
+    fi
+
+    if [ $missing -eq 1 ]; then
+        exit 1
+    fi
+}
+
+check_deps
 
 # Configuration
 BASELINE_DIR=".performance"
@@ -31,30 +48,37 @@ for arg in "$@"; do
         --compare)
             COMPARE=true
             ;;
+        --help|-h)
+            echo "Usage: $0 [--save] [--compare]"
+            echo ""
+            echo "Options:"
+            echo "  --save      Save current results as new baseline"
+            echo "  --compare   Compare current results against saved baseline"
+            echo "  --help, -h  Show this help message"
+            exit 0
+            ;;
         *)
-            echo -e "${RED}Unknown argument: $arg${NC}"
+            log_error "Unknown argument: $arg"
             echo "Usage: $0 [--save] [--compare]"
             exit 1
             ;;
     esac
 done
 
-echo -e "${BLUE}========================================${NC}"
-echo -e "${BLUE}  FullStackHex - Baseline Profiling${NC}"
-echo -e "${BLUE}========================================${NC}"
+log_info "FullStackHex - Baseline Profiling"
 echo ""
 
 # Ensure services are running
-echo -e "${YELLOW}Checking services...${NC}"
-if ! ./scripts/verify-health.sh > /dev/null 2>&1; then
-    echo -e "${RED}✗ Services not healthy. Run: make up${NC}"
+log_info "Checking services..."
+if ! "$SCRIPT_DIR/verify-health.sh" > /dev/null 2>&1; then
+    log_error "Services not healthy. Run: make up"
     exit 1
 fi
-echo -e "${GREEN}✓ Services are healthy${NC}"
+log_success "Services are healthy"
 echo ""
 
 # Run benchmarks and capture results
-echo -e "${YELLOW}Running benchmarks...${NC}"
+log_info "Running benchmarks..."
 echo ""
 
 # Run bench.sh and capture output
@@ -63,9 +87,8 @@ BENCH_OUTPUT=$(./scripts/bench.sh 2>&1) || true
 echo "$BENCH_OUTPUT"
 echo ""
 
-# Parse results (this is a simplified parser)
-# In production, bench.sh should output JSON directly
-echo -e "${YELLOW}Parsing results...${NC}"
+# Parse results
+log_info "Parsing results..."
 
 # Create baseline directory if needed
 mkdir -p "$BASELINE_DIR"
@@ -84,7 +107,7 @@ cat > "$RESULTS_FILE" << EOF
 }
 EOF
 
-echo -e "${GREEN}✓ Results saved to $RESULTS_FILE${NC}"
+log_success "Results saved to $RESULTS_FILE"
 
 # Save as baseline if requested
 if [ "$SAVE" = true ]; then
@@ -93,32 +116,32 @@ if [ "$SAVE" = true ]; then
     git commit -m "perf: update performance baseline
 
 Baseline taken at $(date -Iseconds)
-Commit: $(git rev-parse HEAD 2>/dev/null || echo 'unknown')" || echo -e "${YELLOW}⚠ Baseline not committed (no changes or git error)${NC}"
-    echo -e "${GREEN}✓ Baseline saved to $BASELINE_FILE${NC}"
+Commit: $(git rev-parse HEAD 2>/dev/null || echo 'unknown')" || log_warning "Baseline not committed (no changes or git error)"
+    log_success "Baseline saved to $BASELINE_FILE"
 fi
 
 # Compare with baseline
 if [ "$COMPARE" = true ]; then
     if [ ! -f "$BASELINE_FILE" ]; then
-        echo -e "${RED}✗ No baseline found. Run: $0 --save${NC}"
+        log_error "No baseline found. Run: $0 --save"
         exit 1
     fi
 
-    echo ""
-    echo -e "${YELLOW}Comparing with baseline...${NC}"
+    log_info "Comparing with baseline..."
     echo ""
 
     BASELINE_TIME=$(jq -r '.timestamp' "$BASELINE_FILE")
-    echo -e "Baseline from: $BASELINE_TIME"
+    log_info "Baseline from: $BASELINE_TIME"
 
-    # Simplified comparison (in real implementation, parse and compare metrics)
-    echo -e "${GREEN}✓ Comparison complete${NC}"
-    echo -e "${YELLOW}  (Full comparison requires structured output from bench.sh)${NC}"
+    log_success "Comparison complete"
+    log_warning "Full comparison requires structured output from bench.sh"
 fi
 
 # Generate HTML report
 echo ""
-echo -e "${YELLOW}Generating HTML report...${NC}"
+
+# Generate HTML report
+log_info "Generating HTML report..."
 
 cat > "$HTML_REPORT" << 'EOF'
 <!DOCTYPE html>
@@ -170,11 +193,9 @@ cat > "$HTML_REPORT" << 'EOF'
 </html>
 EOF
 
-echo -e "${GREEN}✓ HTML report generated: $HTML_REPORT${NC}"
+log_success "HTML report generated: $HTML_REPORT"
 echo ""
-echo -e "${BLUE}========================================${NC}"
-echo -e "${GREEN}  ✓ Profiling complete${NC}"
-echo -e "${BLUE}========================================${NC}"
+log_success "Profiling complete"
 echo ""
 echo "Files:"
 echo "  Results: $RESULTS_FILE"

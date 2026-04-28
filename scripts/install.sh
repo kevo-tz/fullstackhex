@@ -411,7 +411,6 @@ scaffold_generated_tests() {
             cat > "backend/crates/$crate/tests/unit_generated.rs" << 'EOF'
 #[cfg(test)]
 mod tests {
-    use super::*;
 
     #[test]
     fn health_response_structure() {
@@ -428,7 +427,8 @@ mod tests {
     #[test]
     fn environment_variables_loaded() {
         // Test that required env vars have defaults or are set
-        std::env::set_var("RUST_LOG", "info");
+        // Safety: single-threaded test; no other threads reading this variable.
+        unsafe { std::env::set_var("RUST_LOG", "info"); }
         let log_level = std::env::var("RUST_LOG").unwrap_or_else(|_| "info".to_string());
         assert_eq!(log_level, "info");
     }
@@ -441,15 +441,10 @@ EOF
         cat > "backend/crates/api/tests/integration_health_route.rs" << 'EOF'
 #[cfg(test)]
 mod tests {
-    use axum::body::Body;
-    use axum::http::{Request, StatusCode};
-    use tower::ServiceExt;
 
-    // Test that health route returns 200 OK
-    #[tokio::test]
-    async fn health_endpoint_returns_200() {
-        // This would require setting up the full app router
-        // For now, test the path constant
+    // Test that health route path constant is valid
+    #[test]
+    fn health_endpoint_returns_200() {
         let health_path = "/health";
         assert!(health_path.starts_with('/'));
         assert!(health_path.contains("health"));
@@ -591,6 +586,7 @@ axum = "0.8"
 sqlx = { version = "0.8", features = ["postgres", "runtime-tokio-native-tls"] }
 tower = "0.5"
 tower-http = "0.5"
+serde_json = "1.0"
 
 [profile.release]
 lto = true
@@ -618,6 +614,46 @@ EOF
                 fi
                 echo "Creating crate: $crate..."
                 cargo new --lib --edition 2024 "crates/$crate"
+                # Overwrite cargo new's minimal Cargo.toml with workspace-aware version + dev-deps
+                case "$crate" in
+                    api)
+                        cat > "crates/$crate/Cargo.toml" << 'CARGO_EOF'
+[package]
+name = "api"
+version = "0.1.0"
+edition = "2024"
+description.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+
+[dev-dependencies]
+tokio = { workspace = true }
+axum = { workspace = true }
+tower = { workspace = true }
+serde_json = { workspace = true }
+CARGO_EOF
+                        ;;
+                    *)
+                        cat > "crates/$crate/Cargo.toml" << CARGO_EOF
+[package]
+name = "$crate"
+version = "0.1.0"
+edition = "2024"
+description.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+
+[dev-dependencies]
+serde_json = { workspace = true }
+CARGO_EOF
+                        ;;
+                esac
             fi
         done
     

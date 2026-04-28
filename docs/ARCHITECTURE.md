@@ -157,8 +157,8 @@ impl PythonSidecar {
         // Spawn Python FastAPI with Uvicorn
         let child = Command::new("uvicorn")
             .args([
-                "app:app",
-                "--host", "unix://" + socket_path.to_str().unwrap(),
+                "app.main:app",
+                "--uds", socket_path.to_str().unwrap(),
                 "--workers", "1",
             ])
             .current_dir("python-sidecar")

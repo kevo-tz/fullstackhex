@@ -361,6 +361,9 @@ EOF
     echo "Installing Tailwind v4 and Node SSR adapter..."
     bun add @tailwindcss/vite tailwindcss @astrojs/node
 
+    echo "Installing TypeScript runtime types for Bun/Node..."
+    bun add --dev @types/node bun-types
+
     echo "Installing remaining dependencies..."
     bun install
 
@@ -378,6 +381,18 @@ export default defineConfig({
     plugins: [tailwindcss()]
   }
 });
+EOF
+
+        # Ensure Bun/Node globals are typed for generated test files
+        cat > tsconfig.json << 'EOF'
+{
+    "extends": "astro/tsconfigs/strict",
+    "compilerOptions": {
+        "types": ["node", "bun-types"]
+    },
+    "include": [".astro/types.d.ts", "**/*"],
+    "exclude": ["dist"]
+}
 EOF
 
     # Create API health proxy route
@@ -484,10 +499,11 @@ mod tests {
         use std::env;
 
         // These should have defaults or be set
-        let _rust_log = env::var("RUST_LOG").unwrap_or_else(|_| "info".to_string());
-        let _database_url = env::var("DATABASE_URL").unwrap_or_else(|_| "postgres://localhost/test".to_string());
+        let rust_log = env::var("RUST_LOG").unwrap_or_else(|_| "info".to_string());
+        let database_url = env::var("DATABASE_URL").unwrap_or_else(|_| "postgres://localhost/test".to_string());
 
-        assert!(true); // Configuration is valid
+        assert!(!rust_log.is_empty());
+        assert!(!database_url.is_empty());
     }
 }
 EOF

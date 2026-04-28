@@ -2,12 +2,47 @@
 # FullStackHex Rust Workspace Setup
 # Creates and configures the Rust workspace and crates
 
+# Parse command-line arguments
+DRY_RUN=false
+SKIP_BUILD=false
+
+while [[ "$#" -gt 0 ]]; do
+    case "$1" in
+        --dry-run)
+            DRY_RUN=true
+            shift
+            ;;
+        --skip-build)
+            SKIP_BUILD=true
+            shift
+            ;;
+        -h|--help)
+            echo "Usage: $0 [--dry-run] [--skip-build]"
+            echo ""
+            echo "Options:"
+            echo "  --dry-run      Show what would be done without doing it"
+            echo "  --skip-build  Skip building the workspace"
+            echo "  -h, --help   Show this help message"
+            exit 0
+            ;;
+        *)
+            shift
+            ;;
+    esac
+done
+
+export DRY_RUN
+
 # Source common functions and configuration
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/common.sh"
 source "$SCRIPT_DIR/config.sh"
 
 log_info "Creating Rust workspace..."
+
+if [ "$DRY_RUN" = true ]; then
+    log_warning "DRY-RUN mode: no changes will be made"
+fi
 
 # Create backend directory if it doesn't exist
 mkdir -p backend

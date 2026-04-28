@@ -114,3 +114,141 @@ get_timestamp() {
 get_git_commit() {
     git rev-parse HEAD 2>/dev/null || echo "unknown"
 }
+
+# Dry-run mode support
+DRY_RUN="${DRY_RUN:-false}"
+
+dry_run_mode() {
+    [ "$DRY_RUN" = "true" ]
+}
+
+log_dry_run() {
+    if dry_run_mode; then
+        log_warning "[DRY-RUN] $1"
+    fi
+}
+
+# Safety: prompt for confirmation
+confirm_action() {
+    local prompt="${1:-Continue?}"
+    local response
+    
+    if dry_run_mode; then
+        log_warning "[DRY-RUN] Would confirm: $prompt"
+        return 0
+    fi
+    
+    if [ -n "$CI_NONINTERACTIVE" ]; then
+        log_warning "Non-interactive mode, skipping: $prompt"
+        return 1
+    fi
+    
+    echo -n "$prompt [y/N] "
+    read -r response
+    
+    case "$response" in
+        y|Y) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+# Safety: safe remove with backup
+safe_remove() {
+    local path="$1"
+    local backup_dir="${2:-.backup}"
+    
+    if [ -e "$path" ]; then
+        log_dry_run "Would remove: $path"
+        
+        if ! dry_run_mode; then
+            if [ -d "$backup_dir" ] || mkdir -p "$backup_dir"; then
+                local backup_name
+                backup_name="$(basename "$path")_$(date +%Y%m%d_%H%M%S)"
+                log_info "Backing up to: $backup_dir/$backup_name"
+                mv "$path" "$backup_dir/$backup_name"
+            fi
+        fi
+    fi
+    
+    return 0
+}
+
+# Safety: safe copy with backup option
+safe_copy() {
+    local src="$1"
+    local dest="$2"
+    local backup="${3:-false}"
+    
+    if [ ! -e "$src" ]; then
+        log_error "Source does not exist: $src"
+        return 1
+    fi
+    
+    log_dry_run "Would copy: $src -> $dest"
+    
+    if dry_run_mode; then
+        return 0
+    fi
+    
+    if [ "$backup" = "true" ] && [ -e "$dest" ]; then
+        local backup_name
+        backup_name="$(basename "$dest")_$(date +%Y%m%d_%H%M%S)"
+        log_info "Backing up existing: $dest -> .backup/$backup_name"
+        mkdir -p .backup
+        cp "$dest" ".backup/$backup_name"
+    fi
+    
+    cp -r "$src" "$dest"
+    log_success "Copied: $src -> $dest"
+    return 0
+}
+
+# Safety: safe move
+safe_move() {
+    local src="$1"
+    local dest="$2"
+    
+    if [ ! -e "$src" ]; then
+        log_error "Source does not exist: $src"
+        return 1
+    fi
+    
+    log_dry_run "Would move: $src -> $dest"
+    
+    if dry_run_mode; then
+        return 0
+    fi
+    
+    mv "$src" "$dest"
+    log_success "Moved: $src -> $dest"
+    return 0
+}
+
+# Safety: check disk space
+check_disk_space() {
+    local required_kb="$1"
+    local available_kb
+    
+    available_kb=$(df -k . | awk 'NR==2 {print $4}')
+    
+    if [ -n "$available_kb" ] && [ "$available_kb" -lt "$required_kb" ]; then
+        log_error "Insufficient disk space. Required: ${required_kb}KB, Available: ${available_kb}KB"
+        return 1
+    fi
+    
+    log_success "Disk space check passed: ${available_kb}KB available"
+    return 0
+}
+
+# Safety: check write permissions
+check_write_permission() {
+    local path="$1"
+    
+    if touch "$path.test" 2>/dev/null; then
+        rm "$path.test"
+        return 0
+    fi
+    
+    log_error "No write permission for: $path"
+    return 1
+}

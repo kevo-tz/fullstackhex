@@ -531,9 +531,13 @@ use std::path::PathBuf;
 use std::time::Duration;
 use tokio::time::timeout;
 
+// Mock socket tests that don't require actual Python sidecar running
+// In real CI, these would be run after services are started
+
 /// Test that socket path is correctly configured
 #[test]
 fn socket_path_configuration() {
+    // Test reading socket path from environment
     let socket_path = std::env::var("PYTHON_SIDECAR_SOCKET")
         .unwrap_or_else(|_| "/tmp/python-sidecar.sock".to_string());
 
@@ -546,18 +550,22 @@ fn socket_path_configuration() {
 async fn socket_directory_creation() {
     use std::fs;
 
+    // Create a temp socket path
     let temp_dir = std::env::temp_dir().join("fullstackhex_test");
     fs::create_dir_all(&temp_dir).expect("Failed to create temp dir");
 
     let socket_path = temp_dir.join("test-socket.sock");
 
+    // Clean up if exists
     if socket_path.exists() {
         fs::remove_file(&socket_path).expect("Failed to remove stale socket");
     }
 
+    // Verify directory exists
     assert!(temp_dir.exists());
     assert!(temp_dir.is_dir());
 
+    // Cleanup
     let _ = fs::remove_dir_all(&temp_dir);
 }
 
@@ -568,6 +576,7 @@ async fn error_handling_missing_socket() {
 
     let non_existent = PathBuf::from("/tmp/non-existent-socket.sock");
 
+    // Attempting to connect to non-existent socket should fail
     let result = timeout(Duration::from_secs(1), UnixStream::connect(&non_existent)).await;
 
     match result {
@@ -586,6 +595,7 @@ async fn error_handling_missing_socket() {
 /// Test socket path from environment with priority
 #[test]
 fn socket_path_env_override() {
+    // Save original value
     let original = std::env::var("PYTHON_SIDECAR_SOCKET").ok();
 
     // Safety: single-threaded test; no other threads reading this variable.
@@ -595,6 +605,7 @@ fn socket_path_env_override() {
     let path = std::env::var("PYTHON_SIDECAR_SOCKET").unwrap();
     assert_eq!(path, "/custom/path/socket.sock");
 
+    // Restore original
     unsafe {
         match original {
             Some(val) => std::env::set_var("PYTHON_SIDECAR_SOCKET", val),
@@ -606,6 +617,7 @@ fn socket_path_env_override() {
 /// Test request structure for sidecar communication
 #[test]
 fn sidecar_request_structure() {
+    // Simulate what a request to Python sidecar might look like
     let request_json = serde_json::json!({
         "method": "GET",
         "path": "/api/data",
@@ -650,10 +662,12 @@ async fn socket_retry_logic() {
 
         match result {
             Ok(Ok(_)) => {
+                // Connection succeeded (shouldn't happen in this test)
                 break;
             }
             _ => {
                 if attempts >= max_retries {
+                    // Give up after max retries
                     assert!(attempts >= max_retries);
                     break;
                 }
@@ -670,6 +684,9 @@ async fn socket_retry_logic() {
 #[tokio::test]
 #[ignore]
 async fn full_socket_communication() {
+    // This test requires the Python sidecar to be running
+    // Run with: cargo test --test integration_socket -- --ignored
+
     let socket_path = std::env::var("PYTHON_SIDECAR_SOCKET")
         .unwrap_or_else(|_| "/tmp/python-sidecar.sock".to_string());
 
@@ -677,6 +694,12 @@ async fn full_socket_communication() {
         println!("Skipping test: socket not found at {}", socket_path);
         return;
     }
+
+    // In a real implementation, you would:
+    // 1. Connect to the Unix socket
+    // 2. Send an HTTP request over the socket
+    // 3. Receive and parse the response
+    // 4. Assert on the response
 
     assert!(PathBuf::from(&socket_path).exists());
 }

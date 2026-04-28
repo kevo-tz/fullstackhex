@@ -96,7 +96,7 @@ for crate in api core db python-sidecar; do
             rm -rf "crates/$crate"
         fi
         log_info "Creating crate: $crate..."
-        cargo new --lib --edition 2024 "crates/$crate"
+        cargo new --lib --edition 2021 "crates/$crate"
         # Overwrite cargo new's minimal Cargo.toml with workspace-aware version + dev-deps
         case "$crate" in
             api)
@@ -140,10 +140,14 @@ CARGO_EOF
     fi
 done
 
-# Build workspace
-log_info "Building workspace..."
-cargo build --workspace
-log_success "Rust workspace ready"
+# Build workspace (if not skipped)
+if [ "$SKIP_BUILD" = true ]; then
+    log_warning "Skipping build (--skip-build set)"
+else
+    log_info "Building workspace..."
+    cargo build --workspace
+    log_success "Rust workspace ready"
+fi
 
 popd > /dev/null
 log_success "Rust workspace setup completed"

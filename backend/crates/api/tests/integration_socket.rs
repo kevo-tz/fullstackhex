@@ -59,14 +59,12 @@ async fn error_handling_missing_socket() {
     match result {
         Ok(Err(_)) => {
             // Expected: connection failed
-            assert!(true);
         }
         Ok(Ok(_)) => {
             panic!("Should not be able to connect to non-existent socket");
         }
         Err(_) => {
             // Timeout is also acceptable
-            assert!(true);
         }
     }
 }
@@ -179,5 +177,5 @@ async fn full_socket_communication() {
     // 3. Receive and parse the response
     // 4. Assert on the response
 
-    assert!(true); // Placeholder
+    assert!(PathBuf::from(&socket_path).exists());
 }

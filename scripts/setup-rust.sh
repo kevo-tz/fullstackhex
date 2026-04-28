@@ -96,7 +96,7 @@ for crate in api core db python-sidecar; do
             rm -rf "crates/$crate"
         fi
         log_info "Creating crate: $crate..."
-        cargo new --lib --edition 2021 "crates/$crate"
+        cargo new --lib --edition 2024 "crates/$crate"
         # Overwrite cargo new's minimal Cargo.toml with workspace-aware version + dev-deps
         case "$crate" in
             api)

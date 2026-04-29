@@ -355,6 +355,31 @@ mock_env() {
     fi
 }
 
+# Mock HTTP network calls for testing
+# MOCK_HTTP_RESPONSES holds newline-separated "url=response" pairs
+MOCK_HTTP_RESPONSES="${MOCK_HTTP_RESPONSES:-}"
+
+mock_network_calls() {
+    local url="$1"
+
+    if test_mode && [ -n "$MOCK_HTTP_RESPONSES" ]; then
+        local pair
+        while IFS= read -r pair; do
+            local mock_url="${pair%%=*}"
+            local mock_response="${pair#*=}"
+            if [ "$mock_url" = "$url" ]; then
+                log_info "[MOCK] HTTP response for: $url"
+                echo "$mock_response"
+                return 0
+            fi
+        done <<< "$MOCK_HTTP_RESPONSES"
+        log_info "[MOCK] No mock response for: $url (returning empty)"
+        return 0
+    fi
+
+    curl -s "$url"
+}
+
 # Test assertion functions
 assert_equals() {
     local expected="$1"

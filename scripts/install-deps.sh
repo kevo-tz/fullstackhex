@@ -9,10 +9,14 @@ source "$SCRIPT_DIR/config.sh"
 
 # Default values
 SKIP_PYTHON=false
+DRY_RUN=false
 
 # Parse command-line arguments
 while [[ $# -gt 0 ]]; do
     case $1 in
+        --dry-run)
+            DRY_RUN=true
+            ;;
         --skip-python*)
             if [[ "$1" == *"="* ]]; then
                 SKIP_PYTHON="${1#*=}"
@@ -22,9 +26,10 @@ while [[ $# -gt 0 ]]; do
             fi
             ;;
         --help|-h)
-            echo "Usage: $0 [--skip-python=true|false]"
+            echo "Usage: $0 [--dry-run] [--skip-python=true|false]"
             echo ""
             echo "Options:"
+            echo "  --dry-run        Show what would be done without doing it"
             echo "  --skip-python    Skip Python check and uv installation (default: false)"
             echo "  --help, -h       Show this help message"
             exit 0
@@ -35,6 +40,11 @@ while [[ $# -gt 0 ]]; do
     esac
     shift
 done
+export DRY_RUN
+
+if dry_run_mode; then
+    log_warning "DRY-RUN mode: no changes will be made"
+fi
 
 log_info "Checking and installing dependencies..."
 
@@ -44,12 +54,18 @@ install_rust() {
         local version=$(rustc --version)
         log_success "Rust already installed: $version"
     else
-        log_info "Installing Rust..."
-        curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
-        source "$HOME/.cargo/env"
-        log_success "Rust installed: $(rustc --version)"
+        log_dry_run "Would install Rust via rustup"
+        if ! dry_run_mode; then
+            log_info "Installing Rust..."
+            curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+            source "$HOME/.cargo/env"
+            log_success "Rust installed: $(rustc --version)"
+        fi
     fi
-    rustup update stable
+    log_dry_run "Would run: rustup update stable"
+    if ! dry_run_mode; then
+        rustup update stable
+    fi
 }
 
 # Check and install Bun
@@ -57,7 +73,14 @@ install_bun() {
     if command -v bun &> /dev/null; then
         local version=$(bun --version)
         log_success "Bun already installed: v$version"
-        bun upgrade
+        if ! dry_run_mode; then
+            bun upgrade
+        fi
+        return 0
+    fi
+
+    log_dry_run "Would install Bun via bun.sh installer"
+    if dry_run_mode; then
         return 0
     fi
 
@@ -95,15 +118,18 @@ install_bun() {
         if [ -f "$rc_file" ] && grep -q 'bun/bin' "$rc_file" 2>/dev/null; then
             log_success "Bun PATH already configured in $rc_file"
         else
-            mkdir -p "$(dirname "$rc_file")" 2>/dev/null || true
-            echo '' >> "$rc_file"
-            echo '# Added by FullStackHex install.sh' >> "$rc_file"
-            if [[ "$shell_name" = "fish" ]]; then
-                echo 'set -gx PATH "$HOME/.bun/bin" $PATH' >> "$rc_file"
-            else
-                echo 'export PATH="$HOME/.bun/bin:$PATH"' >> "$rc_file"
+            log_dry_run "Would write Bun PATH to $rc_file"
+            if ! dry_run_mode; then
+                mkdir -p "$(dirname "$rc_file")" 2>/dev/null || true
+                echo '' >> "$rc_file"
+                echo '# Added by FullStackHex install.sh' >> "$rc_file"
+                if [[ "$shell_name" = "fish" ]]; then
+                    echo 'set -gx PATH "$HOME/.bun/bin" $PATH' >> "$rc_file"
+                else
+                    echo 'export PATH="$HOME/.bun/bin:$PATH"' >> "$rc_file"
+                fi
+                log_success "Added Bun to PATH in $rc_file"
             fi
-            log_success "Added Bun to PATH in $rc_file"
         fi
 
         # Source the rc file for the current session (best-effort)
@@ -173,17 +199,20 @@ install_uv() {
         local version=$(uv --version)
         log_success "uv already installed: $version"
     else
-        log_info "Installing uv (Python package manager)..."
-        curl -LsSf https://astral.sh/uv/install.sh | sh
-        
-        # uv installs to $HOME/.local/bin by default
-        # Also check cargo/bin as fallback
-        if [ -x "$HOME/.local/bin/uv" ]; then
-            export PATH="$HOME/.local/bin:$PATH"
-        elif [ -x "$HOME/.cargo/bin/uv" ]; then
-            export PATH="$HOME/.cargo/bin:$PATH"
+        log_dry_run "Would install uv via astral.sh installer"
+        if ! dry_run_mode; then
+            log_info "Installing uv (Python package manager)..."
+            curl -LsSf https://astral.sh/uv/install.sh | sh
+
+            # uv installs to $HOME/.local/bin by default
+            # Also check cargo/bin as fallback
+            if [ -x "$HOME/.local/bin/uv" ]; then
+                export PATH="$HOME/.local/bin:$PATH"
+            elif [ -x "$HOME/.cargo/bin/uv" ]; then
+                export PATH="$HOME/.cargo/bin:$PATH"
+            fi
+            log_success "uv installed: $(uv --version)"
         fi
-        log_success "uv installed: $(uv --version)"
     fi
 }
 

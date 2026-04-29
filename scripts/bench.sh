@@ -12,9 +12,6 @@ source "$SCRIPT_DIR/config.sh"
 
 # Configuration is now sourced from config.sh
 
-log_info "FullStackHex Performance Benchmarks (Lite - using Apache Bench)"
-echo ""
-
 # Check dependencies
 check_deps() {
     local missing=0;
@@ -96,8 +93,8 @@ benchmark() {
     log_info "Benchmark: $name"
     log_info "URL: $url"
     log_info "Requests: $BENCHLITE_REQUESTS, Concurrent: $BENCHLITE_CONCURRENT"
-    echo ""
-    
+    echo "" >&2
+
     # Run ab and capture output
     local output=$(ab -n "$BENCHLITE_REQUESTS" -c "$BENCHLITE_CONCURRENT" -r -k "$url" 2>&1)
     
@@ -163,8 +160,8 @@ benchmark() {
 benchmark_frontend_ttfb() {
     log_info "Benchmark: Frontend TTFB (SSR)"
     log_info "URL: $FRONTEND_URL"
-    echo ""
-    
+    echo "" >&2
+
     local ttfb=$(curl -w "%{time_starttransfer}" -o /dev/null -s "$FRONTEND_URL")
     local expected_s=$(echo "scale=3; $FRONTEND_TTFB_THRESHOLD / 1000" | bc)
     
@@ -173,7 +170,7 @@ benchmark_frontend_ttfb() {
     local passed=$(echo "$ttfb < $expected_s" | bc -l 2>/dev/null || echo "0")
     
     # Return structured result for JSON output
-    echo "{\"name\":\"Frontend TTFB\",\"url\":\"$FRONTEND_URL\",\"ttfb_s\":$ttfb,\"ttfb_target_s\":$expected_s,\"passed\":$[ $passed -eq 0 ]}"
+    echo "{\"name\":\"Frontend TTFB\",\"url\":\"$FRONTEND_URL\",\"ttfb_s\":$ttfb,\"ttfb_target_s\":$expected_s,\"passed\":$passed}"
     
     if [ "$passed" = "1" ]; then
         log_success "TTFB PASSED"
@@ -202,7 +199,12 @@ main() {
         JSON_OUTPUT=true
         shift
     fi
-    
+
+    if [ "$JSON_OUTPUT" = false ]; then
+        log_info "FullStackHex Performance Benchmarks (Lite - using Apache Bench)"
+        echo ""
+    fi
+
     check_deps
     check_services
     
@@ -243,12 +245,12 @@ log_info "  Requests: $BENCHLITE_REQUESTS"
         echo "      \"url\": \"$RUST_BACKEND_URL/health\","
         echo "      \"requests\": \"$BENCHLITE_REQUESTS\","
         echo "      \"concurrent\": \"$BENCHLITE_CONCURRENT\","
-        echo "      \"result\": \"$health_result\""
+        echo "      \"result\": $health_result"
         echo "    },"
         echo "    {"
         echo "      \"name\": \"Frontend TTFB\","
         echo "      \"url\": \"$FRONTEND_URL\","
-        echo "      \"result\": \"$frontend_result\""
+        echo "      \"result\": $frontend_result"
         echo "    }"
         echo "  ]"
         echo "}"

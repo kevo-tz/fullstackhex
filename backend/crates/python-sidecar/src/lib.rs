@@ -138,9 +138,7 @@ impl PythonSidecar {
             .windows(4)
             .position(|w| w == b"\r\n\r\n")
             .map(|p| p + 4)
-            .ok_or_else(|| SidecarError::InvalidResponse(
-                "missing HTTP header separator".into(),
-            ))?;
+            .ok_or_else(|| SidecarError::InvalidResponse("missing HTTP header separator".into()))?;
 
         let body = &response[body_start..];
 
@@ -378,11 +376,7 @@ mod tests {
         });
 
         let result = sc.get("/health").await;
-        assert!(
-            result.is_ok(),
-            "expected Ok after retry, got {:?}",
-            result
-        );
+        assert!(result.is_ok(), "expected Ok after retry, got {:?}", result);
         assert_eq!(result.unwrap()["retry"], "worked");
     }
 

@@ -112,14 +112,6 @@ jobs:
         with:
           python-version: "3.14"
 
-      - name: Bootstrap workspace when missing
-        working-directory: ${{ github.workspace }}
-        run: |
-          if [ ! -d "$GITHUB_WORKSPACE/backend" ] || [ ! -d "$GITHUB_WORKSPACE/python-sidecar" ] || [ ! -d "$GITHUB_WORKSPACE/frontend" ]; then
-            chmod +x "$GITHUB_WORKSPACE/scripts/install.sh"
-            "$GITHUB_WORKSPACE/scripts/install.sh"
-          fi
-
       - name: Setup Node.js 22
         uses: actions/setup-node@v4
         with:
@@ -127,6 +119,14 @@ jobs:
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
+
+      - name: Bootstrap workspace when missing
+        working-directory: ${{ github.workspace }}
+        run: |
+          if [ ! -d "$GITHUB_WORKSPACE/backend" ] || [ ! -d "$GITHUB_WORKSPACE/python-sidecar" ] || [ ! -d "$GITHUB_WORKSPACE/frontend" ]; then
+            chmod +x "$GITHUB_WORKSPACE/scripts/install.sh"
+            "$GITHUB_WORKSPACE/scripts/install.sh"
+          fi
 
       - name: Cache Bun modules
         uses: actions/cache@v5
@@ -212,21 +212,34 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install detect-secrets==1.5.0 # pragma: allowlist secret
-          # Scan for secrets; compare against audited baseline.
-          # Exit non-zero only if new unaudited secrets are found.
-          # Line-number drift in the baseline does not fail the build.
-          detect-secrets scan --baseline .github/.secrets.baseline \
-            $(git ls-files | grep -v '^.github/.secrets.baseline$') \
-            && python3 -c "
-          import json, sys
+          # Collect known-audited secret hashes from the committed baseline.
+          KNOWN=$(python3 -c "
+          import json
           with open('.github/.secrets.baseline') as f:
-              baseline = json.load(f)
-          new = [s for secrets in baseline.get('results', {}).values()
-                 for s in secrets if not s.get('is_verified') and not s.get('is_secret') == False]
+              b = json.load(f)
+          hashes = {s['hashed_secret'] for v in b.get('results',{}).values() for s in v}
+          print(' '.join(hashes))
+          ")
+          # Run a fresh scan (stdout only, does not modify baseline).
+          detect-secrets scan $(git ls-files | grep -v '^.github/.secrets.baseline$') \
+            > /tmp/fresh-baseline.json
+          # Fail if any secret hash in the fresh scan is not in the known set.
+          python3 -c "
+          import json, sys
+          with open('/tmp/fresh-baseline.json') as f:
+              fresh = json.load(f)
+          known = set('$KNOWN'.split())
+          new = [
+              (path, s['line_number'], s['type'])
+              for path, secrets in fresh.get('results', {}).items()
+              for s in secrets
+              if s['hashed_secret'] not in known
+          ]
           if new:
-              print(f'Found {len(new)} unaudited potential secrets!', file=sys.stderr)
+              for path, ln, t in new:
+                  print(f'NEW SECRET: {path}:{ln} ({t})', file=sys.stderr)
               sys.exit(1)
-          print('No new secrets found.')
+          print(f'detect-secrets: no new secrets ({len(known)} known findings audited)')
           "
 
       - name: Run gitleaks scan

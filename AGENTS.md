@@ -32,7 +32,7 @@ cd frontend && bun run build
 ## Rust Backend Entry
 
 - Run via `cargo run -p api` from `backend/` (NOT `cargo run --workspace`)
-- Rust auto-spawns Python sidecar at `/tmp/python-sidecar.sock`
+- Rust auto-spawns Python sidecar at `/tmp/fullstackhex-python.sock`
 - Port 8001 is the only external API port; frontend never calls Python directly
 
 ## Frontend
@@ -64,6 +64,6 @@ MCP server available at `http://localhost:3000`. Config in `leankg.yaml`.
 
 ```env
 DATABASE_URL=postgres://app_user:...@localhost:5432/app_database
-PYTHON_SIDECAR_SOCKET=/tmp/python-sidecar.sock
+PYTHON_SIDECAR_SOCKET=/tmp/fullstackhex-python.sock
 VITE_RUST_BACKEND_URL=http://localhost:8001
 ```

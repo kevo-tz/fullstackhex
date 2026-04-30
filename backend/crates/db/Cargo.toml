@@ -8,6 +8,6 @@ repository.workspace = true
 authors.workspace = true
 
 [dependencies]
-
-[dev-dependencies]
-serde_json = { workspace = true }
+sqlx = { workspace = true }
+tokio = { workspace = true }
+thiserror = "2"

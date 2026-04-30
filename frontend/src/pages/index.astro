@@ -230,6 +230,8 @@
             setDetail("python", JSON.stringify(py.detail, null, 2));
           } else if (py.error) {
             setDetail("python", py.error);
+          } else {
+            setDetail("python", "");
           }
 
         } catch (err) {

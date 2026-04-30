@@ -1,12 +1,43 @@
-use axum::{Json, Router, routing::get};
+use axum::{Json, Router, extract::State, routing::get};
+use python_sidecar::PythonSidecar;
 use serde_json::{Value, json};
-use std::env;
+use sqlx::PgPool;
+use sqlx::postgres::PgPoolOptions;
+use std::sync::Arc;
+use std::time::Duration;
 
-pub fn router() -> Router {
+pub struct AppState {
+    pub db_pool: Option<PgPool>,
+    pub sidecar: PythonSidecar,
+}
+
+/// Build the router with default state (from environment).
+pub async fn router() -> Router {
+    let pool = match std::env::var("DATABASE_URL") {
+        Ok(url) => PgPoolOptions::new()
+            .max_connections(5)
+            .acquire_timeout(Duration::from_secs(2))
+            .connect(&url)
+            .await
+            .ok(),
+        Err(_) => None,
+    };
+
+    let state = AppState {
+        db_pool: pool,
+        sidecar: PythonSidecar::from_env(),
+    };
+
+    router_with_state(state)
+}
+
+/// Build the router with explicit state (for testing).
+pub fn router_with_state(state: AppState) -> Router {
     Router::new()
         .route("/health", get(health))
         .route("/health/db", get(health_db))
         .route("/health/python", get(health_python))
+        .with_state(Arc::new(state))
 }
 
 async fn health() -> Json<Value> {
@@ -17,25 +48,38 @@ async fn health() -> Json<Value> {
     }))
 }
 
-async fn health_db() -> Json<Value> {
-    // TODO: wire up real sqlx pool once DATABASE_URL is configured
-    let database_url = env::var("DATABASE_URL").unwrap_or_default();
-    if database_url.is_empty() {
-        Json(json!({ "status": "error", "error": "DATABASE_URL not configured" }))
-    } else {
-        Json(json!({ "status": "ok" }))
+async fn health_db(State(state): State<Arc<AppState>>) -> Json<Value> {
+    match db::health_check(state.db_pool.as_ref()).await {
+        Ok(()) => Json(json!({ "status": "ok" })),
+        Err(e) => Json(json!({ "status": "error", "error": e.to_string() })),
     }
 }
 
-async fn health_python() -> Json<Value> {
-    // TODO: wire up real Unix socket check once sidecar is running
-    let socket_path = env::var("PYTHON_SIDECAR_SOCKET")
-        .unwrap_or_else(|_| "/tmp/python-sidecar.sock".to_string());
-
-    if std::path::Path::new(&socket_path).exists() {
-        Json(json!({ "status": "ok", "version": "unknown" }))
-    } else {
-        Json(json!({ "status": "unavailable", "error": "socket not found" }))
+async fn health_python(State(state): State<Arc<AppState>>) -> Json<Value> {
+    match state.sidecar.health().await {
+        Ok(v) => Json(json!({
+            "status": v.get("status").and_then(|s| s.as_str()).unwrap_or("unknown"),
+            "service": v.get("service").and_then(|s| s.as_str()).unwrap_or("unknown"),
+            "version": v.get("version").and_then(|s| s.as_str()).unwrap_or("unknown"),
+        })),
+        Err(e) => {
+            let error_msg = match &e {
+                python_sidecar::SidecarError::SocketNotFound(_) => "socket not found".to_string(),
+                python_sidecar::SidecarError::ConnectionFailed(msg) => {
+                    format!("connection failed: {msg}")
+                }
+                python_sidecar::SidecarError::Timeout(d) => {
+                    format!("request timed out after {d:?}")
+                }
+                python_sidecar::SidecarError::InvalidResponse(msg) => {
+                    format!("invalid response: {msg}")
+                }
+                python_sidecar::SidecarError::HttpError { status, body } => {
+                    format!("HTTP {status}: {body}")
+                }
+            };
+            Json(json!({ "status": "unavailable", "error": error_msg }))
+        }
     }
 }
 
@@ -46,9 +90,19 @@ mod tests {
     use axum::http::{Request, StatusCode};
     use tower::ServiceExt;
 
+    fn test_state() -> AppState {
+        AppState {
+            db_pool: None,
+            sidecar: PythonSidecar::new(
+                "/tmp/__nonexistent_test_socket__.sock",
+                Duration::from_secs(1),
+                0,
+            ),
+        }
+    }
     #[tokio::test]
     async fn health_returns_200() {
-        let app = router();
+        let app = router_with_state(test_state());
         let response = app
             .oneshot(
                 Request::builder()
@@ -63,7 +117,7 @@ mod tests {
 
     #[tokio::test]
     async fn health_response_has_status_ok() {
-        let app = router();
+        let app = router_with_state(test_state());
         let response = app
             .oneshot(
                 Request::builder()
@@ -82,7 +136,7 @@ mod tests {
 
     #[tokio::test]
     async fn health_db_returns_200() {
-        let app = router();
+        let app = router_with_state(test_state());
         let response = app
             .oneshot(
                 Request::builder()
@@ -96,8 +150,26 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn health_db_error_when_no_pool() {
+        let app = router_with_state(test_state());
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/health/db")
+                    .body(axum::body::Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let bytes = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        let v: Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(v["status"], "error");
+        assert!(v["error"].is_string());
+    }
+
+    #[tokio::test]
     async fn health_python_returns_200() {
-        let app = router();
+        let app = router_with_state(test_state());
         let response = app
             .oneshot(
                 Request::builder()
@@ -108,5 +180,23 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn health_python_unavailable_when_no_socket() {
+        let app = router_with_state(test_state());
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/health/python")
+                    .body(axum::body::Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let bytes = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        let v: Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(v["status"], "unavailable");
+        assert!(v["error"].is_string());
     }
 }

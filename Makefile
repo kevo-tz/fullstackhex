@@ -1,11 +1,30 @@
 .PHONY: up down restart logs-backend logs-frontend test bench clean check-env setup setup-env help
 
 # Default values (override with: make up POSTGRES_PASSWORD=mypassword)
-COMPOSE_DEV = docker compose -f compose/dev.yml
-COMPOSE_PROD = docker compose -f compose/prod.yml
-COMPOSE_MON = docker compose -f compose/monitor.yml
+COMPOSE_DEV = docker compose -f compose/dev.yml --env-file .env
+COMPOSE_PROD = docker compose -f compose/prod.yml --env-file .env
+COMPOSE_MON = docker compose -f compose/monitor.yml --env-file .env
 
 # Help
+dev: check-env
+	$(COMPOSE_DEV) up -d
+	@echo "Starting Python sidecar..."
+	cd python-sidecar && set -a && . ../.env && set +a && uv run uvicorn app.main:app --uds /tmp/fullstackhex-python.sock &
+	@echo "Starting Rust backend..."
+	cd backend && set -a && . ../.env && set +a && cargo run -p api &
+	@echo "Starting frontend..."
+	cd frontend && bun run dev &
+	@echo ""
+	@echo "All services starting. Dashboard at http://localhost:4321"
+	@echo "Run 'make down-dev' to stop everything."
+
+down-dev:
+	@pkill -f "uvicorn app.main:app" 2>/dev/null || true
+	@pkill -f "cargo run -p api" 2>/dev/null || true
+	@pkill -f "bun run dev" 2>/dev/null || true
+	$(COMPOSE_DEV) down
+	@echo "All services stopped."
+
 help:
 	@echo "FullStackHex - Development Commands"
 	@echo ""
@@ -15,7 +34,9 @@ help:
 	@echo ""
 	@echo "Services:"
 	@echo "  up          - Start all development services"
+	@echo "  dev         - Start full stack (infra + rust + python + frontend)"
 	@echo "  down        - Stop all services"
+	@echo "  down-dev    - Stop full stack and infrastructure"
 	@echo "  restart     - Restart all services"
 	@echo ""
 	@echo "Logs:"

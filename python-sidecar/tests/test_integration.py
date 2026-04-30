@@ -6,6 +6,7 @@ configured Unix socket. Run with:
 
 These are skipped in normal test runs.
 """
+
 import os
 
 import pytest

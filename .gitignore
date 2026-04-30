@@ -62,3 +62,4 @@ leankg.yaml
 # Script outputs
 .backup/
 .performance/
+.gstack/

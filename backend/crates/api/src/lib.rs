@@ -50,7 +50,12 @@ mod tests {
     async fn health_returns_200() {
         let app = router();
         let response = app
-            .oneshot(Request::builder().uri("/health").body(axum::body::Body::empty()).unwrap())
+            .oneshot(
+                Request::builder()
+                    .uri("/health")
+                    .body(axum::body::Body::empty())
+                    .unwrap(),
+            )
             .await
             .unwrap();
         assert_eq!(response.status(), StatusCode::OK);
@@ -60,7 +65,12 @@ mod tests {
     async fn health_response_has_status_ok() {
         let app = router();
         let response = app
-            .oneshot(Request::builder().uri("/health").body(axum::body::Body::empty()).unwrap())
+            .oneshot(
+                Request::builder()
+                    .uri("/health")
+                    .body(axum::body::Body::empty())
+                    .unwrap(),
+            )
             .await
             .unwrap();
         let bytes = to_bytes(response.into_body(), usize::MAX).await.unwrap();
@@ -74,7 +84,12 @@ mod tests {
     async fn health_db_returns_200() {
         let app = router();
         let response = app
-            .oneshot(Request::builder().uri("/health/db").body(axum::body::Body::empty()).unwrap())
+            .oneshot(
+                Request::builder()
+                    .uri("/health/db")
+                    .body(axum::body::Body::empty())
+                    .unwrap(),
+            )
             .await
             .unwrap();
         assert_eq!(response.status(), StatusCode::OK);

@@ -1,5 +1,4 @@
 ---
-const apiBase = import.meta.env.VITE_RUST_BACKEND_URL || "http://localhost:8001";
 ---
 
 <html lang="en">
@@ -180,7 +179,7 @@ const apiBase = import.meta.env.VITE_RUST_BACKEND_URL || "http://localhost:8001"
       <footer>port 8001 · <a href="https://github.com/kevo-tz/fullstackhex" style="color:inherit">github.com/kevo-tz/fullstackhex</a></footer>
     </div>
 
-    <script define:vars={{ apiBase }}>
+    <script>
       function setStatus(id, status, label) {
         const dot  = document.getElementById("dot-"  + id);
         const text = document.getElementById("text-" + id);
@@ -200,7 +199,7 @@ const apiBase = import.meta.env.VITE_RUST_BACKEND_URL || "http://localhost:8001"
         document.getElementById("raw-json").textContent = "fetching…";
 
         try {
-          const res  = await fetch(apiBase + "/health");
+          const res  = await fetch("/api/health");
           const data = await res.json();
 
           document.getElementById("raw-json").textContent =
@@ -238,7 +237,7 @@ const apiBase = import.meta.env.VITE_RUST_BACKEND_URL || "http://localhost:8001"
           setStatus("db",     "error", "—");
           setStatus("python", "error", "—");
           document.getElementById("raw-json").textContent =
-            "Error: could not reach " + apiBase + "/health\n\n" + err.message;
+            "Error: could not reach /api/health\n\n" + err.message;
         }
       }
 

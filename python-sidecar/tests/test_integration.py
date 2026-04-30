@@ -7,5 +7,6 @@ def test_sidecar_response_shape() -> None:
     client = TestClient(app)
     payload = client.get("/health").json()
 
-    assert set(payload.keys()) == {"status", "service"}
+    assert set(payload.keys()) == {"status", "service", "version"}
     assert payload["service"] == "python-sidecar"
+    assert payload["version"] == "0.1.0"

@@ -5,8 +5,8 @@ resolver = "3"
 [workspace.package]
 description = "FullStackHex project"
 license = "MIT"
-repository = "https://github.com/yourusername/yourrepo"
-authors = ["Your Name <your@email.com>"]
+repository = "https://github.com/kevo-tz/fullstackhex"
+authors = ["kevo-tz"]
 
 [workspace.dependencies]
 tokio = { version = "1", features = ["full"] }

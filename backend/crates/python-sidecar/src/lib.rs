@@ -189,6 +189,7 @@ mod tests {
     #[test]
     #[serial_test::serial]
     fn from_env_defaults() {
+        // SAFETY: serial_test ensures no other test mutates env vars concurrently.
         unsafe {
             std::env::remove_var("PYTHON_SIDECAR_SOCKET");
             std::env::remove_var("PYTHON_SIDECAR_TIMEOUT_MS");
@@ -206,6 +207,7 @@ mod tests {
     #[test]
     #[serial_test::serial]
     fn from_env_overrides() {
+        // SAFETY: serial_test ensures no other test mutates env vars concurrently.
         unsafe {
             std::env::set_var("PYTHON_SIDECAR_SOCKET", "/custom/path.sock");
             std::env::set_var("PYTHON_SIDECAR_TIMEOUT_MS", "2000");
@@ -387,6 +389,26 @@ mod tests {
         std::fs::File::create(&path).unwrap();
         let sc = PythonSidecar::new(path, Duration::from_secs(1), 0);
         let result = sc.get("/health\r\nX-Injected: true").await;
+        assert!(matches!(result, Err(SidecarError::InvalidResponse(_))));
+    }
+
+    #[tokio::test]
+    async fn get_rejects_cr_only_in_path() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("cr.sock");
+        std::fs::File::create(&path).unwrap();
+        let sc = PythonSidecar::new(path, Duration::from_secs(1), 0);
+        let result = sc.get("/health\rX-Injected: true").await;
+        assert!(matches!(result, Err(SidecarError::InvalidResponse(_))));
+    }
+
+    #[tokio::test]
+    async fn get_rejects_lf_only_in_path() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("lf.sock");
+        std::fs::File::create(&path).unwrap();
+        let sc = PythonSidecar::new(path, Duration::from_secs(1), 0);
+        let result = sc.get("/health\nX-Injected: true").await;
         assert!(matches!(result, Err(SidecarError::InvalidResponse(_))));
     }
 }

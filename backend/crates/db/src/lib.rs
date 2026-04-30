@@ -39,4 +39,17 @@ mod tests {
         let result = health_check(None).await;
         assert!(matches!(result, Err(DbError::NotConfigured)));
     }
+
+    #[test]
+    fn error_display_renders_variants() {
+        let nc = DbError::NotConfigured;
+        assert_eq!(nc.to_string(), "database not configured");
+
+        let pt = DbError::PoolTimeout(Duration::from_secs(3));
+        assert!(pt.to_string().contains("3s"), "expected '3s' in: {}", pt);
+
+        // QueryFailed wraps sqlx::Error — just verify it's not empty
+        let qf = DbError::QueryFailed(sqlx::Error::PoolTimedOut);
+        assert!(!qf.to_string().is_empty());
+    }
 }

@@ -276,19 +276,109 @@ mod tests {
 
     #[tokio::test]
     #[ignore = "requires real Unix socket infrastructure — run with --ignored"]
-    async fn get_happy_path_via_socket() {}
+    async fn get_happy_path_via_socket() {
+        use tokio::io::AsyncWriteExt;
+        use tokio::net::UnixListener;
+
+        let dir = tempfile::tempdir().unwrap();
+        let sock_path = dir.path().join("happy.sock");
+        let listener = UnixListener::bind(&sock_path).unwrap();
+        let sc = PythonSidecar::new(sock_path, Duration::from_secs(2), 0);
+
+        tokio::spawn(async move {
+            let (mut stream, _) = listener.accept().await.unwrap();
+            let response =
+                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n{\"status\":\"ok\"}";
+            stream.write_all(response.as_bytes()).await.unwrap();
+        });
+
+        tokio::time::sleep(Duration::from_millis(10)).await;
+        let result = sc.get("/health").await;
+        assert!(result.is_ok(), "expected Ok, got {:?}", result);
+        assert_eq!(result.unwrap()["status"], "ok");
+    }
 
     #[tokio::test]
     #[ignore = "requires real Unix socket infrastructure — run with --ignored"]
-    async fn get_http_error_via_socket() {}
+    async fn get_http_error_via_socket() {
+        use tokio::io::AsyncWriteExt;
+        use tokio::net::UnixListener;
+
+        let dir = tempfile::tempdir().unwrap();
+        let sock_path = dir.path().join("httperr.sock");
+        let listener = UnixListener::bind(&sock_path).unwrap();
+        let sc = PythonSidecar::new(sock_path, Duration::from_secs(2), 0);
+
+        tokio::spawn(async move {
+            let (mut stream, _) = listener.accept().await.unwrap();
+            let response = "HTTP/1.1 500 Internal Server Error\r\n\r\nbang";
+            stream.write_all(response.as_bytes()).await.unwrap();
+        });
+
+        tokio::time::sleep(Duration::from_millis(10)).await;
+        let result = sc.get("/health").await;
+        assert!(
+            matches!(result, Err(SidecarError::HttpError { status: 500, .. })),
+            "expected HttpError 500, got {:?}",
+            result
+        );
+    }
 
     #[tokio::test]
     #[ignore = "requires real Unix socket infrastructure — run with --ignored"]
-    async fn get_invalid_json_via_socket() {}
+    async fn get_invalid_json_via_socket() {
+        use tokio::io::AsyncWriteExt;
+        use tokio::net::UnixListener;
+
+        let dir = tempfile::tempdir().unwrap();
+        let sock_path = dir.path().join("invalid.sock");
+        let listener = UnixListener::bind(&sock_path).unwrap();
+        let sc = PythonSidecar::new(sock_path, Duration::from_secs(2), 0);
+
+        tokio::spawn(async move {
+            let (mut stream, _) = listener.accept().await.unwrap();
+            let response = "HTTP/1.1 200 OK\r\n\r\nnot-json";
+            stream.write_all(response.as_bytes()).await.unwrap();
+        });
+
+        tokio::time::sleep(Duration::from_millis(10)).await;
+        let result = sc.get("/health").await;
+        assert!(
+            matches!(result, Err(SidecarError::InvalidResponse(_))),
+            "expected InvalidResponse, got {:?}",
+            result
+        );
+    }
 
     #[tokio::test]
     #[ignore = "requires real Unix socket infrastructure — run with --ignored"]
-    async fn get_retries_on_connection_refused_via_socket() {}
+    async fn get_retries_on_connection_refused_via_socket() {
+        use tokio::io::AsyncWriteExt;
+        use tokio::net::UnixListener;
+
+        let dir = tempfile::tempdir().unwrap();
+        let sock_path = dir.path().join("retry.sock");
+        // Don't create a listener yet — first connect attempt will fail.
+        // Create the file so is_available() passes.
+        std::fs::File::create(&sock_path).unwrap();
+        let sc = PythonSidecar::new(sock_path.clone(), Duration::from_millis(500), 2);
+
+        // After a short delay, bring up the listener so the second attempt succeeds
+        let listener = UnixListener::bind(&sock_path).unwrap();
+        tokio::spawn(async move {
+            let (mut stream, _) = listener.accept().await.unwrap();
+            let response = "HTTP/1.1 200 OK\r\n\r\n{\"retry\":\"worked\"}";
+            stream.write_all(response.as_bytes()).await.unwrap();
+        });
+
+        let result = sc.get("/health").await;
+        assert!(
+            result.is_ok(),
+            "expected Ok after retry, got {:?}",
+            result
+        );
+        assert_eq!(result.unwrap()["retry"], "worked");
+    }
 
     #[tokio::test]
     async fn get_rejects_crlf_in_path() {

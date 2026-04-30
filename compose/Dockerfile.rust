@@ -21,8 +21,10 @@ COPY backend/crates/core/Cargo.toml ./backend/crates/core/Cargo.toml
 COPY backend/crates/db/Cargo.toml ./backend/crates/db/Cargo.toml
 COPY backend/crates/python-sidecar/Cargo.toml ./backend/crates/python-sidecar/Cargo.toml
 
-# Create dummy lib.rs files to cache dependencies
-RUN mkdir -p backend/crates/api/src && echo "pub fn dummy() {}" > backend/crates/api/src/lib.rs && \
+# Create dummy source files to cache dependencies
+RUN mkdir -p backend/crates/api/src && \
+    echo "pub fn dummy() {}" > backend/crates/api/src/lib.rs && \
+    echo 'fn main() {}' > backend/crates/api/src/main.rs && \
     mkdir -p backend/crates/core/src && echo "pub fn dummy() {}" > backend/crates/core/src/lib.rs && \
     mkdir -p backend/crates/db/src && echo "pub fn dummy() {}" > backend/crates/db/src/lib.rs && \
     mkdir -p backend/crates/python-sidecar/src && echo "pub fn dummy() {}" > backend/crates/python-sidecar/src/lib.rs && \

@@ -46,7 +46,7 @@ docker compose -f compose/dev.yml up -d
 docker compose -f compose/monitor.yml up -d
 
 # 5. Run backend (spawns Python sidecar automatically)
-cd backend && cargo run --workspace
+cd backend && cargo run -p api
 
 # 6. Run frontend
 cd frontend && bun run dev

@@ -180,14 +180,14 @@
     </div>
 
     <script>
-      function setStatus(id, status, label) {
+      function setStatus(id: string, status: string, label: string) {
         const dot  = document.getElementById("dot-"  + id);
         const text = document.getElementById("text-" + id);
-        dot.className  = "dot " + (status || "loading");
-        text.textContent = label || status || "…";
+        if (dot)  dot.className    = "dot " + (status || "loading");
+        if (text) text.textContent = label || status || "…";
       }
 
-      function setDetail(id, text) {
+      function setDetail(id: string, text: string) {
         const el = document.getElementById("detail-" + id);
         if (el) el.textContent = text || "";
       }
@@ -196,14 +196,14 @@
         setStatus("rust",   "loading", "checking…");
         setStatus("db",     "loading", "checking…");
         setStatus("python", "loading", "checking…");
-        document.getElementById("raw-json").textContent = "fetching…";
+        const rawJson = document.getElementById("raw-json");
+        if (rawJson) rawJson.textContent = "fetching…";
 
         try {
           const res  = await fetch("/api/health");
           const data = await res.json();
 
-          document.getElementById("raw-json").textContent =
-            JSON.stringify(data, null, 2);
+          if (rawJson) rawJson.textContent = JSON.stringify(data, null, 2);
 
           // Rust
           setStatus("rust", data.rust?.status === "ok" ? "ok" : "error",
@@ -236,12 +236,13 @@
           setStatus("rust",   "error", "unreachable");
           setStatus("db",     "error", "—");
           setStatus("python", "error", "—");
-          document.getElementById("raw-json").textContent =
-            "Error: could not reach /api/health\n\n" + err.message;
+          const msg = err instanceof Error ? err.message : String(err);
+          if (rawJson) rawJson.textContent =
+            "Error: could not reach /api/health\n\n" + msg;
         }
       }
 
-      document.getElementById("refresh-btn").addEventListener("click", fetchHealth);
+      document.getElementById("refresh-btn")?.addEventListener("click", fetchHealth);
       fetchHealth();
     </script>
   </body>

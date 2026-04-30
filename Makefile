@@ -1,4 +1,4 @@
-.PHONY: up down restart logs-backend logs-frontend test bench clean help
+.PHONY: up down restart logs-backend logs-frontend test bench clean check-env help
 
 # Default values (override with: make up POSTGRES_PASSWORD=mypassword)
 COMPOSE_DEV = docker compose -f compose/dev.yml
@@ -29,6 +29,7 @@ help:
 	@echo "Performance:"
 	@echo "  bench           - Run performance benchmarks"
 	@echo "  health          - Check all services health"
+	@echo "  check-env       - Validate .env has no CHANGE_ME placeholders"
 	@echo ""
 	@echo "Cleanup:"
 	@echo "  clean           - Reset to fresh state (removes volumes)"
@@ -38,7 +39,20 @@ help:
 	@echo "  prod-down       - Stop production stack"
 
 # Services
-up:
+check-env:
+	@if [ ! -f .env ]; then \
+	  echo "ERROR: .env not found. Run: cp .env.example .env"; \
+	  exit 1; \
+	fi
+	@if grep -q "CHANGE_ME" .env 2>/dev/null; then \
+	  echo "ERROR: .env still contains CHANGE_ME placeholder values."; \
+	  echo "       Edit .env and replace all CHANGE_ME entries before continuing."; \
+	  grep -n "CHANGE_ME" .env; \
+	  exit 1; \
+	fi
+	@echo ".env looks good."
+
+up: check-env
 	$(COMPOSE_DEV) up -d
 	$(COMPOSE_MON) up -d
 	@echo "Infrastructure services started. To run the app:"

@@ -26,7 +26,7 @@ jobs:
         with:
           python-version: "3.14"
 
-      - name: Bootstrap generated workspace when missing
+      - name: Bootstrap workspace when missing
         working-directory: ${{ github.workspace }}
         run: |
           if [ ! -d "$GITHUB_WORKSPACE/backend" ] || [ ! -d "$GITHUB_WORKSPACE/python-sidecar" ] || [ ! -d "$GITHUB_WORKSPACE/frontend" ]; then
@@ -74,7 +74,7 @@ jobs:
         with:
           python-version: "3.14"
 
-      - name: Bootstrap generated workspace when missing
+      - name: Bootstrap workspace when missing
         working-directory: ${{ github.workspace }}
         run: |
           if [ ! -d "$GITHUB_WORKSPACE/backend" ] || [ ! -d "$GITHUB_WORKSPACE/python-sidecar" ] || [ ! -d "$GITHUB_WORKSPACE/frontend" ]; then
@@ -112,7 +112,7 @@ jobs:
         with:
           python-version: "3.14"
 
-      - name: Bootstrap generated workspace when missing
+      - name: Bootstrap workspace when missing
         working-directory: ${{ github.workspace }}
         run: |
           if [ ! -d "$GITHUB_WORKSPACE/backend" ] || [ ! -d "$GITHUB_WORKSPACE/python-sidecar" ] || [ ! -d "$GITHUB_WORKSPACE/frontend" ]; then

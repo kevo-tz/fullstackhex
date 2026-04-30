@@ -12,6 +12,9 @@ tokio = { workspace = true }
 axum = { workspace = true }
 tower = { workspace = true }
 serde_json = { workspace = true }
+sqlx = { workspace = true }
+db = { path = "../db" }
+python-sidecar = { path = "../python-sidecar" }
 
 [dev-dependencies]
 serial_test = { workspace = true }

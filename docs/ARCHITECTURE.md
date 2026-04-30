@@ -130,7 +130,7 @@ Python sidecar binds to `/tmp/fullstackhex-python.sock`. Rust communicates throu
 - Security (only local processes can connect)
 - Simple integration with FastAPI/Uvicorn
 
-### PythonSidecar (implemented in v0.4.0)
+### PythonSidecar (implemented in v0.3.1.0)
 
 The `PythonSidecar` struct in `backend/crates/python-sidecar/src/lib.rs` handles
 HTTP communication with the Python sidecar via a Unix domain socket. The sidecar
@@ -150,7 +150,7 @@ runs independently — start it with `uv run uvicorn app.main:app --uds /tmp/ful
 // Always returns HTTP 200 — service status is in the JSON body
 ```
 
-### Database Health (implemented in v0.4.0)
+### Database Health (implemented in v0.3.1.0)
 
 The `db` crate (`backend/crates/db/src/lib.rs`) exports `health_check(pool: Option<&PgPool>)`
 which runs `SELECT 1` against PostgreSQL. A 3-second timeout prevents hanging on a

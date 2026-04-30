@@ -40,20 +40,25 @@ Manages HTTP communication to the Python sidecar via Unix domain socket:
 ```rust
 // crates/python-sidecar/src/lib.rs
 pub struct PythonSidecar {
-    socket_path: PathBuf,  // /tmp/python-sidecar.sock
+    socket_path: PathBuf,
+    timeout: Duration,
+    max_retries: u32,
 }
 
 impl PythonSidecar {
-    pub fn new(socket_path: impl Into<PathBuf>) -> Self { ... }
+    pub fn new(socket_path: impl Into<PathBuf>, timeout: Duration, max_retries: u32) -> Self { ... }
 
-    /// Forward an HTTP/1.1 request over the Unix socket.
-    /// Uses hyper::client::conn::http1 with TokioIo-wrapped UnixStream.
-    pub async fn forward(
-        &self,
-        method: Method,
-        path: &str,
-        body: Bytes,
-    ) -> anyhow::Result<(StatusCode, Bytes)> { ... }
+    /// Create from environment variables.
+    pub fn from_env() -> Self { ... }
+
+    /// Returns true if the socket file exists on disk.
+    pub fn is_available(&self) -> bool { ... }
+
+    /// HTTP GET over Unix socket with retry/backoff and timeout.
+    pub async fn get(&self, path: &str) -> Result<serde_json::Value, SidecarError> { ... }
+
+    /// Convenience: GET /health from the sidecar.
+    pub async fn health(&self) -> Result<serde_json::Value, SidecarError> { ... }
 }
 ```
 
@@ -99,7 +104,7 @@ Python runs as a subprocess of Rust, not standalone:
 
 ```bash
 # This is managed by Rust, not run manually
-uv run uvicorn app.main:app --uds /tmp/python-sidecar.sock
+uv run uvicorn app.main:app --uds /tmp/fullstackhex-python.sock
 ```
 
 ### FastAPI with Unix Socket
@@ -120,13 +125,13 @@ def health() -> dict[str, str]:
 
 > **Note:** Add new routes here as Python business logic grows. The sidecar is
 > started by Rust — run it directly only for debugging:
-> `uv run uvicorn app.main:app --uds /tmp/python-sidecar.sock`
+> `uv run uvicorn app.main:app --uds /tmp/fullstackhex-python.sock`
 
 ### Key Difference from Standalone
 
 - **No direct external access**: Only accessible via Rust proxy through Unix socket
 - **Managed lifecycle**: Rust restarts Python on crash
-- **Internal networking**: Communicates via `/tmp/python-sidecar.sock`
+- **Internal networking**: Communicates via `/tmp/fullstackhex-python.sock`
 
 ---
 
@@ -257,23 +262,16 @@ bun run preview
 
 ```rust
 // From Rust crate: python-sidecar
-use tokio::net::UnixStream;
-use serde_json::json;
+use std::time::Duration;
 
-pub async fn call_python() -> Result<String> {
-    let mut stream = UnixStream::connect("/tmp/python-sidecar.sock").await?;
-    
-    let request = json!({
-        "method": "POST",
-        "path": "/process",
-        "body": {"data": "example"}
-    }).to_string();
-    
-    stream.write_all(request.as_bytes()).await?;
-    
-    let mut response = String::new();
-    stream.read_to_string(&mut response).await?;
-    Ok(response)
+async fn call_python() -> Result<serde_json::Value, Box<dyn std::error::Error>> {
+    let sidecar = PythonSidecar::new(
+        "/tmp/fullstackhex-python.sock",
+        Duration::from_secs(5),
+        3,
+    );
+    let result = sidecar.get("/health").await?;
+    Ok(result)
 }
 ```
 

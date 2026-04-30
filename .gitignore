@@ -55,14 +55,6 @@ Thumbs.db
 .leankg/
 leankg.yaml
 
-# Generated scaffold outputs (created by scripts/install.sh at project init time)
-backend/
-python-sidecar/
-frontend/
-
-# Guard against accidental nested frontend scaffold when run from wrong cwd
-backend/frontend/
-
 # Temporary tooling shims
 .tmp/
 .mcp.json

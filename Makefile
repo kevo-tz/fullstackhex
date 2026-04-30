@@ -9,7 +9,7 @@ COMPOSE_MON = docker compose -f compose/monitor.yml
 help:
 	@echo "FullStackHex - Development Commands"
 	@echo ""
-  @echo "Setup:"
+	@echo "Setup:"
 	@echo "  setup       - First-time setup: install tools + create .env"
 	@echo "  setup-env   - Create .env from .env.example (no tool install)"
 	@echo ""

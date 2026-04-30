@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.3.0] - 2026-04-30
+
+### Added
+- **Axum HTTP router** (`backend/crates/api/src/lib.rs`): exports `router()` with three health endpoints — `/health`, `/health/db`, `/health/python` — all returning structured JSON
+- **`/health`**: returns `{status, service, version}` — always 200
+- **`/health/db`**: returns `{status: "ok"}` when `DATABASE_URL` is set, `{status: "error", error: …}` otherwise
+- **`/health/python`**: returns `{status: "ok"}` when the Unix socket at `PYTHON_SIDECAR_SOCKET` exists, `{status: "unavailable", error: …}` otherwise
+- **Real axum integration tests** (`tests/integration_health_route.rs`): 10 in-process HTTP tests replacing previous stubs; cover 200 responses, JSON shape, Content-Type, env-driven status branches, and 404 for unknown routes
+- **`serial_test` v3**: workspace dev-dependency; env-mutating integration tests annotated with `#[serial]` to prevent tokio async concurrency from racing on `DATABASE_URL` / `PYTHON_SIDECAR_SOCKET`
+- **`backend/.cargo/config.toml`**: sets `test-threads = 1` as a belt-and-suspenders guard when running integration tests directly via `cargo test -p api`
+- **Frontend health aggregator** (`frontend/src/pages/api/health.ts`): server-side Astro API route that calls Rust backend `/health`; dashboard (`index.astro`) now fetches via `/api/health` instead of hitting the backend directly
+
+### Fixed
+- Env-var race in `health_db_error_when_no_database_url` test: `tokio::test` tasks interleaved despite `test-threads=1`; resolved with `#[serial]` mutex
+
+---
+
 ## [0.2.0] - 2026-04-30
 
 ### Added

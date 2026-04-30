@@ -12,7 +12,7 @@ env:
 
 jobs:
   rust:
-    name: Rust (fmt / clippy / test)
+    name: rust
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -60,7 +60,7 @@ jobs:
         run: cargo test --workspace
 
   python:
-    name: Python (ruff / pytest)
+    name: python
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -98,7 +98,7 @@ jobs:
         run: uv run pytest
 
   frontend:
-    name: Frontend (lint / test)
+    name: frontend
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -155,7 +155,7 @@ jobs:
         run: bun run build
 
   generated-smoke:
-    name: Generated Template Smoke Tests
+    name: smoke
     runs-on: ubuntu-latest
 
     steps:
@@ -197,7 +197,7 @@ jobs:
         run: bun test
 
   security:
-    name: Security (gitleaks + detect-secrets)
+    name: security
     runs-on: ubuntu-latest
 
     steps:

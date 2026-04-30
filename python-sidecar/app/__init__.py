@@ -1,1 +1,3 @@
-# Generated package marker for Python sidecar app module.
+from .main import app
+
+__all__ = ["app"]

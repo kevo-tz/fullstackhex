@@ -66,3 +66,7 @@ backend/frontend/
 # Temporary tooling shims
 .tmp/
 .mcp.json
+
+# Script outputs
+.backup/
+.performance/

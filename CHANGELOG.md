@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.3.1.0] - 2026-05-01
+
+### Changed
+- **Health endpoints now use real connections**: `/health/db` runs `SELECT 1` against PostgreSQL instead of checking `DATABASE_URL` is set; `/health/python` makes an HTTP/1.1 request over the Unix socket instead of checking file existence
+
+### Added
+- **PythonSidecar client** (`backend/crates/python-sidecar`): Unix-socket HTTP/1.1 transport with retry/backoff, per-request timeout, and a 5-variant error enum
+- **`make dev` and `make down-dev`**: one-command full-stack orchestration (compose + Python sidecar + Rust backend + Astro frontend)
+- **`.env` wired into Makefile**: all compose targets read `--env-file .env`
+
+### Fixed
+- Stale Python card `detail` now clears when both `py.detail` and `py.error` are absent
+- PostgreSQL 18 Alpine volume mount path corrected
+- Socket client backoff uses saturating arithmetic to prevent overflow
+
+### Removed
+- Dead stub code in `python-sidecar` and `db` crates
+
+---
+
 ## [0.3.0] - 2026-04-30
 
 ### Added

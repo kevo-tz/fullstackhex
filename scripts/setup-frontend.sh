@@ -30,6 +30,8 @@ if [ -d "frontend" ]; then
     if [ ! -f src/pages/api/health.ts ]; then
         log_info "Creating API health proxy route..."
         cat > src/pages/api/health.ts << 'EOF'
+export const prerender = false;
+
 export async function GET() {
     const response = await fetch(`${import.meta.env.VITE_RUST_BACKEND_URL}/health`);
     const body = await response.json();
@@ -102,6 +104,8 @@ EOF
     log_info "Creating API health proxy route..."
     mkdir -p src/pages/api
     cat > src/pages/api/health.ts << 'EOF'
+export const prerender = false;
+
 export async function GET() {
     const response = await fetch(`${import.meta.env.VITE_RUST_BACKEND_URL}/health`);
     const body = await response.json();

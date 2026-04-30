@@ -1,43 +1,29 @@
-# Astro Starter Kit: Minimal
+# frontend
 
-```sh
-npm create astro@latest -- --template minimal
-```
+Astro + Bun + Tailwind CSS frontend for FullStackHex.
 
-> 🧑‍🚀 **Seasoned astronaut?** Delete this file. Have fun!
+## Commands
 
-## 🚀 Project Structure
+All commands are run from this directory:
 
-Inside of your Astro project, you'll see the following folders and files:
+| Command                    | Action                                      |
+| :------------------------- | :------------------------------------------ |
+| `bun install`              | Install dependencies                        |
+| `bun run dev`              | Start dev server at `localhost:4321`        |
+| `bun run build`            | Build production site to `./dist/`          |
+| `bun run preview`          | Preview production build locally            |
+| `bun test`                 | Run test suite                              |
+| `bun run typecheck`        | Run Astro type checker                      |
+| `bun run astro -- --help`  | Other Astro CLI commands                    |
 
-```text
-/
-├── public/
-├── src/
-│   └── pages/
-│       └── index.astro
-└── package.json
-```
+## API Proxy
 
-Astro looks for `.astro` or `.md` files in the `src/pages/` directory. Each page is exposed as a route based on its file name.
+Server-side routes in `src/pages/api/` proxy requests to the Rust backend.
+The frontend never talks to the Python sidecar directly.
 
-There's nothing special about `src/components/`, but that's where we like to put any Astro/React/Vue/Svelte/Preact components.
+## Stack
 
-Any static assets, like images, can be placed in the `public/` directory.
-
-## 🧞 Commands
-
-All commands are run from the root of the project, from a terminal:
-
-| Command                   | Action                                           |
-| :------------------------ | :----------------------------------------------- |
-| `npm install`             | Installs dependencies                            |
-| `npm run dev`             | Starts local dev server at `localhost:4321`      |
-| `npm run build`           | Build your production site to `./dist/`          |
-| `npm run preview`         | Preview your build locally, before deploying     |
-| `npm run astro ...`       | Run CLI commands like `astro add`, `astro check` |
-| `npm run astro -- --help` | Get help using the Astro CLI                     |
-
-## 👀 Want to learn more?
-
-Feel free to check [our documentation](https://docs.astro.build) or jump into our [Discord server](https://astro.build/chat).
+- Astro (SSR with `@astrojs/node` adapter)
+- Tailwind CSS v4 (via `@tailwindcss/vite` Vite plugin)
+- TypeScript
+- Bun runtime and package manager

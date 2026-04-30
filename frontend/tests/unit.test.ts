@@ -8,7 +8,7 @@ describe("frontend generated unit test", () => {
   });
 
   test("environment variables are defined", () => {
-    const apiUrl = process.env.PUBLIC_API_URL || "http://localhost:8001";
+    const apiUrl = process.env.VITE_RUST_BACKEND_URL || "http://localhost:8001";
     expect(apiUrl).toBeTypeOf("string");
     expect(apiUrl.length).toBeGreaterThan(0);
   });

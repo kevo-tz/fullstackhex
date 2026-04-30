@@ -79,6 +79,64 @@ test_mock_network_calls() {
     return $result
 }
 
+# mock_read_file should read from MOCK_FILE_DIR in test mode
+test_mock_read_file() {
+    test_setup
+    echo "mock content" > "$MOCK_FILE_DIR/myfile.txt"
+    local content
+    content=$(mock_read_file "/real/path/myfile.txt" 2>/dev/null)
+    local result=0
+    assert_equals "mock content" "$content" "mock_read_file should return mock content" || result=1
+    test_teardown
+    return $result
+}
+
+# mock_write_file should write to MOCK_FILE_DIR in test mode
+test_mock_write_file() {
+    test_setup
+    mock_write_file "/real/path/output.txt" "written content" 2>/dev/null
+    local result=0
+    assert_file_exists "$MOCK_FILE_DIR/output.txt" "mock_write_file should create file in mock dir" || result=1
+    test_teardown
+    return $result
+}
+
+# assert_file_exists should fail when file is absent
+test_assert_file_exists_missing() {
+    if assert_file_exists "/nonexistent/path/file.txt" "should not exist" 2>/dev/null; then
+        log_error "[FAIL] assert_file_exists should have returned non-zero for missing file"
+        return 1
+    fi
+    log_success "[PASS] assert_file_exists correctly returned non-zero for missing file"
+    return 0
+}
+
+# assert_command_exists should pass for a known command and fail for a bogus one
+test_assert_command_exists() {
+    local result=0
+    assert_command_exists "bash" "bash should exist" || result=1
+    if assert_command_exists "_nonexistent_cmd_xyz_" "should not exist" 2>/dev/null; then
+        log_error "[FAIL] assert_command_exists should have returned non-zero for missing command"
+        result=1
+    fi
+    return $result
+}
+
+# test_summary should return 1 when there are failures
+test_summary_with_failure() {
+    # Temporarily save and reset counters
+    local saved_pass=$_TEST_PASS
+    local saved_fail=$_TEST_FAIL
+    _TEST_PASS=2
+    _TEST_FAIL=1
+    local exit_code=0
+    test_summary 2>/dev/null || exit_code=$?
+    # Restore counters
+    _TEST_PASS=$saved_pass
+    _TEST_FAIL=$saved_fail
+    assert_exit_code 1 "$exit_code" "test_summary should return 1 when there are failures"
+}
+
 # ── Run all tests ─────────────────────────────────────────────────────────────
 run_test "confirm_action in dry-run mode"      test_confirm_action_dry_run
 run_test "safe_remove in dry-run mode"         test_safe_remove_dry_run
@@ -88,5 +146,10 @@ run_test "assert_contains"                     test_assert_contains
 run_test "assert_not_contains"                 test_assert_not_contains
 run_test "mock_command in test mode"           test_mock_command
 run_test "mock_network_calls in test mode"     test_mock_network_calls
+run_test "mock_read_file in test mode"         test_mock_read_file
+run_test "mock_write_file in test mode"        test_mock_write_file
+run_test "assert_file_exists missing file"     test_assert_file_exists_missing
+run_test "assert_command_exists"               test_assert_command_exists
+run_test "test_summary returns 1 on failures"  test_summary_with_failure
 
 test_summary

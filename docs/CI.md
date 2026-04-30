@@ -114,19 +114,16 @@ cd frontend && bun test --verbose
 
 ### Socket Path Issues in CI
 
-The `install.sh` script automatically detects `CI=true` and uses a temp directory for the Unix socket:
+The `PYTHON_SIDECAR_SOCKET` env var must point to a writable path. In CI, set it to a temp path:
 
 ```bash
-# In CI, socket goes to $RUNNER_TEMP or $PWD/.tmp
-export CI=true
-./scripts/install.sh
+# In CI (e.g. GitHub Actions), set the socket to a temp directory
+export PYTHON_SIDECAR_SOCKET="${RUNNER_TEMP}/python-sidecar.sock"
 ```
 
 To debug socket issues locally:
 
 ```bash
-# Simulate CI environment
-CI=true ./scripts/install.sh
 ./scripts/verify-health.sh
 ```
 
@@ -178,30 +175,17 @@ bun outdated               # Check for outdated packages
 
 ## Workflow File Structure
 
-The CI workflow (`.github/workflows/ci.yml`) typically includes:
+The CI workflow (`.github/workflows/ci.yml`) runs five jobs: `rust`, `python`, `frontend`, `smoke` (cross-layer), and `security`.
+
+All source files, configs, and tests ship in the repo. CI jobs check out the repo and run directly — no scaffolding step required.
 
 ```yaml
-name: CI
-
-on:
-  push:
-    branches: [main, develop]
-  pull_request:
-    branches: [main]
-
 jobs:
-  test:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
-      - name: Install Bun
-        uses: oven-sh/setup-bun@v1
-      - name: Run install script
-        run: ./scripts/install.sh --skip-python
-      - name: Run tests
-        run: make test
+  rust:    # fmt + clippy + cargo test
+  python:  # ruff + pytest
+  frontend: # lint + typecheck + bun test + build
+  smoke:   # cross-layer test run (Rust + Python + Frontend together)
+  security: # detect-secrets + gitleaks
 ```
 
 ## Troubleshooting
@@ -209,8 +193,7 @@ jobs:
 ### Common Issues
 
 1. **Python 3.14 not found**
-   - Use `--skip-python` flag in CI
-   - Or set up pyenv in workflow
+   - Use `actions/setup-python@v6` with `python-version: "3.14"` in the workflow step
 
 2. **Socket permission denied**
    - Check that `CI=true` is set

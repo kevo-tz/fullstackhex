@@ -1,18 +1,19 @@
 # Project Initialization Template
 
-Use this as a template for new projects with the same architecture.
+Use this as a portable template for new projects with the same Rust + Bun + Python sidecar architecture.
+
+> **Note for this repo:** all source files already ship committed. Run `make setup` to install tools and create `.env`. See [SETUP.md](./SETUP.md) for the full guide.
 
 ## Table of Contents
 
 1. [Prerequisites](#prerequisites)
 2. [Initialization Script](#initialization-script)
 3. [Scaffold Astro Frontend](#scaffold-astro-frontend)
-4. [Make Script Executable](#make-script-executable)
-5. [Verification](#verification)
-6. [Portable Template](#portable-template)
-7. [What Gets Installed (Latest Versions)](#what-gets-installed-latest-versions)
-8. [Troubleshooting](#troubleshooting)
-9. [Related Docs](#related-docs)
+4. [Verification](#verification)
+5. [Portable Template](#portable-template)
+6. [What Gets Installed (Latest Versions)](#what-gets-installed-latest-versions)
+7. [Troubleshooting](#troubleshooting)
+8. [Related Docs](#related-docs)
 
 ## Prerequisites
 
@@ -22,7 +23,7 @@ Use this as a template for new projects with the same architecture.
 
 ## Initialization Script
 
-> **Note:** This is a portable template showing the core steps. The project's `scripts/install.sh` extends this with OS detection, color output, and additional safety checks.
+Below is a minimal portable bootstrap for a new project. Adjust paths and names as needed.
 
 Save as `scripts/install.sh`:
 
@@ -142,8 +143,6 @@ echo ""
 
 ## Scaffold Astro Frontend
 
-> **Note:** `scripts/install.sh` runs this automatically. The steps below are the manual equivalent.
-
 ```bash
 # From repo root
 bun create astro@latest frontend -- --template minimal --no-install --no-git --yes
@@ -188,15 +187,10 @@ export async function GET() {
 }
 ```
 
-## Make Script Executable
-
-```bash
-chmod +x scripts/install.sh
-```
-
 ## Verification
 
 ```bash
+chmod +x scripts/install.sh
 ./scripts/install.sh
 
 # Verify versions
@@ -228,21 +222,17 @@ grep PYTHON_SIDECAR_SOCKET .env
 
 ## Portable Template
 
-To use this as a template for new projects:
+To use this architecture for a new project:
 
-1. Copy the entire `scripts/install.sh` to your new project
-2. Ensure the directory structure matches:
+1. Copy `scripts/install.sh` (from the Initialization Script section above) to your new project
+2. Ensure the skeleton directory structure:
    ```
    your-project/
    ├── scripts/install.sh
-   ├── backend/ (empty, will be populated)
-   │   └── crates/
-   │       └── python-sidecar/ (your FastAPI sidecar crate)
-   ├── frontend/ (your Astro project)
-   └── .env.example (with PYTHON_SIDECAR_SOCKET)
+   ├── .env.example
+   └── compose/
    ```
-
-3. Run `./scripts/install.sh` in your new project
+3. Run `chmod +x scripts/install.sh && ./scripts/install.sh`
 
 ## What Gets Installed (Latest Versions)
 

@@ -18,6 +18,8 @@ dev = [
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
+markers = ["integration: requires live sidecar running on the Unix socket"]
+addopts = "-m 'not integration'"
 
 [tool.ruff]
 line-length = 100

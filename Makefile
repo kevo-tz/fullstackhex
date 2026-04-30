@@ -6,6 +6,25 @@ COMPOSE_PROD = docker compose -f compose/prod.yml
 COMPOSE_MON = docker compose -f compose/monitor.yml
 
 # Help
+dev: check-env
+	$(COMPOSE_DEV) up -d
+	@echo "Starting Python sidecar..."
+	cd python-sidecar && uv run uvicorn app.main:app --uds /tmp/fullstackhex-python.sock &
+	@echo "Starting Rust backend..."
+	cd backend && cargo run -p api &
+	@echo "Starting frontend..."
+	cd frontend && bun run dev &
+	@echo ""
+	@echo "All services starting. Dashboard at http://localhost:4321"
+	@echo "Run 'make down-dev' to stop everything."
+
+down-dev:
+	@pkill -f "uvicorn app.main:app" 2>/dev/null || true
+	@pkill -f "cargo run -p api" 2>/dev/null || true
+	@pkill -f "bun run dev" 2>/dev/null || true
+	$(COMPOSE_DEV) down
+	@echo "All services stopped."
+
 help:
 	@echo "FullStackHex - Development Commands"
 	@echo ""
@@ -15,7 +34,9 @@ help:
 	@echo ""
 	@echo "Services:"
 	@echo "  up          - Start all development services"
+	@echo "  dev         - Start full stack (infra + rust + python + frontend)"
 	@echo "  down        - Stop all services"
+	@echo "  down-dev    - Stop full stack and infrastructure"
 	@echo "  restart     - Restart all services"
 	@echo ""
 	@echo "Logs:"

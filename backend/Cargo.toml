@@ -16,6 +16,7 @@ sqlx = { version = "0.8", features = ["postgres", "runtime-tokio-native-tls"] }
 tower = "0.5"
 tower-http = "0.5"
 serde_json = "1.0"
+serial_test = "3"
 
 [profile.release]
 lto = true

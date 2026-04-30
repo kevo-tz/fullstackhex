@@ -130,118 +130,31 @@ Python sidecar binds to `/tmp/python-sidecar.sock`. Rust communicates through th
 - Security (only local processes can connect)
 - Simple integration with FastAPI/Uvicorn
 
-### How Rust Spawns Python Subprocess
+### PythonSidecar (implemented in v0.4.0)
+
+The `PythonSidecar` struct in `backend/crates/python-sidecar/src/lib.rs` handles
+HTTP communication with the Python sidecar via a Unix domain socket. The sidecar
+runs independently — start it with `uv run uvicorn app.main:app --uds /tmp/fullstackhex-python.sock`.
 
 ```rust
-// backend/crates/python-sidecar/src/lib.rs
-use std::path::{Path, PathBuf};
+// Key API:
+// - PythonSidecar::new(path, timeout, max_retries) — explicit configuration
+// - PythonSidecar::from_env() — reads PYTHON_SIDECAR_SOCKET, PYTHON_SIDECAR_TIMEOUT_MS, etc.
+// - is_available() — checks socket file existence
+// - get(path) — HTTP GET over Unix socket with retry + timeout
+// - health() — convenience: get("/health")
 
-/// Manages HTTP communication with the Python sidecar via a Unix domain socket.
-/// The sidecar is a FastAPI app run separately (or via `uvicorn --uds`).
-pub struct PythonSidecar {
-    socket_path: PathBuf,
-}
-
-impl PythonSidecar {
-    /// Create a new handle pointing at the given socket path.
-    pub fn new(socket_path: impl Into<PathBuf>) -> Self {
-        Self { socket_path: socket_path.into() }
-    }
-
-    /// Returns true if the socket file exists on disk.
-    pub fn is_available(&self) -> bool {
-        self.socket_path.exists()
-    }
-
-    /// GET a path from the Python sidecar over the Unix socket.
-    /// Returns the response body as raw bytes.
-    pub async fn get(&self, path: &str) -> anyhow::Result<bytes::Bytes> { ... }
-
-    /// Convenience wrapper: GET /health from the sidecar.
-    pub async fn health(&self) -> anyhow::Result<bytes::Bytes> {
-        self.get("/health").await
-    }
-}
+// Error types: SocketNotFound, ConnectionFailed, Timeout, InvalidResponse, HttpError
+// Retry: 3 attempts with exponential backoff (100ms, 200ms, 400ms)
+// Timeout: 5s per attempt (configurable via PYTHON_SIDECAR_TIMEOUT_MS)
+// Always returns HTTP 200 — service status is in the JSON body
 ```
 
-### Sending HTTP Requests Over Unix Socket
+### Database Health (implemented in v0.4.0)
 
-```rust
-// The actual implementation in PythonSidecar::get() uses raw tokio::net::UnixStream
-// to write a minimal HTTP/1.1 request and read back the response — no extra crates needed.
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tokio::net::UnixStream;
-
-async fn call_sidecar(socket_path: &str, path: &str) -> anyhow::Result<bytes::Bytes> {
-    let mut stream = UnixStream::connect(socket_path).await?;
-
-    let request = format!(
-        "GET {} HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n",
-        path
-    );
-    stream.write_all(request.as_bytes()).await?;
-
-    let mut response = Vec::new();
-    stream.read_to_end(&mut response).await?;
-
-    // Strip HTTP headers — return body only
-    let body_start = response.windows(4)
-        .position(|w| w == b"\r\n\r\n")
-        .map(|p| p + 4)
-        .unwrap_or(0);
-
-    Ok(bytes::Bytes::copy_from_slice(&response[body_start..]))
-}
-```
-
-### Error Handling for Socket Failures
-
-```rust
-use std::error::Error;
-use tokio::time::{timeout, Duration};
-
-#[derive(Debug)]
-pub enum SidecarError {
-    SocketNotFound(PathBuf),
-    ConnectionFailed(String),
-    Timeout(String),
-    InvalidResponse(String),
-}
-
-async fn call_sidecar_with_retry(
-    socket_path: &PathBuf,
-    path: &str,
-    max_retries: u32,
-) -> Result<String, SidecarError> {
-    // Check if socket exists before trying
-    if !socket_path.exists() {
-        return Err(SidecarError::SocketNotFound(socket_path.clone()));
-    }
-
-    let mut last_error = None;
-
-    for attempt in 1..=max_retries {
-        match timeout(
-            Duration::from_secs(5),
-            call_python_sidecar(socket_path.to_str().unwrap(), path),
-        )
-        .await
-        {
-            Ok(Ok(response)) => return Ok(response),
-            Ok(Err(e)) => {
-                last_error = Some(SidecarError::ConnectionFailed(e.to_string()));
-                tokio::time::sleep(Duration::from_millis(100 * attempt as u64)).await;
-            }
-            Err(_) => {
-                last_error = Some(SidecarError::Timeout(path.to_string()));
-                tokio::time::sleep(Duration::from_millis(100 * attempt as u64)).await;
-            }
-        }
-    }
-
-    Err(last_error.unwrap_or(SidecarError::Timeout(path.to_string())))
-}
-```
+The `db` crate (`backend/crates/db/src/lib.rs`) exports `health_check(pool: Option<&PgPool>)`
+which runs `SELECT 1` against PostgreSQL. A 3-second timeout prevents hanging on a
+slow database. The api crate uses it in the `/health/db` handler.
 
 ### Configuration via Environment
 

@@ -1,0 +1,13 @@
+[package]
+name = "db"
+version = "0.1.0"
+edition = "2024"
+description.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+
+[dev-dependencies]
+serde_json = { workspace = true }

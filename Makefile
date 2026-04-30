@@ -1,4 +1,4 @@
-.PHONY: up down restart logs-backend logs-frontend test bench clean check-env help
+.PHONY: up down restart logs-backend logs-frontend test bench clean check-env setup setup-env help
 
 # Default values (override with: make up POSTGRES_PASSWORD=mypassword)
 COMPOSE_DEV = docker compose -f compose/dev.yml
@@ -8,6 +8,10 @@ COMPOSE_MON = docker compose -f compose/monitor.yml
 # Help
 help:
 	@echo "FullStackHex - Development Commands"
+	@echo ""
+  @echo "Setup:"
+	@echo "  setup       - First-time setup: install tools + create .env"
+	@echo "  setup-env   - Create .env from .env.example (no tool install)"
 	@echo ""
 	@echo "Services:"
 	@echo "  up          - Start all development services"
@@ -37,6 +41,14 @@ help:
 	@echo "Production:"
 	@echo "  prod-up         - Start production stack"
 	@echo "  prod-down       - Stop production stack"
+
+# Setup
+setup: ## First-time setup: install dev tools and create .env
+	./scripts/install-deps.sh
+	@if [ ! -f .env ]; then cp .env.example .env && echo ".env created — review it before running make up"; fi
+
+setup-env: ## Create .env from .env.example (skips tool installation)
+	./scripts/setup-env.sh
 
 # Services
 check-env:

@@ -9,7 +9,7 @@
 #   - nginx          (ports 80, 443)  - Reverse proxy + TLS termination
 #   - backend        (internal :8001) - Rust/Axum API server
 #   - python-sidecar (internal socket) - Python FastAPI sidecar (managed by Rust)
-#   - frontend       (internal :4321) - Astro static site
+#   - frontend       (internal :4321) - Astro SSR Node server
 #   - postgres       (internal :5432) - Primary database
 #   - redis          (internal :6379) - Cache layer
 #   - rustfs         (internal :9000) - S3-compatible object storage
@@ -43,7 +43,7 @@ services:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
       - ./nginx/certs:/etc/nginx/certs:ro
     depends_on:
-backend:
+      backend:
         condition: service_healthy
       frontend:
         condition: service_healthy
@@ -62,8 +62,8 @@ backend:
 
   backend:
     build:
-      context: .
-      dockerfile: Dockerfile.rust
+      context: ..
+      dockerfile: compose/Dockerfile.rust
     image: fullstackhex/backend:${VERSION:-latest}
     container_name: fullstackhex_rust
     restart: unless-stopped
@@ -107,8 +107,8 @@ backend:
 
   python-sidecar:
     build:
-      context: .
-      dockerfile: Dockerfile.python
+      context: ..
+      dockerfile: compose/Dockerfile.python
     image: fullstackhex/python-sidecar:${VERSION:-latest}
     container_name: fullstackhex_python
     restart: unless-stopped
@@ -134,8 +134,8 @@ backend:
 
   frontend:
     build:
-      context: .
-      dockerfile: Dockerfile.frontend
+      context: ..
+      dockerfile: compose/Dockerfile.frontend
       args:
         PUBLIC_API_URL: ${PUBLIC_API_URL:-https://api.example.com}
     image: fullstackhex/frontend:${VERSION:-latest}
@@ -144,7 +144,7 @@ backend:
     expose:
       - "4321"
     healthcheck:
-      test: ["CMD", "node", "-e", "require('http').get('http://localhost:4321/', r => process.exit(r.statusCode < 500 ? 0 : 1)).on('error', () => process.exit(1))"]
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:4321/"]
       interval: 30s
       timeout: 5s
       retries: 3
@@ -240,8 +240,8 @@ backend:
       RUSTFS_ADDRESS: 0.0.0.0:9000
       RUSTFS_CONSOLE_ADDRESS: 0.0.0.0:9001
       RUSTFS_CONSOLE_ENABLE: "true"
-      RUSTFS_CORS_ALLOWED_ORIGINS: ${RUSTFS_CORS_ORIGINS:?RUSTFS_CORS_ORIGINS must be set in .env}
-      RUSTFS_CONSOLE_CORS_ALLOWED_ORIGINS: ${RUSTFS_CORS_ORIGINS}
+      RUSTFS_CORS_ORIGINS: ${RUSTFS_CORS_ORIGINS:?RUSTFS_CORS_ORIGINS must be set in .env}
+      RUSTFS_CONSOLE_CORS_ORIGINS: ${RUSTFS_CORS_ORIGINS}
       RUSTFS_ACCESS_KEY: ${RUSTFS_ACCESS_KEY:?RUSTFS_ACCESS_KEY must be set in .env}
       RUSTFS_SECRET_KEY: ${RUSTFS_SECRET_KEY:?RUSTFS_SECRET_KEY must be set in .env}
       RUSTFS_BROWSER: "off"

@@ -16,7 +16,7 @@ A production-ready full-stack template combining a Rust/Axum backend, Python sid
 ## Key Features
 
 - **Rust + Python sidecar** — Rust backend spawns a Python FastAPI process and communicates over a Unix domain socket for low-latency IPC without network overhead.
-- **Latest tooling** — Rust stable (edition 2024), Bun (latest), uv (latest), Astro v5.
+- **Latest tooling** — Rust stable (edition 2024), Bun (latest), uv (latest), Astro v6.
 - **One-command init** — `./scripts/install.sh` installs all tools, scaffolds the Rust workspace, and creates the Astro frontend.
 - **Dev infrastructure via Docker Compose** — PostgreSQL 18, Redis 8, and RustFS spin up with a single command; optional Adminer and Redis Commander behind a `tools` profile.
 - **Monitoring stack overlay** — `compose/monitor.yml` adds Prometheus + Grafana with provisioning and starter dashboard.
@@ -46,7 +46,7 @@ docker compose -f compose/dev.yml up -d
 docker compose -f compose/monitor.yml up -d
 
 # 5. Run backend (spawns Python sidecar automatically)
-cd backend && cargo run --workspace
+cd backend && cargo run -p api
 
 # 6. Run frontend
 cd frontend && bun run dev
@@ -78,7 +78,7 @@ To report a vulnerability, follow the policy in [.github/SECURITY.md](.github/SE
 
 - `CI` runs Rust/Python/frontend checks, generated template smoke tests, and security scans.
 - `Dependabot` configuration lives at `.github/dependabot.yml`.
-- Local secret scanning is configured via `.pre-commit-config.yaml` and `.secrets.baseline`.
+- Local secret scanning is configured via `.pre-commit-config.yaml` and `.github/.secrets.baseline`.
 
 ## License
 

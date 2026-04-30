@@ -21,8 +21,9 @@ Canonical reference for recreating the development infrastructure from scratch.
 11. [Volumes](#volumes)
 12. [Migration to Production](#migration-to-production)
 13. [Nginx Configuration](#nginx-configuration)
-14. [Monitoring Stack](#monitoring-stack)
-15. [Updates](#updates)
+ 14. [Monitoring Stack](#monitoring-stack)
+15. [Compose Directory Layout](#compose-directory-layout)
+16. [Updates](#updates)
 
 ## Quick Start
 
@@ -717,6 +718,82 @@ GRAFANA_DOMAIN=localhost
 ```
 
 > **Note:** **GRAFANA_ADMIN_PASSWORD** must be set — `compose/monitor.yml` uses `:?` syntax and will fail at startup if missing.
+
+---
+
+---
+
+## Compose Directory Layout
+
+The `compose/` directory contains Dockerfiles and configuration files used by the Docker Compose files (`compose/dev.yml`, `compose/prod.yml`, `compose/monitor.yml`).
+
+### Directory Structure
+
+```
+compose/
+├── Dockerfile.rust              # Multi-stage Rust backend build
+├── Dockerfile.python           # Multi-stage Python sidecar build
+├── Dockerfile.frontend         # Multi-stage Astro frontend build (with nginx)
+├── nginx/
+│   ├── nginx.conf             # Nginx reverse proxy configuration
+│   └── certs/                # TLS certificates (gitignored)
+│       ├── fullchain.pem      # Full certificate chain (gitignored)
+│       ├── privkey.pem        # Private key (gitignored)
+│       └── README.md          # Instructions for obtaining certificates
+├── prometheus.yml            # Prometheus scrape configuration
+└── grafana/
+    ├── provisioning/
+    │   ├── datasources/      # Grafana datasource definitions
+    │   │   └── prometheus.yml
+    │   └── dashboards/       # Dashboard discovery config
+    │       └── dashboards.yml
+    └── dashboards/            # Pre-built dashboards
+        └── overview.json      # Starter dashboard (p99, error rate, RPS)
+```
+
+### Dockerfiles
+
+All production Dockerfiles are stored in `compose/` and use the **repository root** as build context:
+
+| Dockerfile | Purpose | Build Context | Description |
+|-----------|---------|--------------|-------------|
+| `compose/Dockerfile.rust` | Rust backend | `..` (repo root) | Multi-stage: builds Rust app, minimal runtime |
+| `compose/Dockerfile.python` | Python sidecar | `..` (repo root) | Multi-stage: installs deps, minimal Python runtime |
+| `compose/Dockerfile.frontend` | Astro frontend | `..` (repo root) | Multi-stage: builds Astro site, serves with nginx |
+
+**Why repo root as context?** Dockerfiles need access to source files in `backend/`, `python-sidecar/`, `frontend/`. Using `..` (parent directory) as context allows Dockerfiles in `compose/` to copy from the repo root.
+
+Example from `compose/prod.yml`:
+```yaml
+backend:
+  build:
+    context: ..          # Repository root
+    dockerfile: compose/Dockerfile.rust
+```
+
+### Nginx Configuration
+
+`compose/nginx/nginx.conf` is mounted to the nginx container at `/etc/nginx/nginx.conf`.
+
+**Key features:**
+- Reverse proxy for Rust backend (`/api/` routes) and Astro frontend (all other routes)
+- TLS termination at ports 80/443
+- Health check endpoint proxy
+- Gzip compression enabled
+
+**TLS Certificates:**
+- Place `fullchain.pem` and `privkey.pem` in `compose/nginx/certs/`
+- See `compose/nginx/certs/README.md` for instructions
+- **Never commit private keys to version control**
+
+### Monitoring Configuration
+
+| File | Purpose |
+|------|---------|
+| `compose/prometheus.yml` | Defines scrape targets (Rust backend, node-exporter) |
+| `compose/grafana/provisioning/datasources/prometheus.yml` | Auto-provisions Prometheus as Grafana datasource |
+| `compose/grafana/provisioning/dashboards/dashboards.yml` | Tells Grafana where to find dashboards |
+| `compose/grafana/dashboards/overview.json` | Pre-built dashboard with key metrics |
 
 ---
 

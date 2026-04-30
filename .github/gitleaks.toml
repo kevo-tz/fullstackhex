@@ -3,7 +3,7 @@ title = "FullStackHex Gitleaks Config"
 [allowlist]
 description = "Allow known safe placeholders and scanning artifacts"
 paths = [
-  '''^\.secrets\.baseline$''',
+  '''^\.github/\.secrets\.baseline$''',
   '''^docs/.*''',
 ]
 regexes = [

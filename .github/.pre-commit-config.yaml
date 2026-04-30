@@ -5,4 +5,4 @@ repos:
       - id: detect-secrets
         args:
           - --baseline
-          - .secrets.baseline
+          - .github/.secrets.baseline

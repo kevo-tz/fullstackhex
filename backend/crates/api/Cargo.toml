@@ -18,4 +18,3 @@ python-sidecar = { path = "../python-sidecar" }
 
 [dev-dependencies]
 serial_test = { workspace = true }
-tempfile = "3"

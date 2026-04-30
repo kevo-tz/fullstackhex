@@ -34,7 +34,7 @@
 │                        ▼                              │
 │  ┌─────────────────────────────────────────┐         │
 │  │    Python Service (FastAPI)             │         │
-│  │    /tmp/python-sidecar.sock (internal) │         │
+│  │    /tmp/fullstackhex-python.sock (internal) │         │
 │  └─────────────────────────────────────────┘         │
 └──────────────┬───────────────────────────────────────┘
                │
@@ -97,7 +97,7 @@
 | Object Storage | RustFS (S3-compatible) | `docker compose ps` |
 | Monitoring | Prometheus 3.x + Grafana | Production only, see .env.example |
 | Reverse Proxy | Nginx (production) | Production only, see .env.example |
-| IPC | Unix domain socket | `/tmp/python-sidecar.sock` |
+| IPC | Unix domain socket | `/tmp/fullstackhex-python.sock` |
 
 ## Workspace Structure
 
@@ -125,7 +125,7 @@ backend/
 
 ## IPC: Unix Domain Socket
 
-Python sidecar binds to `/tmp/python-sidecar.sock`. Rust communicates through this socket for:
+Python sidecar binds to `/tmp/fullstackhex-python.sock`. Rust communicates through this socket for:
 - Low latency (no TCP overhead)
 - Security (only local processes can connect)
 - Simple integration with FastAPI/Uvicorn
@@ -163,7 +163,7 @@ slow database. The api crate uses it in the `/health/db` handler.
 fn get_socket_path() -> PathBuf {
     std::env::var("PYTHON_SIDECAR_SOCKET")
         .map(PathBuf::from)
-        .unwrap_or_else(|_| PathBuf::from("/tmp/python-sidecar.sock"))
+        .unwrap_or_else(|_| PathBuf::from("/tmp/fullstackhex-python.sock"))
 }
 ```
 
@@ -173,7 +173,7 @@ fn get_socket_path() -> PathBuf {
 |---------|------|---------|
 | Frontend | 4321 | Development server |
 | Rust Backend | 8001 | Only external API |
-| Python Sidecar | Internal | Unix socket only (/tmp/python-sidecar.sock) |
+| Python Sidecar | Internal | Unix socket only (/tmp/fullstackhex-python.sock) |
 | PostgreSQL | 5432 | Database |
 | Redis | 6379 | Cache |
 | RustFS | 9000 | S3-compatible storage |

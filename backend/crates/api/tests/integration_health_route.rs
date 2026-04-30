@@ -246,10 +246,7 @@ async fn health_python_ok_when_socket_present() {
     let bytes = to_bytes(response.into_body(), usize::MAX).await.unwrap();
     let v: Value = serde_json::from_slice(&bytes).expect("response must be valid JSON");
 
-    assert_eq!(
-        v["status"], "ok",
-        "status must be 'ok' when socket exists"
-    );
+    assert_eq!(v["status"], "ok", "status must be 'ok' when socket exists");
 
     let _ = std::fs::remove_file(socket_path);
     // SAFETY: restoring env; serialised by #[serial].

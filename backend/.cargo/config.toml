@@ -1,0 +1,4 @@
+# Run tests single-threaded to prevent env-var races between integration tests
+# that mutate PYTHON_SIDECAR_SOCKET and DATABASE_URL.
+[test]
+test-threads = 1

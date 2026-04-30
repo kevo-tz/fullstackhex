@@ -1,0 +1,58 @@
+#!/bin/bash
+# FullStackHex Configuration
+# Centralized configuration for all scripts
+
+# Source common functions
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/common.sh"
+
+# Repository root
+REPO_ROOT="$(get_repo_root)"
+
+# Service URLs and ports (can be overridden by environment variables)
+RUST_BACKEND_URL="${RUST_BACKEND_URL:-http://localhost:8001}"
+FRONTEND_URL="${FRONTEND_URL:-http://localhost:4321}"
+
+# Database configuration
+POSTGRES_USER="${POSTGRES_USER:-app_user}"
+POSTGRES_PASSWORD="${POSTGRES_PASSWORD:-}"
+POSTGRES_DB="${POSTGRES_DB:-app_database}"
+POSTGRES_PORT="${POSTGRES_PORT:-5432}"
+POSTGRES_HOST="${POSTGRES_HOST:-localhost}"
+
+REDIS_HOST="${REDIS_HOST:-localhost}"
+REDIS_PORT="${REDIS_PORT:-6379}"
+REDIS_PASSWORD="${REDIS_PASSWORD:-}"
+
+# Benchmark configuration (Apache Bench)
+BENCHLITE_REQUESTS="${BENCHLITE_REQUESTS:-1000}"
+BENCHLITE_CONCURRENT="${BENCHLITE_CONCURRENT:-100}"
+
+# Performance thresholds (in milliseconds unless otherwise noted)
+RUST_HEALTH_P50_THRESHOLD="${RUST_HEALTH_P50_THRESHOLD:-5}"
+RUST_HEALTH_P99_THRESHOLD="${RUST_HEALTH_P99_THRESHOLD:-20}"
+FRONTEND_TTFB_THRESHOLD="${FRONTEND_TTFB_THRESHOLD:-100}" # in milliseconds
+
+# File paths
+BASELINE_DIR="${BASELINE_DIR:-.performance}"
+HTML_REPORT_DIR="${HTML_REPORT_DIR:-.performance}"
+
+# Export all variables for use in subshells
+export REPO_ROOT
+export RUST_BACKEND_URL
+export FRONTEND_URL
+export POSTGRES_USER
+export POSTGRES_PASSWORD
+export POSTGRES_DB
+export POSTGRES_PORT
+export POSTGRES_HOST
+export REDIS_HOST
+export REDIS_PORT
+export REDIS_PASSWORD
+export BENCHLITE_REQUESTS
+export BENCHLITE_CONCURRENT
+export RUST_HEALTH_P50_THRESHOLD
+export RUST_HEALTH_P99_THRESHOLD
+export FRONTEND_TTFB_THRESHOLD
+export BASELINE_DIR
+export HTML_REPORT_DIR

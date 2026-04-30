@@ -15,7 +15,7 @@ A production-ready full-stack template combining a Rust/Axum backend, Python sid
 
 ## Key Features
 
-- **Rust + Python sidecar** — Rust backend spawns a Python FastAPI process and communicates over a Unix domain socket for low-latency IPC without network overhead.
+- **Rust + Python sidecar** — Rust backend connects to a running Python FastAPI sidecar via Unix domain socket for low-latency IPC without network overhead. Note: Rust crates are currently scaffold implementations.
 - **Latest tooling** — Rust stable (edition 2024), Bun (latest), uv (latest), Astro v6.
 - **Ships complete** — every source file, config, and test is committed. Clone and run — no scaffolding step.
 - **`make setup`** — installs Rust, Bun, uv and creates `.env` from `.env.example`. That's all first-time setup requires.

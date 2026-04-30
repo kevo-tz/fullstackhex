@@ -75,7 +75,9 @@ impl PythonSidecar {
         for attempt in 0..=self.max_retries {
             if attempt > 0 {
                 const BACKOFF_BASE_MS: u64 = 100;
-                let backoff = Duration::from_millis(BACKOFF_BASE_MS * 2u64.pow(attempt - 1));
+                let backoff = Duration::from_millis(
+                    BACKOFF_BASE_MS.saturating_mul(2u64.saturating_pow(attempt - 1).min(1_000_000)),
+                );
                 tokio::time::sleep(backoff).await;
             }
 
@@ -136,7 +138,9 @@ impl PythonSidecar {
             .windows(4)
             .position(|w| w == b"\r\n\r\n")
             .map(|p| p + 4)
-            .unwrap_or(0);
+            .ok_or_else(|| SidecarError::InvalidResponse(
+                "missing HTTP header separator".into(),
+            ))?;
 
         let body = &response[body_start..];
 

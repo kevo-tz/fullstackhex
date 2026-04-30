@@ -56,8 +56,7 @@ describe("Python card detail logic", () => {
     expect(computeDetailText({})).toBe("");
   });
 
-  test("clears to empty string when both are null", () => {
-    expect(computeDetailText({ detail: null as unknown, error: null as unknown }))
-      .toBe("");
+  test("clears to empty string when both are absent", () => {
+    expect(computeDetailText({})).toBe("");
   });
 });

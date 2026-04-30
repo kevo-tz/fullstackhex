@@ -14,12 +14,12 @@ pub enum DbError {
 /// Check database health by running `SELECT 1`.
 ///
 /// Takes an optional pool reference. Returns `Err(NotConfigured)` if `None`.
-/// Uses a 3-second timeout around the query to prevent hanging on a slow
-/// or unresponsive database.
+/// Uses a timeout around the query to prevent hanging on a slow or unresponsive database.
 pub async fn health_check(pool: Option<&PgPool>) -> Result<(), DbError> {
+    const QUERY_TIMEOUT: Duration = Duration::from_secs(3);
     let pool = pool.ok_or(DbError::NotConfigured)?;
 
-    tokio::time::timeout(Duration::from_secs(3), async {
+    tokio::time::timeout(QUERY_TIMEOUT, async {
         sqlx::query("SELECT 1")
             .execute(pool)
             .await
@@ -27,7 +27,7 @@ pub async fn health_check(pool: Option<&PgPool>) -> Result<(), DbError> {
             .map_err(DbError::from)
     })
     .await
-    .map_err(|_| DbError::PoolTimeout(Duration::from_secs(3)))?
+    .map_err(|_| DbError::PoolTimeout(QUERY_TIMEOUT))?
 }
 
 #[cfg(test)]

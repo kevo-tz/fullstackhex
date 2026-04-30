@@ -10,9 +10,9 @@ authors.workspace = true
 [dependencies]
 tokio = { workspace = true, features = ["net", "time"] }
 serde_json = { workspace = true }
-serde = { workspace = true }
 thiserror = "2"
 
 [dev-dependencies]
-tokio = { workspace = true, features = ["io-util", "macros", "rt-multi-thread"] }
+tokio = { workspace = true, features = ["io-util", "macros", "rt-multi-thread", "net"] }
 tempfile = "3"
+serial_test = { workspace = true }

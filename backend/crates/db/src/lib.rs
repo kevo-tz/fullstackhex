@@ -21,7 +21,7 @@ pub async fn health_check(pool: Option<&PgPool>) -> Result<(), DbError> {
 
     tokio::time::timeout(QUERY_TIMEOUT, async {
         sqlx::query("SELECT 1")
-            .execute(pool)
+            .fetch_one(pool)
             .await
             .map(|_| ())
             .map_err(DbError::from)

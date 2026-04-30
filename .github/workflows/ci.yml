@@ -26,14 +26,6 @@ jobs:
         with:
           python-version: "3.14"
 
-      - name: Bootstrap workspace when missing
-        working-directory: ${{ github.workspace }}
-        run: |
-          if [ ! -d "$GITHUB_WORKSPACE/backend" ] || [ ! -d "$GITHUB_WORKSPACE/python-sidecar" ] || [ ! -d "$GITHUB_WORKSPACE/frontend" ]; then
-            chmod +x "$GITHUB_WORKSPACE/scripts/install.sh"
-            "$GITHUB_WORKSPACE/scripts/install.sh"
-          fi
-
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
@@ -74,14 +66,6 @@ jobs:
         with:
           python-version: "3.14"
 
-      - name: Bootstrap workspace when missing
-        working-directory: ${{ github.workspace }}
-        run: |
-          if [ ! -d "$GITHUB_WORKSPACE/backend" ] || [ ! -d "$GITHUB_WORKSPACE/python-sidecar" ] || [ ! -d "$GITHUB_WORKSPACE/frontend" ]; then
-            chmod +x "$GITHUB_WORKSPACE/scripts/install.sh"
-            "$GITHUB_WORKSPACE/scripts/install.sh"
-          fi
-
       - name: Install uv
         uses: astral-sh/setup-uv@v8.1.0
 
@@ -120,14 +104,6 @@ jobs:
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
 
-      - name: Bootstrap workspace when missing
-        working-directory: ${{ github.workspace }}
-        run: |
-          if [ ! -d "$GITHUB_WORKSPACE/backend" ] || [ ! -d "$GITHUB_WORKSPACE/python-sidecar" ] || [ ! -d "$GITHUB_WORKSPACE/frontend" ]; then
-            chmod +x "$GITHUB_WORKSPACE/scripts/install.sh"
-            "$GITHUB_WORKSPACE/scripts/install.sh"
-          fi
-
       - name: Cache Bun modules
         uses: actions/cache@v5
         with:
@@ -154,7 +130,7 @@ jobs:
           VITE_RUST_BACKEND_URL: http://localhost:8001
         run: bun run build
 
-  generated-smoke:
+  smoke:
     name: smoke
     runs-on: ubuntu-latest
 
@@ -165,6 +141,9 @@ jobs:
         uses: actions/setup-python@v6
         with:
           python-version: "3.14"
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
 
       - name: Install uv
         uses: astral-sh/setup-uv@v8.1.0
@@ -177,22 +156,17 @@ jobs:
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
 
-      - name: Generate project scaffold
-        run: |
-          chmod +x scripts/install.sh
-          ./scripts/install.sh
-
-      - name: Rust generated smoke
+      - name: Rust smoke
         working-directory: backend
         run: cargo test --workspace
 
-      - name: Python generated smoke
+      - name: Python smoke
         working-directory: python-sidecar
         run: |
           uv sync --all-extras
           uv run pytest
 
-      - name: Frontend generated smoke
+      - name: Frontend smoke
         working-directory: frontend
         run: bun test
 

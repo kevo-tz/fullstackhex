@@ -1,0 +1,22 @@
+[workspace]
+members = ["crates/*"]
+resolver = "3"
+
+[workspace.package]
+description = "FullStackHex project"
+license = "MIT"
+repository = "https://github.com/kevo-tz/fullstackhex"
+authors = ["kevo-tz"]
+
+[workspace.dependencies]
+tokio = { version = "1", features = ["full"] }
+serde = { version = "1.0", features = ["derive"] }
+axum = "0.8"
+sqlx = { version = "0.8", features = ["postgres", "runtime-tokio-native-tls"] }
+tower = "0.5"
+tower-http = "0.5"
+serde_json = "1.0"
+serial_test = "3"
+
+[profile.release]
+lto = true

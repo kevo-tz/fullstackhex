@@ -34,7 +34,7 @@ Start here for the FullStackHex documentation. Documents are listed in recommend
    - Common commands and troubleshooting
 
 5. **[INITIALIZATION.md](./INITIALIZATION.md)** - Template-ready setup script
-   - Portable `scripts/install.sh` for new projects
+   - Portable bootstrap script template for new projects
    - Verification steps
    - Troubleshooting
 

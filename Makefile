@@ -1,17 +1,17 @@
 .PHONY: up down restart logs-backend logs-frontend test bench clean check-env setup setup-env help
 
 # Default values (override with: make up POSTGRES_PASSWORD=mypassword)
-COMPOSE_DEV = docker compose -f compose/dev.yml
-COMPOSE_PROD = docker compose -f compose/prod.yml
-COMPOSE_MON = docker compose -f compose/monitor.yml
+COMPOSE_DEV = docker compose -f compose/dev.yml --env-file .env
+COMPOSE_PROD = docker compose -f compose/prod.yml --env-file .env
+COMPOSE_MON = docker compose -f compose/monitor.yml --env-file .env
 
 # Help
 dev: check-env
 	$(COMPOSE_DEV) up -d
 	@echo "Starting Python sidecar..."
-	cd python-sidecar && uv run uvicorn app.main:app --uds /tmp/fullstackhex-python.sock &
+	cd python-sidecar && set -a && . ../.env && set +a && uv run uvicorn app.main:app --uds /tmp/fullstackhex-python.sock &
 	@echo "Starting Rust backend..."
-	cd backend && cargo run -p api &
+	cd backend && set -a && . ../.env && set +a && cargo run -p api &
 	@echo "Starting frontend..."
 	cd frontend && bun run dev &
 	@echo ""

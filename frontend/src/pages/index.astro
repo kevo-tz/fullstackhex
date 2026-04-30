@@ -1,0 +1,249 @@
+---
+---
+
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="icon" href="/favicon.ico" />
+    <meta name="viewport" content="width=device-width" />
+    <meta name="generator" content={Astro.generator} />
+    <title>FullStackHex</title>
+    <style>
+      *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+      body {
+        font-family: ui-monospace, "Cascadia Code", "Source Code Pro", Menlo, Consolas, monospace;
+        background: #0d0d0d;
+        color: #e2e8f0;
+        min-height: 100vh;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 2rem;
+      }
+
+      .container { max-width: 640px; width: 100%; }
+
+      header { margin-bottom: 2.5rem; text-align: center; }
+      header h1 { font-size: 2rem; font-weight: 700; letter-spacing: -0.02em; color: #f8fafc; }
+      header p  { margin-top: 0.5rem; color: #64748b; font-size: 0.875rem; }
+
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+        gap: 1rem;
+        margin-bottom: 2rem;
+      }
+
+      .card {
+        border: 1px solid #1e293b;
+        border-radius: 8px;
+        padding: 1.25rem;
+        background: #111827;
+        transition: border-color 0.2s;
+      }
+
+      .card-label {
+        font-size: 0.7rem;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+        color: #475569;
+        margin-bottom: 0.75rem;
+      }
+
+      .status-row {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+      }
+
+      .dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        flex-shrink: 0;
+        background: #334155; /* loading */
+      }
+      .dot.ok       { background: #22c55e; box-shadow: 0 0 6px #22c55e88; }
+      .dot.degraded { background: #f59e0b; box-shadow: 0 0 6px #f59e0b88; }
+      .dot.error    { background: #ef4444; box-shadow: 0 0 6px #ef444488; }
+      .dot.loading  { background: #334155; animation: pulse 1.2s ease-in-out infinite; }
+
+      @keyframes pulse { 0%,100% { opacity: 1 } 50% { opacity: 0.3 } }
+
+      .status-text { font-size: 0.9rem; color: #94a3b8; }
+
+      .detail {
+        margin-top: 0.75rem;
+        font-size: 0.7rem;
+        color: #475569;
+        white-space: pre-wrap;
+        word-break: break-word;
+        max-height: 80px;
+        overflow: auto;
+      }
+
+      .raw-block {
+        margin-top: 1.5rem;
+        border: 1px solid #1e293b;
+        border-radius: 8px;
+        background: #0a0a0a;
+        padding: 1rem;
+      }
+      .raw-block summary {
+        cursor: pointer;
+        font-size: 0.75rem;
+        color: #475569;
+        user-select: none;
+      }
+      .raw-block pre {
+        margin-top: 0.75rem;
+        font-size: 0.72rem;
+        color: #64748b;
+        overflow: auto;
+        max-height: 300px;
+      }
+
+      footer {
+        margin-top: 2.5rem;
+        text-align: center;
+        font-size: 0.75rem;
+        color: #1e293b;
+      }
+
+      .refresh-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.4rem;
+        margin-top: 1rem;
+        padding: 0.4rem 0.9rem;
+        border: 1px solid #1e293b;
+        border-radius: 6px;
+        background: transparent;
+        color: #475569;
+        font-family: inherit;
+        font-size: 0.75rem;
+        cursor: pointer;
+        transition: border-color 0.15s, color 0.15s;
+      }
+      .refresh-btn:hover { border-color: #334155; color: #94a3b8; }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <header>
+        <h1>FullStackHex</h1>
+        <p>Rust · Python sidecar · Astro · PostgreSQL · Redis · RustFS</p>
+      </header>
+
+      <div class="grid">
+        <div class="card" id="card-rust">
+          <div class="card-label">Rust API</div>
+          <div class="status-row">
+            <div class="dot loading" id="dot-rust"></div>
+            <span class="status-text" id="text-rust">checking…</span>
+          </div>
+        </div>
+
+        <div class="card" id="card-db">
+          <div class="card-label">PostgreSQL</div>
+          <div class="status-row">
+            <div class="dot loading" id="dot-db"></div>
+            <span class="status-text" id="text-db">checking…</span>
+          </div>
+        </div>
+
+        <div class="card" id="card-python">
+          <div class="card-label">Python sidecar</div>
+          <div class="status-row">
+            <div class="dot loading" id="dot-python"></div>
+            <span class="status-text" id="text-python">checking…</span>
+          </div>
+          <div class="detail" id="detail-python"></div>
+        </div>
+      </div>
+
+      <div class="raw-block">
+        <details>
+          <summary>raw /health response</summary>
+          <pre id="raw-json">fetching…</pre>
+        </details>
+      </div>
+
+      <div style="text-align:center">
+        <button class="refresh-btn" id="refresh-btn">↺ refresh</button>
+      </div>
+
+      <footer>port 8001 · <a href="https://github.com/kevo-tz/fullstackhex" style="color:inherit">github.com/kevo-tz/fullstackhex</a></footer>
+    </div>
+
+    <script>
+      function setStatus(id: string, status: string, label: string) {
+        const dot  = document.getElementById("dot-"  + id);
+        const text = document.getElementById("text-" + id);
+        if (dot)  dot.className    = "dot " + (status || "loading");
+        if (text) text.textContent = label || status || "…";
+      }
+
+      function setDetail(id: string, text: string) {
+        const el = document.getElementById("detail-" + id);
+        if (el) el.textContent = text || "";
+      }
+
+      async function fetchHealth() {
+        setStatus("rust",   "loading", "checking…");
+        setStatus("db",     "loading", "checking…");
+        setStatus("python", "loading", "checking…");
+        const rawJson = document.getElementById("raw-json");
+        if (rawJson) rawJson.textContent = "fetching…";
+
+        try {
+          const res  = await fetch("/api/health");
+          const data = await res.json();
+
+          if (rawJson) rawJson.textContent = JSON.stringify(data, null, 2);
+
+          // Rust
+          setStatus("rust", data.rust?.status === "ok" ? "ok" : "error",
+            data.rust?.status || "unknown");
+
+          // DB
+          setStatus("db",
+            data.db?.status === "ok" ? "ok" :
+            data.db?.status === "error" ? "error" : "degraded",
+            data.db?.error ? "error: " + data.db.error : data.db?.status || "unknown");
+
+          // Python
+          const py = data.python || {};
+          const pyLabel =
+            py.status === "ok"          ? "ok" :
+            py.status === "unavailable" ? "not running" :
+            py.status === "error"       ? "error" : "unknown";
+          setStatus("python",
+            py.status === "ok" ? "ok" :
+            py.status === "unavailable" ? "degraded" : "error",
+            pyLabel);
+
+          if (py.detail) {
+            setDetail("python", JSON.stringify(py.detail, null, 2));
+          } else if (py.error) {
+            setDetail("python", py.error);
+          }
+
+        } catch (err) {
+          setStatus("rust",   "error", "unreachable");
+          setStatus("db",     "error", "—");
+          setStatus("python", "error", "—");
+          const msg = err instanceof Error ? err.message : String(err);
+          if (rawJson) rawJson.textContent =
+            "Error: could not reach /api/health\n\n" + msg;
+        }
+      }
+
+      document.getElementById("refresh-btn")?.addEventListener("click", fetchHealth);
+      fetchHealth();
+    </script>
+  </body>
+</html>

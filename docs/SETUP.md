@@ -1,242 +1,86 @@
-# Setup Guide - Rust/Bun/uv Latest-Version Stack
+# Setup Guide
 
 ## Table of Contents
 
-1. [One-Command Initialization](#one-command-initialization)
-2. [What `install.sh` Does](#what-installsh-does)
-3. [Manual Step-by-Step (Alternative)](#manual-step-by-step-alternative)
-4. [Scaffold Frontend (Astro + Bun)](#scaffold-frontend-astro--bun)
-5. [Verify Installation](#verify-installation)
-6. [Environment Configuration](#environment-configuration)
-7. [Troubleshooting](#troubleshooting)
-8. [Related Docs](#related-docs)
+1. [Prerequisites](#prerequisites)
+2. [First-Time Setup](#first-time-setup)
+3. [Start Development](#start-development)
+4. [Verify Installation](#verify-installation)
+5. [Environment Configuration](#environment-configuration)
+6. [Troubleshooting](#troubleshooting)
+7. [Related Docs](#related-docs)
 
-## One-Command Initialization
+## Prerequisites
+
+All source code, configs, and test files ship in the repo — no scaffolding step required. You only need the runtime tools installed.
+
+| Tool | Version | Install |
+|------|---------|---------|
+| Rust | stable (edition 2024) | `curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \| sh` |
+| Bun | latest | `curl -fsSL https://bun.sh/install \| bash` |
+| Python | 3.14+ | via pyenv: `pyenv install 3.14-dev` |
+| uv | latest | `curl -LsSf https://astral.sh/uv/install.sh \| sh` |
+| Docker + Compose | any recent | [docs.docker.com/get-docker](https://docs.docker.com/get-docker/) |
+
+> **Python 3.14** is pre-release on most systems. Install via pyenv:
+> ```bash
+> curl https://pyenv.run | bash
+> pyenv install 3.14-dev
+> pyenv global 3.14-dev
+> ```
+
+## First-Time Setup
 
 ```bash
-# Clone and run full initialization
 git clone <repo>
 cd fullstackhex
-mkdir -p backend
-./scripts/install.sh
+
+# Install tools + create .env from .env.example
+make setup
 ```
 
-The script installs/updates Rust, Bun, and uv, validates Docker prerequisites, scaffolds `backend/`, scaffolds `python-sidecar/`, scaffolds `frontend/`, and generates baseline Rust/Python/frontend tests.
+`make setup` runs `scripts/install-deps.sh` (installs/updates Rust, Bun, uv; validates Docker and Python) then copies `.env.example → .env` if `.env` is absent.
 
-## What `install.sh` Does
-
-1. **Checks and installs tools (in order):**
-   - Rust (edition 2024) via rustup
-   - Bun (latest) via official installer
-   - Python 3.14+ validation (script exits if not found; install via pyenv first)
-   - uv (latest Python package manager)
-   - Docker & Docker Compose validation (script exits if not found; install manually)
-
-2. **Creates or updates Rust workspace:**
-   ```
-   backend/
-   ├── Cargo.toml (workspace root)
-   ├── crates/
-   │   ├── api/
-   │   ├── core/
-   │   ├── db/
-   │   └── python-sidecar/
-   └── target/
-   ```
-
-3. **Sets up environment:**
-   - Creates `.env` (from `.env.example` if present, or empty)
-   - Configures Unix socket path for Python sidecar (**PYTHON_SIDECAR_SOCKET**)
-   - Adds `VITE_RUST_BACKEND_URL=http://localhost:8001`
-
-4. **Scaffolds Astro frontend** (automated, idempotent):
-   - Runs `bun create astro@latest frontend` (non-interactive, `--template minimal`)
-   - Installs Tailwind v4 (`@tailwindcss/vite`) and Node SSR adapter (`@astrojs/node`)
-   - Writes `astro.config.mjs` with `output: 'server'` and Tailwind vite plugin
-   - Creates `src/pages/api/health.ts` proxy route to Rust backend
-
-5. **Scaffolds Python sidecar** (automated, idempotent):
-   - Creates `python-sidecar/pyproject.toml`
-   - Creates `python-sidecar/app/main.py`
-   - Creates `python-sidecar/tests/` with starter unit + integration tests
-
-6. **Scaffolds generated test suites**:
-   - Rust: starter unit/integration/smoke tests under crate `tests/` folders
-   - Python: starter unit/integration tests under `python-sidecar/tests/`
-   - Frontend: starter unit/integration/smoke tests under `frontend/tests/`
-
-## Manual Step-by-Step (Alternative)
-
-### 1. Install Tools (Latest Versions)
-
-**Prerequisite:** Python 3.14+ required (check: `python3 --version`).
-Python 3.14 is still in pre-release on most systems; the easiest way to install it is via **pyenv**:
+If you only need to (re)create `.env` without touching tools:
 
 ```bash
-# Install pyenv (Linux/macOS)
-curl https://pyenv.run | bash
-
-# Add to shell profile (bash example — adjust for zsh/fish)
-echo 'export PYENV_ROOT="$HOME/.pyenv"' >> ~/.bashrc
-echo 'command -v pyenv >/dev/null || export PATH="$PYENV_ROOT/bin:$PATH"' >> ~/.bashrc
-echo 'eval "$(pyenv init -)"' >> ~/.bashrc
-source ~/.bashrc
-
-# Install Python 3.14 (use latest rc/dev if stable not yet released)
-pyenv install 3.14-dev   # or: pyenv install 3.14.0rc2
-pyenv global 3.14-dev
-
-python3 --version  # should print 3.14.x
+make setup-env
 ```
 
-Alternatively, check your package manager for a `python3.14` package.
+## Start Development
 
 ```bash
-# Rust (edition 2024)
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-rustup update stable
-rustc --version  # Verify edition 2024
+# 1. Start infrastructure (PostgreSQL, Redis, RustFS, Grafana)
+make up
 
-# Bun (latest)
-curl -fsSL https://bun.sh/install | bash
-bun upgrade
-bun --version
+# 2. Start Rust API (in a separate terminal)
+cd backend && cargo run -p api
 
-# uv (latest Python package manager)
-curl -LsSf https://astral.sh/uv/install.sh | sh
-uv --version
-
-# Verify Docker
-docker --version
-docker compose version
+# 3. Start Astro frontend (in a separate terminal)
+cd frontend && bun run dev
 ```
 
-### 2. Create Rust Workspace
+Ports:
 
-```bash
-mkdir -p backend
-cd backend
+| Service | URL |
+|---------|-----|
+| Rust API | http://localhost:8001 |
+| Frontend | http://localhost:4321 |
+| Grafana | http://localhost:3000 |
+| PostgreSQL | localhost:5432 |
+| Redis | localhost:6379 |
 
-# Initialize workspace (done by install.sh)
-cat > Cargo.toml << 'EOF'
-[workspace]
-members = ["crates/*"]
-resolver = "3"
-
-[workspace.package]
-description = "FullStackHex project"
-license = "MIT"
-repository = "https://github.com/yourusername/yourrepo"
-authors = ["Your Name <your@email.com>"]
-
-[workspace.dependencies]
-tokio = { version = "1", features = ["full"] }
-serde = { version = "1.0", features = ["derive"] }
-axum = "0.8"
-sqlx = { version = "0.8", features = ["postgres", "runtime-tokio-native-tls"] }
-tower = "0.5"
-tower-http = "0.5"
-
-[profile.release]
-lto = true
-EOF
-
-# Create crates
-mkdir -p crates
-for crate in api core db python-sidecar; do
-    if [ ! -d "crates/$crate" ]; then
-        cargo new --lib --edition 2024 "crates/$crate"
-    fi
-done
-
-# Build workspace
-cargo build --workspace
-```
-
-### 3. Start Infrastructure
-
-```bash
-# Verify Docker daemon is running
-docker info > /dev/null 2>&1 || { echo "Docker daemon not running. Start Docker first."; exit 1; }
-
-docker compose -f compose/dev.yml up -d
-docker compose -f compose/dev.yml ps
-```
-
-### 4. Run Services
-
-```bash
-# Terminal 1: Rust API
-cd backend
-cargo run -p api
-
-# Terminal 2: Frontend (dependencies already installed by install.sh)
-cd frontend
-bun run dev
-```
-
-## Scaffold Frontend (Astro + Bun)
-
-> **Note:** `install.sh` runs this automatically. The steps below are the manual equivalent.
-
-```bash
-# From repo root
-bun create astro@latest frontend -- --template minimal --no-install --no-git --yes
-
-cd frontend
-
-# Install Tailwind v4 (vite plugin) and Node SSR adapter
-bun add @tailwindcss/vite tailwindcss @astrojs/node
-bun install
-```
-
-Recommended first-page structure:
-
-```text
-frontend/
-├── astro.config.mjs
-├── package.json
-├── tsconfig.json
-├── src/
-│   ├── components/
-│   ├── layouts/
-│   └── pages/
-│       ├── index.astro
-│       └── api/
-│           └── health.ts
-└── public/
-```
-
-> **Note:** No `tailwind.config.mjs` — Tailwind v4 is configured entirely via the vite plugin.
-
-Recommended first route implementation:
-
-```typescript
-// src/pages/api/health.ts
-export async function GET() {
-   const response = await fetch(`${import.meta.env.VITE_RUST_BACKEND_URL}/health`);
-   const body = await response.json();
-
-   return new Response(JSON.stringify(body), {
-      headers: { 'Content-Type': 'application/json' },
-   });
-}
-```
+The Rust binary auto-spawns the Python sidecar over a Unix socket (`PYTHON_SIDECAR_SOCKET`). You do not need to start Python separately.
 
 ## Verify Installation
 
 ```bash
-# Rust backend (with sidecar)
+# All services healthy
+make health
+
+# Individual checks
 curl http://localhost:8001/health
-
-# Frontend build
-cd frontend
-bun run build
-
-# Python sidecar (via Rust, internal socket)
 curl http://localhost:8001/api/python/health
-
-# Frontend
 curl http://localhost:4321
 
 # Infrastructure
@@ -245,65 +89,60 @@ docker compose -f compose/dev.yml ps
 
 ## Environment Configuration
 
-```bash
-# Copy template
-cp .env.example .env
+`.env` is created by `make setup` from `.env.example`. Key variables:
 
-# Review settings (defaults work for local dev)
-cat .env
-```
-
-Key settings in `.env`:
 ```env
-# Rust Backend
-DATABASE_URL=postgres://app_user:CHANGE_ME@localhost:5432/app_database # pragma: allowlist secret
+# Database
+DATABASE_URL=postgres://app_user:CHANGE_ME@localhost:5432/app_database
 
-# Python Sidecar (Unix socket)
-PYTHON_SIDECAR_SOCKET=/tmp/python-sidecar.sock
+# Python sidecar (Unix socket — set automatically by make setup-env)
+PYTHON_SIDECAR_SOCKET=/home/<you>/.fullstackhex/sockets/python-sidecar.sock
 
-# Frontend (Rust API only)
+# Frontend → Rust
+VITE_RUST_BACKEND_URL=http://localhost:8001
 ASTRO_PORT=4321
 PUBLIC_API_URL=http://localhost:8001
-VITE_RUST_BACKEND_URL=http://localhost:8001
 ```
+
+Replace `CHANGE_ME` with a real password before running `make up`. `make check-env` validates this.
 
 ## Troubleshooting
 
-### Port Conflicts
-```bash
-# Check what's using a port
-lsof -i :5432
+### Port conflicts
 
+```bash
+lsof -i :8001   # or :4321, :5432, :6379
 # Change ports in .env and compose/dev.yml
 ```
 
-### Rust Build Errors
+### Rust build errors
+
 ```bash
 cd backend
-cargo clean
-cargo build --workspace
+cargo clean && cargo build --workspace
 ```
 
-### Python Dependencies
-
-Python dependencies are managed in the root `python-sidecar/` project.
+### Python dependencies
 
 ```bash
 cd python-sidecar
 uv sync
 ```
 
-### Infrastructure Issues
-```bash
-# Check logs
-docker compose logs postgres
-docker compose logs redis
+### Infrastructure issues
 
-# Restart services
-docker compose restart
+```bash
+docker compose -f compose/dev.yml logs postgres
+docker compose -f compose/dev.yml logs redis
+docker compose -f compose/dev.yml restart
 ```
+
+### Socket path issues
+
+`PYTHON_SIDECAR_SOCKET` in `.env` must point to a directory the current user can write to. Re-run `make setup-env` to regenerate the correct path.
 
 ## Related Docs
 
-- [Next: ARCHITECTURE.md](./ARCHITECTURE.md) - System design overview
-- [All Docs](./INDEX.md) - Full documentation index
+- [ARCHITECTURE.md](./ARCHITECTURE.md) — System design and data flow
+- [CI.md](./CI.md) — GitHub Actions pipeline
+- [All Docs](./INDEX.md) — Full documentation index

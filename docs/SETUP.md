@@ -69,7 +69,27 @@ The script installs/updates Rust, Bun, and uv, validates Docker prerequisites, s
 
 ### 1. Install Tools (Latest Versions)
 
-**Prerequisite:** Python 3.14+ required (check: `python3 --version`). Install via pyenv or package manager if missing.
+**Prerequisite:** Python 3.14+ required (check: `python3 --version`).
+Python 3.14 is still in pre-release on most systems; the easiest way to install it is via **pyenv**:
+
+```bash
+# Install pyenv (Linux/macOS)
+curl https://pyenv.run | bash
+
+# Add to shell profile (bash example — adjust for zsh/fish)
+echo 'export PYENV_ROOT="$HOME/.pyenv"' >> ~/.bashrc
+echo 'command -v pyenv >/dev/null || export PATH="$PYENV_ROOT/bin:$PATH"' >> ~/.bashrc
+echo 'eval "$(pyenv init -)"' >> ~/.bashrc
+source ~/.bashrc
+
+# Install Python 3.14 (use latest rc/dev if stable not yet released)
+pyenv install 3.14-dev   # or: pyenv install 3.14.0rc2
+pyenv global 3.14-dev
+
+python3 --version  # should print 3.14.x
+```
+
+Alternatively, check your package manager for a `python3.14` package.
 
 ```bash
 # Rust (edition 2024)

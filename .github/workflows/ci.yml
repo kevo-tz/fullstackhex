@@ -150,6 +150,8 @@ jobs:
         run: bun test
 
       - name: Build
+        env:
+          VITE_RUST_BACKEND_URL: http://localhost:8001
         run: bun run build
 
   generated-smoke:

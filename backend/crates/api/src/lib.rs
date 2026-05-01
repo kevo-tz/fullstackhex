@@ -200,6 +200,10 @@ mod tests {
             )
             .await
             .unwrap();
+        assert_eq!(
+            response.headers().get("cache-control").unwrap(),
+            "no-cache, no-store"
+        );
         let bytes = to_bytes(response.into_body(), usize::MAX).await.unwrap();
         let v: Value = serde_json::from_slice(&bytes).unwrap();
         assert_eq!(v["status"], "ok");

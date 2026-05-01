@@ -73,6 +73,51 @@ mod tests {
         );
     }
 
+    #[tokio::test]
+    async fn health_check_pool_timeout_when_exhausted() {
+        let database_url = match std::env::var("DATABASE_URL") {
+            Ok(url) => url,
+            Err(_) => {
+                eprintln!("SKIP: DATABASE_URL not set");
+                return;
+            }
+        };
+        let pool = match PgPoolOptions::new()
+            .max_connections(1)
+            .acquire_timeout(Duration::from_secs(1))
+            .connect(&database_url)
+            .await
+        {
+            Ok(p) => p,
+            Err(e) => {
+                eprintln!("SKIP: cannot connect ({e})");
+                return;
+            }
+        };
+        // Hold the only connection so next acquire times out
+        let _held = match pool.acquire().await {
+            Ok(c) => c,
+            Err(e) => {
+                eprintln!("SKIP: cannot acquire ({e})");
+                return;
+            }
+        };
+        // Second acquire should timeout; use a fresh pool with tiny timeout
+        let tiny_pool = PgPoolOptions::new()
+            .max_connections(1)
+            .acquire_timeout(Duration::from_millis(1))
+            .connect(&database_url)
+            .await
+            .expect("connect for timeout test");
+        let result = health_check(Some(&tiny_pool)).await;
+        assert!(
+            matches!(result, Err(DbError::PoolTimeout(_))),
+            "expected PoolTimeout, got {:?}",
+            result
+        );
+        drop(_held);
+    }
+
     #[test]
     fn error_display_renders_variants() {
         let nc = DbError::NotConfigured;

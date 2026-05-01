@@ -63,6 +63,7 @@ For production template setup, use `.env.prod.example`.
 | [docs/SERVICES.md](docs/SERVICES.md) | Crate layout, API endpoints, health checks |
 | [docs/INFRASTRUCTURE.md](docs/INFRASTRUCTURE.md) | Docker Compose reference, volumes, commands |
 | [docs/INITIALIZATION.md](docs/INITIALIZATION.md) | Portable template for new projects |
+| [docs/INDEX.md](docs/INDEX.md) | Full documentation index |
 
 ## Contributing
 

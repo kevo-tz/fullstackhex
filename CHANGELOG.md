@@ -18,9 +18,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`.env` wired into Makefile**: all compose targets read `--env-file .env`
 
 ### Fixed
-- Stale Python card `detail` now clears when both `py.detail` and `py.error` are absent
-- PostgreSQL 18 Alpine volume mount path corrected
-- Socket client backoff uses saturating arithmetic to prevent overflow
+- Dashboard no longer shows stale Python error messages after the sidecar recovers
+- PostgreSQL data persists correctly across container restarts (Alpine volume path fixed)
+- Python sidecar connection retries no longer risk overflow under repeated failures
 
 ### Removed
 - Dead stub code in `python-sidecar` and `db` crates

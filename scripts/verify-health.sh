@@ -54,47 +54,49 @@ fi
 # Load environment variables
 load_env
 
-# Service configurations
+# Service configurations (URLs used as reference; PostgreSQL and Redis
+# are checked via dedicated CLI tools, not HTTP)
 declare -A SERVICES
 SERVICES["Rust Backend"]="${RUST_BACKEND_URL:-http://localhost:8001}/health"
 SERVICES["Frontend"]="${FRONTEND_URL:-http://localhost:4321}"
-SERVICES["PostgreSQL"]="postgres://${POSTGRES_USER:-app_user}:${POSTGRES_PASSWORD:-CHANGE_ME}@localhost:${POSTGRES_PORT:-5432}/${POSTGRES_DB:-app_database}?sslmode=disable"
+SERVICES["PostgreSQL"]="postgresql://${POSTGRES_USER:-app_user}@localhost:${POSTGRES_PORT:-5432}/${POSTGRES_DB:-app_database}"
 SERVICES["Redis"]="redis://localhost:${REDIS_PORT:-6379}"
 
 # Check all services
 log_info "Checking services (timeout: ${TIMEOUT}s)..."
 echo ""
 
-# HTTP services
-for service in "Rust Backend" "Frontend"; do
-    url="${SERVICES[$service]}"
-    if ! check_service_http "$service" "$url" "$TIMEOUT" "$VERBOSE"; then
-        FAILED=1
-        case "$service" in
-            "Rust Backend")
-                log_warning "Start with: cd backend && cargo run -p api"
-                ;;
-            "Frontend")
-                log_warning "Start with: cd frontend && bun run dev"
-                ;;
-        esac
-        echo ""
-    fi
+for service in "Rust Backend" "Frontend" "PostgreSQL" "Redis"; do
+    case "$service" in
+        "PostgreSQL")
+            if ! check_postgres; then
+                FAILED=1
+                log_warning "Start with: docker compose -f compose/dev.yml up -d postgres"
+            fi
+            ;;
+        "Redis")
+            if ! check_redis; then
+                FAILED=1
+                log_warning "Start with: docker compose -f compose/dev.yml up -d redis"
+            fi
+            ;;
+        *)
+            url="${SERVICES[$service]}"
+            if ! check_service_http "$service" "$url" "$TIMEOUT" "$VERBOSE"; then
+                FAILED=1
+                case "$service" in
+                    "Rust Backend")
+                        log_warning "Start with: cd backend && cargo run -p api"
+                        ;;
+                    "Frontend")
+                        log_warning "Start with: cd frontend && bun run dev"
+                        ;;
+                esac
+            fi
+            ;;
+    esac
+    echo ""
 done
-
-# Database
-if ! check_postgres; then
-    FAILED=1
-    log_warning "Start with: docker compose -f compose/dev.yml up -d postgres"
-    echo ""
-fi
-
-# Redis
-if ! check_redis; then
-    FAILED=1
-    log_warning "Start with: docker compose -f compose/dev.yml up -d redis"
-    echo ""
-fi
 
 # Summary
 log_info "Health check completed"

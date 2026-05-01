@@ -52,11 +52,11 @@ if ! grep -q "PYTHON_SIDECAR_SOCKET" .env 2>/dev/null; then
     # CI environments get a temp path; local gets user-isolated path
     if [ "${CI:-false}" = "true" ]; then
         socket_dir="${RUNNER_TEMP:-$PWD/.tmp}/sockets"
-        socket_path="$socket_dir/python-sidecar.sock"
+        socket_path="/tmp/fullstackhex-python.sock"
         log_warning "CI detected: using temp socket path"
     else
-        socket_dir="$HOME/.fullstackhex/sockets"
-        socket_path="$socket_dir/python-sidecar.sock"
+        # socket_dir removed — using default path matching .env.example
+        socket_path="/tmp/fullstackhex-python.sock"
     fi
 
     log_dry_run "Would append PYTHON_SIDECAR_SOCKET=$socket_path to .env"

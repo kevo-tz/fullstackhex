@@ -56,7 +56,7 @@ check_postgres() {
     local pg_user="${POSTGRES_USER:-app_user}"
     local pg_db="${POSTGRES_DB:-app_database}"
 
-    if PGPASSWORD="${POSTGRES_PASSWORD:-CHANGE_ME}" psql -h "$pg_host" -p "$pg_port" -U "$pg_user" -d "$pg_db" -c "SELECT 1" > /dev/null 2>&1; then
+    if PGPASSWORD="${POSTGRES_PASSWORD:-}" psql -h "$pg_host" -p "$pg_port" -U "$pg_user" -d "$pg_db" -c "SELECT 1" > /dev/null 2>&1; then
         log_success "PostgreSQL is healthy"
         return 0
     else

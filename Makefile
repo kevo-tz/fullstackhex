@@ -5,22 +5,47 @@ COMPOSE_DEV = docker compose -f compose/dev.yml --env-file .env
 COMPOSE_PROD = docker compose -f compose/prod.yml --env-file .env
 COMPOSE_MON = docker compose -f compose/monitor.yml --env-file .env
 
+# PostgreSQL readiness tuning
+POSTGRES_RETRIES ?= 6
+POSTGRES_POLL_INTERVAL ?= 5
+PYTHON_SOCK ?= /tmp/fullstackhex-python.sock
+
+# Shared startup sequence used by dev and watch targets
+START_DEPS = \
+	$(COMPOSE_DEV) up -d; \
+	@echo "Waiting for PostgreSQL (up to $$(( $(POSTGRES_RETRIES) * $(POSTGRES_POLL_INTERVAL) ))s)..."; \
+	@for i in $$(seq 1 $(POSTGRES_RETRIES)); do \
+	  docker compose -f compose/dev.yml exec -T postgres pg_isready -U app_user 2>/dev/null && break; \
+	  sleep $(POSTGRES_POLL_INTERVAL); \
+	done; \
+	@echo "PostgreSQL ready (or timeout — Rust will retry connections)"; \
+	@echo "Starting Python sidecar..."; \
+	cd python-sidecar && set -a && . ../.env && set +a && uv run uvicorn app.main:app --uds $(PYTHON_SOCK) &; \
+	@echo "Starting frontend..."; \
+	cd frontend && bun run dev &
+
 # Help
 dev: check-env
-	$(COMPOSE_DEV) up -d
-	@echo "Starting Python sidecar..."
-	cd python-sidecar && set -a && . ../.env && set +a && uv run uvicorn app.main:app --uds /tmp/fullstackhex-python.sock &
+	$(START_DEPS)
 	@echo "Starting Rust backend..."
 	cd backend && set -a && . ../.env && set +a && cargo run -p api &
-	@echo "Starting frontend..."
-	cd frontend && bun run dev &
 	@echo ""
 	@echo "All services starting. Dashboard at http://localhost:4321"
+	@echo "Run 'make down-dev' to stop everything."
+
+watch: check-env
+	@command -v cargo-watch >/dev/null 2>&1 || { echo "ERROR: cargo-watch not found. Install: cargo install cargo-watch"; exit 1; }
+	$(START_DEPS)
+	@echo "Starting Rust backend (watch mode)..."
+	cd backend && set -a && . ../.env && set +a && cargo watch -x 'run -p api' &
+	@echo ""
+	@echo "All services starting with hot reload. Dashboard at http://localhost:4321"
 	@echo "Run 'make down-dev' to stop everything."
 
 down-dev:
 	@pkill -f "uvicorn app.main:app" 2>/dev/null || true
 	@pkill -f "cargo run -p api" 2>/dev/null || true
+	@pkill -f "cargo watch" 2>/dev/null || true
 	@pkill -f "bun run dev" 2>/dev/null || true
 	$(COMPOSE_DEV) down
 	@echo "All services stopped."
@@ -37,15 +62,17 @@ help:
 	@echo "Services:"
 	@echo "  up          - Start all development services (infra only)"
 	@echo "  dev         - Start full stack (infra + python + rust + frontend)"
+	@echo "  watch       - Start full stack with Rust hot reload (cargo watch)"
 	@echo "  down        - Stop all services"
 	@echo "  down-dev    - Stop full stack and infrastructure"
 	@echo "  restart     - Restart all services"
 	@echo ""
-	@echo "  Example: make dev  # starts everything, dashboard at localhost:4321"
+	@echo "  Example: make watch # starts everything with live reload"
 	@echo ""
 	@echo "Logs:"
 	@echo "  logs-backend   - Follow Rust backend logs"
 	@echo "  logs-frontend  - Follow Astro frontend logs"
+	@echo "  logs-python    - Python sidecar log guidance"
 	@echo "  logs-db        - Follow PostgreSQL logs"
 	@echo "  logs-redis     - Follow Redis logs"
 	@echo ""
@@ -119,6 +146,11 @@ logs-db:
 
 logs-redis:
 	$(COMPOSE_DEV) logs -f redis
+
+logs-python:
+	@echo "Python sidecar runs directly (not in compose)."
+	@echo "  View logs in the terminal where 'make dev' or 'make watch' is running."
+	@echo "  Or restart manually with: cd python-sidecar && uv run uvicorn app.main:app --uds $(PYTHON_SOCK)"
 
 # Testing
 test: test-rust test-python test-frontend

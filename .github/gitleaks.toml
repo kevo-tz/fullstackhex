@@ -1,11 +1,39 @@
+# FullStackHex — Gitleaks configuration
+# Project-specific secret patterns beyond the default ruleset.
+# See https://github.com/gitleaks/gitleaks for baseline configuration.
+
 title = "FullStackHex Gitleaks Config"
 
+# Extend default rules — don't replace them
+extend = { useDefault = true }
+
+[[rules]]
+id = "rustfs-secret-key"
+description = "RustFS SECRET_KEY assignment"
+regex = '''RUSTFS_SECRET_KEY\s*=\s*(?!CHANGE_ME)(?!\$\{)['\"]?[A-Za-z0-9+/]{20,}'''
+keywords = ["RUSTFS_SECRET_KEY"]
+
+[[rules]]
+id = "postgres-password"
+description = "PostgreSQL password that looks real (not CHANGE_ME)"
+regex = '''POSTGRES_PASSWORD\s*=\s*(?!CHANGE_ME)(?!\$\{)['\"]?[A-Za-z0-9@#$%^&*]{8,}'''
+keywords = ["POSTGRES_PASSWORD"]
+
+[[rules]]
+id = "redis-password"
+description = "Redis password that looks real (not CHANGE_ME)"
+regex = '''REDIS_PASSWORD\s*=\s*(?!CHANGE_ME)(?!\$\{)['\"]?[A-Za-z0-9@#$%^&*]{8,}'''
+keywords = ["REDIS_PASSWORD"]
+
+[[rules]]
+id = "grafana-password"
+description = "Grafana admin password that looks real (not CHANGE_ME)"
+regex = '''GRAFANA_ADMIN_PASSWORD\s*=\s*(?!CHANGE_ME)(?!\$\{)['\"]?[A-Za-z0-9@#$%^&*]{8,}'''
+keywords = ["GRAFANA_ADMIN_PASSWORD"]
+
 [allowlist]
-description = "Allow known safe placeholders and scanning artifacts"
+description = "Known-safe patterns"
 paths = [
   '''^\.github/\.secrets\.baseline$''',
-  '''^docs/.*''',
-]
-regexes = [
-  '''CHANGE_ME''',
+  '''^\.env\.example$''',
 ]

@@ -2,9 +2,9 @@ use axum::http::{HeaderMap, StatusCode, header};
 use axum::response::IntoResponse;
 use axum::{Json, Router, extract::State, routing::get};
 use python_sidecar::PythonSidecar;
-use serde_json::json;
 #[cfg(test)]
 use serde_json::Value;
+use serde_json::json;
 use sqlx::PgPool;
 use sqlx::postgres::PgPoolOptions;
 use std::sync::Arc;
@@ -61,7 +61,10 @@ pub fn router_with_state(state: AppState) -> Router {
 
 fn no_cache() -> HeaderMap {
     let mut headers = HeaderMap::new();
-    headers.insert(header::CACHE_CONTROL, axum::http::HeaderValue::from_static("no-cache, no-store"));
+    headers.insert(
+        header::CACHE_CONTROL,
+        axum::http::HeaderValue::from_static("no-cache, no-store"),
+    );
     headers
 }
 
@@ -111,7 +114,11 @@ async fn health_db(State(state): State<Arc<AppState>>) -> impl IntoResponse {
                     "Check that PostgreSQL is running and the database exists.",
                 ),
             };
-            (StatusCode::OK, no_cache(), Json(json!({ "status": "error", "error": error, "fix": fix })))
+            (
+                StatusCode::OK,
+                no_cache(),
+                Json(json!({ "status": "error", "error": error, "fix": fix })),
+            )
         }
     }
 }
@@ -151,7 +158,11 @@ async fn health_python(State(state): State<Arc<AppState>>) -> impl IntoResponse 
                     "The Python sidecar returned an HTTP error. Check its logs for details.".to_string(),
                 ),
             };
-            (StatusCode::OK, no_cache(), Json(json!({ "status": "unavailable", "error": error_msg, "fix": fix_msg })))
+            (
+                StatusCode::OK,
+                no_cache(),
+                Json(json!({ "status": "unavailable", "error": error_msg, "fix": fix_msg })),
+            )
         }
     }
 }

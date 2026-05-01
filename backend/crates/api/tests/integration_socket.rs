@@ -13,7 +13,7 @@ use tokio::time::timeout;
 fn socket_path_configuration() {
     // Test reading socket path from environment
     let socket_path = std::env::var("PYTHON_SIDECAR_SOCKET")
-        .unwrap_or_else(|_| "/tmp/python-sidecar.sock".to_string());
+        .unwrap_or_else(|_| "/tmp/fullstackhex-python.sock".to_string());
 
     let path = PathBuf::from(socket_path);
     assert!(path.is_absolute() || path.starts_with("~"));
@@ -71,7 +71,7 @@ async fn error_handling_missing_socket() {
 fn socket_path_env_override() {
     // Directly validate the fallback logic without mutating env:
     // when env var is absent, default path is used; when present, it overrides.
-    let default_path = "/tmp/python-sidecar.sock";
+    let default_path = "/tmp/fullstackhex-python.sock";
     let override_path = "/custom/path/socket.sock";
 
     // Simulate absent var
@@ -158,7 +158,7 @@ async fn full_socket_communication() {
     // Run with: cargo test --test integration_socket -- --ignored
 
     let socket_path = std::env::var("PYTHON_SIDECAR_SOCKET")
-        .unwrap_or_else(|_| "/tmp/python-sidecar.sock".to_string());
+        .unwrap_or_else(|_| "/tmp/fullstackhex-python.sock".to_string());
 
     if !PathBuf::from(&socket_path).exists() {
         println!("Skipping test: socket not found at {}", socket_path);

@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.4.0.0] - 2026-05-01
+
+### Added
+- **Cache-Control headers** on all health endpoints: `no-cache, no-store` prevents stale dashboard indicators
+- **Actionable fix suggestions** in every health error response: `fix` field tells the developer exactly what command to run
+- **Response size limit** on Unix socket reads (1 MiB): prevents memory exhaustion from a runaway sidecar
+- **Socket path getter** (`PythonSidecar::socket_path()`): error messages reference the actual configured path, not a hardcoded one
+
+### Changed
+- **Default socket path** standardized to `/tmp/fullstackhex-python.sock`
+- **DB connection errors** now include the original `sqlx::Error` detail for faster diagnosis
+- **Python sidecar retries** capped at 10 to prevent multi-hour backoff from misconfigured env vars
+
+### Fixed
+- Response size boundary check off-by-one: exactly-1-MiB responses are no longer rejected
+- `no_cache()` header construction uses infallible `from_static` instead of `.unwrap()`
+
+---
+
 ## [0.3.1.0] - 2026-05-01
 
 ### Changed
@@ -18,9 +37,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`.env` wired into Makefile**: all compose targets read `--env-file .env`
 
 ### Fixed
-- Stale Python card `detail` now clears when both `py.detail` and `py.error` are absent
-- PostgreSQL 18 Alpine volume mount path corrected
-- Socket client backoff uses saturating arithmetic to prevent overflow
+- Dashboard no longer shows stale Python error messages after the sidecar recovers
+- PostgreSQL data persists correctly across container restarts (Alpine volume path fixed)
+- Python sidecar connection retries no longer risk overflow under repeated failures
 
 ### Removed
 - Dead stub code in `python-sidecar` and `db` crates

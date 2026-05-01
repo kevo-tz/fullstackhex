@@ -9,26 +9,26 @@ extend = { useDefault = true }
 
 [[rules]]
 id = "rustfs-secret-key"
-description = "RustFS SECRET_KEY assignment"
-regex = '''RUSTFS_SECRET_KEY\s*=\s*(?!CHANGE_ME)(?!\$\{)['\"]?[A-Za-z0-9+/]{20,}'''
+description = "RustFS SECRET_KEY assignment with a real-looking value"
+regex = '''RUSTFS_SECRET_KEY\s*=\s*['\"]?[A-Za-z0-9+/]{20,}['\"]?'''
 keywords = ["RUSTFS_SECRET_KEY"]
 
 [[rules]]
 id = "postgres-password"
-description = "PostgreSQL password that looks real (not CHANGE_ME)"
-regex = '''POSTGRES_PASSWORD\s*=\s*(?!CHANGE_ME)(?!\$\{)['\"]?[A-Za-z0-9@#$%^&*]{8,}'''
+description = "PostgreSQL password with a real-looking value"
+regex = '''POSTGRES_PASSWORD\s*=\s*['\"]?[A-Za-z0-9@#$%^&*]{8,}['\"]?'''
 keywords = ["POSTGRES_PASSWORD"]
 
 [[rules]]
 id = "redis-password"
-description = "Redis password that looks real (not CHANGE_ME)"
-regex = '''REDIS_PASSWORD\s*=\s*(?!CHANGE_ME)(?!\$\{)['\"]?[A-Za-z0-9@#$%^&*]{8,}'''
+description = "Redis password with a real-looking value"
+regex = '''REDIS_PASSWORD\s*=\s*['\"]?[A-Za-z0-9@#$%^&*]{8,}['\"]?'''
 keywords = ["REDIS_PASSWORD"]
 
 [[rules]]
 id = "grafana-password"
-description = "Grafana admin password that looks real (not CHANGE_ME)"
-regex = '''GRAFANA_ADMIN_PASSWORD\s*=\s*(?!CHANGE_ME)(?!\$\{)['\"]?[A-Za-z0-9@#$%^&*]{8,}'''
+description = "Grafana admin password with a real-looking value"
+regex = '''GRAFANA_ADMIN_PASSWORD\s*=\s*['\"]?[A-Za-z0-9@#$%^&*]{8,}['\"]?'''
 keywords = ["GRAFANA_ADMIN_PASSWORD"]
 
 [allowlist]
@@ -36,4 +36,8 @@ description = "Known-safe patterns"
 paths = [
   '''^\.github/\.secrets\.baseline$''',
   '''^\.env\.example$''',
+]
+regexes = [
+  '''CHANGE_ME''',
+  '''\$\{[A-Z_]+\}''',
 ]

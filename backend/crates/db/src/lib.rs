@@ -33,11 +33,44 @@ pub async fn health_check(pool: Option<&PgPool>) -> Result<(), DbError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use sqlx::postgres::PgPoolOptions;
 
     #[tokio::test]
     async fn health_check_none_pool() {
         let result = health_check(None).await;
         assert!(matches!(result, Err(DbError::NotConfigured)));
+    }
+
+    #[tokio::test]
+    async fn health_check_success_with_real_database() {
+        let database_url = match std::env::var("DATABASE_URL") {
+            Ok(url) => url,
+            Err(_) => {
+                eprintln!("SKIP: DATABASE_URL not set — skipping real-DB health check test");
+                return;
+            }
+        };
+
+        let pool = PgPoolOptions::new()
+            .max_connections(1)
+            .acquire_timeout(Duration::from_secs(2))
+            .connect(&database_url)
+            .await;
+
+        let pool = match pool {
+            Ok(p) => p,
+            Err(e) => {
+                eprintln!("SKIP: could not connect to database ({e}) — skipping real-DB test");
+                return;
+            }
+        };
+
+        let result = health_check(Some(&pool)).await;
+        assert!(
+            result.is_ok(),
+            "health_check should succeed against a real database, got: {:?}",
+            result
+        );
     }
 
     #[test]

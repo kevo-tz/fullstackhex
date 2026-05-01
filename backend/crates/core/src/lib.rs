@@ -1,5 +1,20 @@
-pub fn add(left: u64, right: u64) -> u64 {
-    left + right
+//! Core business logic for FullStackHex.
+//!
+//! This crate is the domain layer — models, services, and use cases
+//! that are independent of the web framework, database, or transport.
+//!
+//! Currently a placeholder. Add your domain types and business rules here.
+
+/// Placeholder: remove when real domain types are added.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct AppConfig {
+    pub max_page_size: usize,
+}
+
+impl Default for AppConfig {
+    fn default() -> Self {
+        Self { max_page_size: 100 }
+    }
 }
 
 #[cfg(test)]
@@ -7,8 +22,8 @@ mod tests {
     use super::*;
 
     #[test]
-    fn it_works() {
-        let result = add(2, 2);
-        assert_eq!(result, 4);
+    fn default_config_reasonable() {
+        let cfg = AppConfig::default();
+        assert_eq!(cfg.max_page_size, 100);
     }
 }

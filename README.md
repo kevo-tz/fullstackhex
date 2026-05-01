@@ -15,7 +15,7 @@ A production-ready full-stack template combining a Rust/Axum backend, Python sid
 
 ## Key Features
 
-- **Rust + Python sidecar** — Rust backend connects to a running Python FastAPI sidecar via Unix domain socket for low-latency IPC without network overhead. Note: Rust crates are currently scaffold implementations.
+- **Rust + Python sidecar** — Rust backend connects to a running Python FastAPI sidecar via Unix domain socket for low-latency IPC without network overhead.
 - **Latest tooling** — Rust stable (edition 2024), Bun (latest), uv (latest), Astro v6.
 - **Ships complete** — every source file, config, and test is committed. Clone and run — no scaffolding step.
 - **`make setup`** — installs Rust, Bun, uv and creates `.env` from `.env.example`. That's all first-time setup requires.
@@ -35,24 +35,15 @@ cd fullstackhex
 
 # 2. Install tools + create .env
 make setup
-# Edit .env — replace every CHANGE_ME value before proceeding
 
-# 3. Start infrastructure
-docker compose -f compose/dev.yml up -d
-
-# 3b. Optional monitoring overlay
-docker compose -f compose/monitor.yml up -d
-
-# 4. Run backend (spawns Python sidecar automatically)
-cd backend && cargo run -p api
-
-# 5. Run frontend
-cd frontend && bun run dev
+# 3. Start everything (infra + Python sidecar + Rust backend + frontend)
+make dev
 ```
 
-Prerequisites: Python 3.14+, Docker, Docker Compose. `make setup` handles Rust, Bun, and uv.
+Dashboard at http://localhost:4321 — three green dots means everything is healthy.
 
-For production template setup, use `.env.prod.example`.
+For infra-only (run backend/frontend manually): `make up`.
+Production template: use `.env.prod.example` for reference values.
 
 ## Documentation
 

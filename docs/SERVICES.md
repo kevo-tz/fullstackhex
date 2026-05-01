@@ -98,13 +98,13 @@ cargo run -p api
 
 ## Python Service (Sidecar Mode)
 
-### Running as Sidecar
+### Running the Sidecar
 
-Python runs as a subprocess of Rust, not standalone:
+Python runs as an independent process alongside Rust, communicating over a Unix socket.
+Start it via make targets (`make dev` or `make watch`) or manually:
 
 ```bash
-# This is managed by Rust, not run manually
-uv run uvicorn app.main:app --uds /tmp/fullstackhex-python.sock
+cd python-sidecar && uv run uvicorn app.main:app --uds /tmp/fullstackhex-python.sock
 ```
 
 ### FastAPI with Unix Socket
@@ -130,7 +130,7 @@ def health() -> dict[str, str]:
 ### Key Difference from Standalone
 
 - **No direct external access**: Only accessible via Rust proxy through Unix socket
-- **Managed lifecycle**: Rust restarts Python on crash
+- **Independent lifecycle**: Python runs independently (started by `make dev` or `make watch`)
 - **Internal networking**: Communicates via `/tmp/fullstackhex-python.sock`
 
 ---
@@ -302,6 +302,23 @@ curl -I http://localhost:4321
 # Infrastructure
 docker compose ps
 ```
+
+---
+
+## Log Locations
+
+| Service | Log destination | How to tail |
+|---------|----------------|-------------|
+| Rust backend | stdout (runs directly) | `make logs-backend` |
+| Python sidecar | stdout (runs directly) | `make logs-python` |
+| Frontend (Astro) | stdout (runs directly) | `make logs-frontend` |
+| PostgreSQL | Docker container stdout | `make logs-db` |
+| Redis | Docker container stdout | `make logs-redis` |
+| RustFS | Docker container stdout | `docker compose -f compose/dev.yml logs -f rustfs` |
+| Prometheus | Docker container stdout | `docker compose -f compose/monitor.yml logs -f prometheus` |
+| Grafana | Docker container stdout | `docker compose -f compose/monitor.yml logs -f grafana` |
+
+Docker services also support: `docker compose -f compose/dev.yml logs -f <service>`
 
 ---
 

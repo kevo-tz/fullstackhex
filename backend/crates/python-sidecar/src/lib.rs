@@ -47,7 +47,8 @@ impl PythonSidecar {
         let max_retries: u32 = std::env::var("PYTHON_SIDECAR_MAX_RETRIES")
             .ok()
             .and_then(|v| v.parse().ok())
-            .unwrap_or(3);
+            .unwrap_or(3)
+            .min(10);
 
         Self {
             socket_path,
@@ -140,7 +141,7 @@ impl PythonSidecar {
             .await
             .map_err(|e| SidecarError::ConnectionFailed(e.to_string()))?;
 
-        if response.len() as u64 >= MAX_RESPONSE_SIZE {
+        if response.len() as u64 > MAX_RESPONSE_SIZE {
             return Err(SidecarError::InvalidResponse(
                 "response exceeded maximum allowed size".into(),
             ));

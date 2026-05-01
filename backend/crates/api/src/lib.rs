@@ -36,7 +36,7 @@ pub async fn router() -> Router {
                 .await
             {
                 Ok(pool) => DbStatus::Connected(pool),
-                Err(_) => DbStatus::ConnectionFailed("connection failed (check DATABASE_URL and PostgreSQL status)".into()),
+                Err(e) => DbStatus::ConnectionFailed(format!("connection failed: {e}")),
             }
         }
         Err(_) => DbStatus::NotConfigured,
@@ -61,7 +61,7 @@ pub fn router_with_state(state: AppState) -> Router {
 
 fn no_cache() -> HeaderMap {
     let mut headers = HeaderMap::new();
-    headers.insert(header::CACHE_CONTROL, "no-cache, no-store".parse().unwrap());
+    headers.insert(header::CACHE_CONTROL, axum::http::HeaderValue::from_static("no-cache, no-store"));
     headers
 }
 

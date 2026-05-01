@@ -3,11 +3,11 @@
 ## Completed
 
 - Wire PythonSidecar IPC + real DB health checks (v0.3.1.0)
-- Parallelize frontend health fetches (v0.4.x)
-- Add `make watch` target (v0.4.x)
-- Document log locations per service (v0.4.x)
-- Fix outdated Python sidecar docs in SERVICES.md (v0.4.x)
-- Add `make logs-python` target (v0.4.x)
+- Parallelize frontend health fetches (v0.5.0.0)
+- Add `make watch` target (v0.5.0.0)
+- Document log locations per service (v0.5.0.0)
+- Fix outdated Python sidecar docs in SERVICES.md (v0.5.0.0)
+- Add `make logs-python` target (v0.5.0.0)
 
 ## Deferred
 

@@ -66,7 +66,7 @@ To report a vulnerability, follow the policy in [.github/SECURITY.md](.github/SE
 
 ## Quality Automation
 
-- `CI` runs Rust/Python/frontend checks, generated template smoke tests, and security scans.
+- `CI` runs Rust/Python/frontend checks, smoke tests, and security scans.
 - `Dependabot` configuration lives at `.github/dependabot.yml`.
 - Local secret scanning is configured via `.pre-commit-config.yaml` and `.github/.secrets.baseline`.
 

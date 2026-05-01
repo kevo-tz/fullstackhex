@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.5.0.0] - 2026-05-02
+
+### Added
+- **Parallel health checks** in the frontend dashboard: three health endpoints are now fetched simultaneously with `Promise.allSettled` instead of sequentially, cutting worst-case load time from ~15s to ~5s
+- **`make watch` target** for hot-reload Rust development: starts all services with `cargo watch` so backend changes recompile automatically
+- **`make logs-python` target** documenting where to find Python sidecar logs (stdout of the dev/watch terminal)
+- **Log locations table** in `docs/SERVICES.md` mapping each service to its log output
+- **Gitleaks custom rules** for project-specific secret patterns (RustFS key, PostgreSQL/Redis/Grafana passwords)
+
+### Changed
+- **DRY dev/watch startup** with `START_DEPS` macro: PostgreSQL readiness polling with configurable retries and timeout before starting consumers
+- **Frontend deps bumped**: Astro 6.1.9 → 6.2.1
+
+### Fixed
+- **Non-root USER** added to all three production Dockerfiles (frontend, Python, Rust)
+- **Cargo.lock** removed from `.gitignore` and committed (binary app, not a library crate)
+- **Spurious Python 3.14 setup** removed from non-Python CI jobs (frontend and Rust lanes)
+- **Script consistency sweep**: removed `CHANGE_ME` password defaults, unified socket paths, fixed test-mode hooks
+
 ## [0.4.0.0] - 2026-05-01
 
 ### Added

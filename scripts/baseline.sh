@@ -82,7 +82,7 @@ log_info "Running benchmarks..."
 echo ""
 
 # Run bench.sh and capture output
-BENCH_OUTPUT=$(./scripts/bench.sh 2>&1) || true
+BENCH_OUTPUT=$("$SCRIPT_DIR/bench.sh" 2>&1) || true
 
 echo "$BENCH_OUTPUT"
 echo ""
@@ -94,6 +94,7 @@ log_info "Parsing results..."
 mkdir -p "$BASELINE_DIR"
 
 # Save results (simplified - in real implementation, parse bench.sh output)
+log_warning "Results contain placeholder values — real parsing of bench.sh output is not yet implemented"
 cat > "$RESULTS_FILE" << EOF
 {
   "timestamp": "$(date -Iseconds)",

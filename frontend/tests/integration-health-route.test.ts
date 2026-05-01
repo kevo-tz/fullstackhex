@@ -38,38 +38,11 @@ function makeFetchMock(responses: FetchResponses) {
   });
 }
 
-// Re-implement the handler logic inline so tests don't need a running Astro
-// server.  This mirrors `src/pages/api/health.ts` exactly and will catch
-// regressions if the source diverges.
+import { aggregateHealth } from "../src/lib/health";
+
+// Test helper: wraps aggregateHealth into a Response matching the Astro route shape
 async function runHandler(fetchImpl: typeof fetch, apiBase = "http://localhost:8001") {
-  const result: Record<string, unknown> = {
-    rust: { status: "unknown" },
-    db: { status: "unknown" },
-    python: { status: "unknown" },
-  };
-
-  try {
-    const r = await fetchImpl(`${apiBase}/health`);
-    const d = await r.json();
-    result.rust = { status: (d as Record<string, unknown>).status ?? "unknown" };
-  } catch {
-    result.rust = { status: "error" };
-  }
-
-  try {
-    const r = await fetchImpl(`${apiBase}/health/db`);
-    result.db = await r.json();
-  } catch {
-    result.db = { status: "error" };
-  }
-
-  try {
-    const r = await fetchImpl(`${apiBase}/health/python`);
-    result.python = await r.json();
-  } catch {
-    result.python = { status: "unavailable" };
-  }
-
+  const result = await aggregateHealth(fetchImpl, apiBase);
   return new Response(JSON.stringify(result), {
     headers: { "Content-Type": "application/json" },
   });
@@ -242,6 +215,91 @@ describe("/api/health aggregation route", () => {
 
       const response = await runHandler(fetchMock as unknown as typeof fetch);
       expect(response.status).toBe(200);
+    });
+  });
+
+  describe("parallelism — all three fetches issued", () => {
+    test("fetch called exactly three times with correct URLs", async () => {
+      const fetchCalls: string[] = [];
+      const fetchMock = mock(async (url: string) => {
+        fetchCalls.push(url);
+        return new Response(JSON.stringify({ status: "ok" }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      });
+
+      await runHandler(fetchMock as unknown as typeof fetch);
+
+      expect(fetchCalls).toHaveLength(3);
+      expect(fetchCalls[0]).toEndWith("/health");
+      expect(fetchCalls[1]).toEndWith("/health/db");
+      expect(fetchCalls[2]).toEndWith("/health/python");
+    });
+  });
+
+  describe("malformed JSON response", () => {
+    test("handles valid HTTP response with non-JSON body", async () => {
+      const fetchMock = mock(async (_url: string) => {
+        return new Response("not-json", { status: 200 });
+      });
+
+      const response = await runHandler(fetchMock as unknown as typeof fetch);
+      const body = await response.json() as Record<string, Record<string, unknown>>;
+
+      expect(body.rust.status).toBe("error");
+      expect(body.db.status).toBe("error");
+      expect(body.python.status).toBe("unavailable");
+    });
+  });
+
+  describe("partial malformed JSON — one endpoint returns non-JSON", () => {
+    test("rust returns non-JSON, db and python succeed", async () => {
+      const fetchMock = mock(async (url: string) => {
+        if (url.endsWith("/health")) return new Response("not-json", { status: 200 });
+        return new Response(JSON.stringify({ status: "ok" }), {
+          headers: { "Content-Type": "application/json" },
+        });
+      });
+
+      const response = await runHandler(fetchMock as unknown as typeof fetch);
+      const body = await response.json() as Record<string, Record<string, unknown>>;
+
+      expect(body.rust.status).toBe("error");
+      expect(body.db.status).toBe("ok");
+      expect(body.python.status).toBe("ok");
+    });
+
+    test("db returns non-JSON, rust and python succeed", async () => {
+      const fetchMock = mock(async (url: string) => {
+        if (url.endsWith("/health/db")) return new Response("not-json", { status: 200 });
+        return new Response(JSON.stringify({ status: "ok" }), {
+          headers: { "Content-Type": "application/json" },
+        });
+      });
+
+      const response = await runHandler(fetchMock as unknown as typeof fetch);
+      const body = await response.json() as Record<string, Record<string, unknown>>;
+
+      expect(body.rust.status).toBe("ok");
+      expect(body.db.status).toBe("error");
+      expect(body.python.status).toBe("ok");
+    });
+
+    test("python returns non-JSON, rust and db succeed", async () => {
+      const fetchMock = mock(async (url: string) => {
+        if (url.endsWith("/health/python")) return new Response("not-json", { status: 200 });
+        return new Response(JSON.stringify({ status: "ok" }), {
+          headers: { "Content-Type": "application/json" },
+        });
+      });
+
+      const response = await runHandler(fetchMock as unknown as typeof fetch);
+      const body = await response.json() as Record<string, Record<string, unknown>>;
+
+      expect(body.rust.status).toBe("ok");
+      expect(body.db.status).toBe("ok");
+      expect(body.python.status).toBe("unavailable");
     });
   });
 });

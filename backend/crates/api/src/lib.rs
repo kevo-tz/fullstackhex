@@ -1,30 +1,49 @@
+use axum::http::{HeaderMap, StatusCode, header};
+use axum::response::IntoResponse;
 use axum::{Json, Router, extract::State, routing::get};
 use python_sidecar::PythonSidecar;
-use serde_json::{Value, json};
+use serde_json::json;
+#[cfg(test)]
+use serde_json::Value;
 use sqlx::PgPool;
 use sqlx::postgres::PgPoolOptions;
 use std::sync::Arc;
 use std::time::Duration;
 
+/// Status of the database connection pool.
+pub enum DbStatus {
+    /// No DATABASE_URL configured — database is intentionally absent.
+    NotConfigured,
+    /// Pool created successfully.
+    Connected(PgPool),
+    /// DATABASE_URL was set but connecting failed.
+    ConnectionFailed(String),
+}
+
 pub struct AppState {
-    pub db_pool: Option<PgPool>,
+    pub db: DbStatus,
     pub sidecar: PythonSidecar,
 }
 
 /// Build the router with default state (from environment).
 pub async fn router() -> Router {
-    let pool = match std::env::var("DATABASE_URL") {
-        Ok(url) => PgPoolOptions::new()
-            .max_connections(5)
-            .acquire_timeout(Duration::from_secs(2))
-            .connect(&url)
-            .await
-            .ok(),
-        Err(_) => None,
+    let db = match std::env::var("DATABASE_URL") {
+        Ok(url) => {
+            match PgPoolOptions::new()
+                .max_connections(5)
+                .acquire_timeout(Duration::from_secs(2))
+                .connect(&url)
+                .await
+            {
+                Ok(pool) => DbStatus::Connected(pool),
+                Err(_) => DbStatus::ConnectionFailed("connection failed (check DATABASE_URL and PostgreSQL status)".into()),
+            }
+        }
+        Err(_) => DbStatus::NotConfigured,
     };
 
     let state = AppState {
-        db_pool: pool,
+        db,
         sidecar: PythonSidecar::from_env(),
     };
 
@@ -40,45 +59,99 @@ pub fn router_with_state(state: AppState) -> Router {
         .with_state(Arc::new(state))
 }
 
-async fn health() -> Json<Value> {
-    Json(json!({
-        "status": "ok",
-        "service": "api",
-        "version": env!("CARGO_PKG_VERSION")
-    }))
+fn no_cache() -> HeaderMap {
+    let mut headers = HeaderMap::new();
+    headers.insert(header::CACHE_CONTROL, "no-cache, no-store".parse().unwrap());
+    headers
 }
 
-async fn health_db(State(state): State<Arc<AppState>>) -> Json<Value> {
-    match db::health_check(state.db_pool.as_ref()).await {
-        Ok(()) => Json(json!({ "status": "ok" })),
-        Err(e) => Json(json!({ "status": "error", "error": e.to_string() })),
+async fn health() -> impl IntoResponse {
+    (
+        StatusCode::OK,
+        no_cache(),
+        Json(json!({
+            "status": "ok",
+            "service": "api",
+            "version": env!("CARGO_PKG_VERSION")
+        })),
+    )
+}
+
+async fn health_db(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+    let pool = match &state.db {
+        DbStatus::Connected(pool) => Some(pool),
+        DbStatus::NotConfigured => None,
+        DbStatus::ConnectionFailed(msg) => {
+            return (
+                StatusCode::OK,
+                no_cache(),
+                Json(json!({
+                    "status": "error",
+                    "error": msg,
+                    "fix": "Check that PostgreSQL is running and DATABASE_URL is correct in .env. Then restart the backend."
+                })),
+            );
+        }
+    };
+
+    match db::health_check(pool).await {
+        Ok(()) => (StatusCode::OK, no_cache(), Json(json!({ "status": "ok" }))),
+        Err(e) => {
+            let (error, fix) = match &e {
+                db::DbError::NotConfigured => (
+                    "database not configured",
+                    "Set DATABASE_URL in .env and restart the backend.",
+                ),
+                db::DbError::PoolTimeout(_) => (
+                    "database pool timeout",
+                    "The database pool is exhausted. Check PostgreSQL connection and increase DB_MAX_CONNECTIONS if needed.",
+                ),
+                db::DbError::QueryFailed(_) => (
+                    "database query failed",
+                    "Check that PostgreSQL is running and the database exists.",
+                ),
+            };
+            (StatusCode::OK, no_cache(), Json(json!({ "status": "error", "error": error, "fix": fix })))
+        }
     }
 }
 
-async fn health_python(State(state): State<Arc<AppState>>) -> Json<Value> {
+async fn health_python(State(state): State<Arc<AppState>>) -> impl IntoResponse {
     match state.sidecar.health().await {
-        Ok(v) => Json(json!({
-            "status": v.get("status").and_then(|s| s.as_str()).unwrap_or("unknown"),
-            "service": v.get("service").and_then(|s| s.as_str()).unwrap_or("unknown"),
-            "version": v.get("version").and_then(|s| s.as_str()).unwrap_or("unknown"),
-        })),
+        Ok(v) => (
+            StatusCode::OK,
+            no_cache(),
+            Json(json!({
+                "status": v.get("status").and_then(|s| s.as_str()).unwrap_or("unknown"),
+                "service": v.get("service").and_then(|s| s.as_str()).unwrap_or("unknown"),
+                "version": v.get("version").and_then(|s| s.as_str()).unwrap_or("unknown"),
+            })),
+        ),
         Err(e) => {
-            let error_msg = match &e {
-                python_sidecar::SidecarError::SocketNotFound(_) => "socket not found".to_string(),
-                python_sidecar::SidecarError::ConnectionFailed(msg) => {
-                    format!("connection failed: {msg}")
-                }
-                python_sidecar::SidecarError::Timeout(d) => {
-                    format!("request timed out after {d:?}")
-                }
-                python_sidecar::SidecarError::InvalidResponse(msg) => {
-                    format!("invalid response: {msg}")
-                }
-                python_sidecar::SidecarError::HttpError { status, body } => {
-                    format!("HTTP {status}: {body}")
-                }
+            let sock_display = state.sidecar.socket_path().display();
+            let (error_msg, fix_msg) = match &e {
+                python_sidecar::SidecarError::SocketNotFound(_) => (
+                    "socket not found".to_string(),
+                    format!("Start the Python sidecar: make dev starts it automatically, or run: cd python-sidecar && uv run uvicorn app.main:app --uds {sock_display}"),
+                ),
+                python_sidecar::SidecarError::ConnectionFailed(msg) => (
+                    format!("connection failed: {msg}"),
+                    format!("Check that the Python sidecar is running. Run: cd python-sidecar && uv run uvicorn app.main:app --uds {sock_display}"),
+                ),
+                python_sidecar::SidecarError::Timeout(d) => (
+                    format!("request timed out after {d:?}"),
+                    format!("The Python sidecar is not responding. Restart it with: cd python-sidecar && uv run uvicorn app.main:app --uds {sock_display}"),
+                ),
+                python_sidecar::SidecarError::InvalidResponse(msg) => (
+                    format!("invalid response: {msg}"),
+                    "The Python sidecar returned an unexpected response. Check its logs for errors.".to_string(),
+                ),
+                python_sidecar::SidecarError::HttpError { status, body } => (
+                    format!("HTTP {status}: {body}"),
+                    "The Python sidecar returned an HTTP error. Check its logs for details.".to_string(),
+                ),
             };
-            Json(json!({ "status": "unavailable", "error": error_msg }))
+            (StatusCode::OK, no_cache(), Json(json!({ "status": "unavailable", "error": error_msg, "fix": fix_msg })))
         }
     }
 }
@@ -92,7 +165,7 @@ mod tests {
 
     fn test_state() -> AppState {
         AppState {
-            db_pool: None,
+            db: DbStatus::NotConfigured,
             sidecar: PythonSidecar::new(
                 "/tmp/__nonexistent_test_socket__.sock",
                 Duration::from_secs(1),

@@ -32,7 +32,7 @@ cd frontend && bun run build
 ## Rust Backend Entry
 
 - Run via `cargo run -p api` from `backend/` (NOT `cargo run --workspace`)
-- Rust auto-spawns Python sidecar at `/tmp/fullstackhex-python.sock`
+- Python sidecar runs at `/tmp/fullstackhex-python.sock` (started by `make dev` or manually)
 - Port 8001 is the only external API port; frontend never calls Python directly
 
 ## Frontend

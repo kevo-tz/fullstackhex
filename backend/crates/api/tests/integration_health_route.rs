@@ -10,6 +10,39 @@ use serde_json::Value;
 use serial_test::serial;
 use tower::ServiceExt;
 
+/// Save/restore guard for environment variables in tests.
+/// On creation, captures the current value (if any). On drop, restores it.
+/// Use with `#[serial]` to prevent concurrent env mutation.
+struct EnvGuard {
+    key: &'static str,
+    previous: Option<String>,
+}
+
+impl EnvGuard {
+    fn set(key: &'static str, value: &str) -> Self {
+        // SAFETY: must be paired with #[serial] to prevent concurrent env access.
+        let previous = std::env::var(key).ok();
+        unsafe { std::env::set_var(key, value) };
+        EnvGuard { key, previous }
+    }
+
+    fn remove(key: &'static str) -> Self {
+        // SAFETY: must be paired with #[serial] to prevent concurrent env access.
+        let previous = std::env::var(key).ok();
+        unsafe { std::env::remove_var(key) };
+        EnvGuard { key, previous }
+    }
+}
+
+impl Drop for EnvGuard {
+    fn drop(&mut self) {
+        match &self.previous {
+            Some(val) => unsafe { std::env::set_var(self.key, val) },
+            None => unsafe { std::env::remove_var(self.key) },
+        }
+    }
+}
+
 // ---------------------------------------------------------------------------
 // /health  — no env mutation; these can run in parallel
 // ---------------------------------------------------------------------------
@@ -101,8 +134,7 @@ async fn health_db_returns_200() {
 #[tokio::test]
 #[serial]
 async fn health_db_error_when_no_database_url() {
-    // SAFETY: #[serial] ensures no other test mutates DATABASE_URL concurrently.
-    unsafe { std::env::remove_var("DATABASE_URL") };
+    let _guard = EnvGuard::remove("DATABASE_URL");
 
     let app = router().await;
     let response = app
@@ -134,13 +166,10 @@ async fn health_db_ok_when_database_url_set() {
     // With a real DATABASE_URL, the handler attempts to connect.
     // Since the URL may or may not point to a real database, we assert
     // the response shape but not the status value.
-    // SAFETY: #[serial] ensures no other test mutates DATABASE_URL concurrently.
-    unsafe {
-        std::env::set_var(
-            "DATABASE_URL",
-            "postgres://localhost:5432/nonexistent_test_db",
-        )
-    };
+    let _guard = EnvGuard::set(
+        "DATABASE_URL",
+        "postgres://localhost:5432/nonexistent_test_db",
+    );
 
     let app = router().await;
     let response = app
@@ -162,9 +191,6 @@ async fn health_db_ok_when_database_url_set() {
         v["status"].is_string(),
         "status field must be present and a string"
     );
-
-    // SAFETY: restoring env; serialised by #[serial].
-    unsafe { std::env::remove_var("DATABASE_URL") };
 }
 
 // ---------------------------------------------------------------------------
@@ -190,13 +216,10 @@ async fn health_python_returns_200() {
 #[tokio::test]
 #[serial]
 async fn health_python_unavailable_when_socket_absent() {
-    // SAFETY: #[serial] ensures no other test mutates PYTHON_SIDECAR_SOCKET concurrently.
-    unsafe {
-        std::env::set_var(
-            "PYTHON_SIDECAR_SOCKET",
-            "/tmp/__nonexistent_test_socket__.sock",
-        )
-    };
+    let _guard = EnvGuard::set(
+        "PYTHON_SIDECAR_SOCKET",
+        "/tmp/__nonexistent_test_socket__.sock",
+    );
 
     let app = router().await;
     let response = app
@@ -220,9 +243,6 @@ async fn health_python_unavailable_when_socket_absent() {
         v["error"].is_string(),
         "error field must be present and a string"
     );
-
-    // SAFETY: restoring env; serialised by #[serial].
-    unsafe { std::env::remove_var("PYTHON_SIDECAR_SOCKET") };
 }
 
 #[tokio::test]
@@ -234,9 +254,7 @@ async fn health_python_ok_when_socket_present() {
     // and we'll get ConnectionFailed rather than SocketNotFound.
     let socket_path = "/tmp/__test_python_sidecar_present__.sock";
     std::fs::File::create(socket_path).expect("should be able to create test socket file");
-
-    // SAFETY: #[serial] ensures no other test mutates PYTHON_SIDECAR_SOCKET concurrently.
-    unsafe { std::env::set_var("PYTHON_SIDECAR_SOCKET", socket_path) };
+    let _guard = EnvGuard::set("PYTHON_SIDECAR_SOCKET", socket_path);
 
     let app = router().await;
     let response = app
@@ -261,8 +279,126 @@ async fn health_python_ok_when_socket_present() {
     );
 
     let _ = std::fs::remove_file(socket_path);
-    // SAFETY: restoring env; serialised by #[serial].
-    unsafe { std::env::remove_var("PYTHON_SIDECAR_SOCKET") };
+}
+
+// ---------------------------------------------------------------------------
+// Happy-path tests with real services
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+#[serial]
+async fn health_db_ok_with_real_pool() {
+    use api::AppState;
+    use api::DbStatus;
+    use sqlx::postgres::PgPoolOptions;
+    use std::time::Duration;
+
+    let database_url = match std::env::var("DATABASE_URL") {
+        Ok(url) => url,
+        Err(_) => {
+            eprintln!("SKIP: DATABASE_URL not set — skipping real-DB happy-path test");
+            return;
+        }
+    };
+
+    let pool = PgPoolOptions::new()
+        .max_connections(1)
+        .acquire_timeout(Duration::from_secs(2))
+        .connect(&database_url)
+        .await;
+
+    let pool = match pool {
+        Ok(p) => p,
+        Err(e) => {
+            eprintln!("SKIP: could not connect to database ({e}) — skipping real-DB test");
+            return;
+        }
+    };
+
+    let state = AppState {
+        db: DbStatus::Connected(pool),
+        sidecar: python_sidecar::PythonSidecar::new(
+            "/tmp/__nonexistent_test_socket__.sock",
+            Duration::from_secs(1),
+            0,
+        ),
+    };
+
+    let app = api::router_with_state(state);
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/health/db")
+                .body(axum::body::Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let bytes = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    let v: Value = serde_json::from_slice(&bytes).expect("response must be valid JSON");
+
+    assert_eq!(
+        v["status"], "ok",
+        "health_db should return 'ok' when connected to a real database"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires real Unix socket infrastructure — run with --ignored on a native Linux host"]
+async fn health_python_ok_with_mock_socket() {
+    use api::AppState;
+    use api::DbStatus;
+    use api::router_with_state;
+    use std::time::Duration;
+    use tokio::io::AsyncWriteExt;
+    use tokio::net::UnixListener;
+
+    let dir = tempfile::tempdir().unwrap();
+    let sock_path = dir.path().join("health_ok.sock");
+    let listener = UnixListener::bind(&sock_path).unwrap();
+    let sc = python_sidecar::PythonSidecar::new(sock_path.clone(), Duration::from_secs(2), 0);
+
+    // Spawn a mock sidecar that responds with valid JSON.
+    // Mirroring the pattern from python-sidecar/src/lib.rs ignored tests.
+    tokio::spawn(async move {
+        let (mut stream, _) = listener.accept().await.unwrap();
+        let response = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n{\"status\":\"ok\",\"service\":\"python-sidecar\",\"version\":\"0.1.0\"}";
+        stream.write_all(response.as_bytes()).await.unwrap();
+    });
+
+    // Brief yield so the spawned task can enter accept().
+    tokio::time::sleep(Duration::from_millis(50)).await;
+
+    let state = AppState {
+        db: DbStatus::NotConfigured,
+        sidecar: sc,
+    };
+
+    let app = router_with_state(state);
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/health/python")
+                .body(axum::body::Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let bytes = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    let v: Value = serde_json::from_slice(&bytes).expect("response must be valid JSON");
+
+    assert_eq!(
+        v["status"], "ok",
+        "health_python should return 'ok' when sidecar responds successfully. Got: {v}"
+    );
+    assert_eq!(v["service"], "python-sidecar");
+    assert_eq!(v["version"], "0.1.0");
 }
 
 // ---------------------------------------------------------------------------

@@ -56,6 +56,11 @@ impl PythonSidecar {
         }
     }
 
+    /// Returns the configured socket path.
+    pub fn socket_path(&self) -> &std::path::Path {
+        &self.socket_path
+    }
+
     /// Returns true if the socket file exists on disk.
     /// Does not verify that the socket accepts connections.
     pub fn is_available(&self) -> bool {
@@ -127,11 +132,19 @@ impl PythonSidecar {
             .await
             .map_err(|e| SidecarError::ConnectionFailed(e.to_string()))?;
 
+        const MAX_RESPONSE_SIZE: u64 = 1_048_576; // 1 MiB
         let mut response = Vec::new();
         stream
+            .take(MAX_RESPONSE_SIZE)
             .read_to_end(&mut response)
             .await
             .map_err(|e| SidecarError::ConnectionFailed(e.to_string()))?;
+
+        if response.len() as u64 >= MAX_RESPONSE_SIZE {
+            return Err(SidecarError::InvalidResponse(
+                "response exceeded maximum allowed size".into(),
+            ));
+        }
 
         // Find end of HTTP headers
         let body_start = response

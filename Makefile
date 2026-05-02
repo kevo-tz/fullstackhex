@@ -1,4 +1,5 @@
 .PHONY: up down restart logs-backend logs-frontend test bench clean check-env setup setup-env help
+.PHONY: verify-health check-prereqs preflight down-dev dev watch test-socket-ci
 
 # Default values (override with: make up POSTGRES_PASSWORD=mypassword)
 COMPOSE_DEV = docker compose -f compose/dev.yml --env-file .env
@@ -25,31 +26,6 @@ START_DEPS = \
 	cd frontend && bun run dev &
 
 # Help
-dev: check-env
-	$(START_DEPS)
-	@echo "Starting Rust backend..."
-	cd backend && set -a && . ../.env && set +a && cargo run -p api &
-	@echo ""
-	@echo "All services starting. Dashboard at http://localhost:4321"
-	@echo "Run 'make down-dev' to stop everything."
-
-watch: check-env
-	@command -v cargo-watch >/dev/null 2>&1 || { echo "ERROR: cargo-watch not found. Install: cargo install cargo-watch"; exit 1; }
-	$(START_DEPS)
-	@echo "Starting Rust backend (watch mode)..."
-	cd backend && set -a && . ../.env && set +a && cargo watch -x 'run -p api' &
-	@echo ""
-	@echo "All services starting with hot reload. Dashboard at http://localhost:4321"
-	@echo "Run 'make down-dev' to stop everything."
-
-down-dev:
-	@pkill -f "uvicorn app.main:app" 2>/dev/null || true
-	@pkill -f "cargo run -p api" 2>/dev/null || true
-	@pkill -f "cargo watch" 2>/dev/null || true
-	@pkill -f "bun run dev" 2>/dev/null || true
-	$(COMPOSE_DEV) down
-	@echo "All services stopped."
-
 help:
 	@echo "FullStackHex - Development Commands"
 	@echo ""
@@ -81,13 +57,16 @@ help:
 	@echo "  test-rust       - Run Rust tests only"
 	@echo "  test-python     - Run Python tests only"
 	@echo "  test-frontend   - Run frontend tests only"
+	@echo "  test-socket-ci  - Run socket integration tests (CI mode)"
 	@echo ""
 	@echo "  Example: make test  # runs cargo test + pytest + bun test"
 	@echo ""
 	@echo "Performance:"
 	@echo "  bench           - Run performance benchmarks"
 	@echo "  health          - Check all services health"
+	@echo "  verify-health   - Poll health endpoints until all OK or timeout"
 	@echo "  check-env       - Validate .env has no CHANGE_ME placeholders"
+	@echo "  check-prereqs   - Check required dev tools are installed"
 	@echo ""
 	@echo "Cleanup:"
 	@echo "  clean           - Reset to fresh state (removes volumes)"
@@ -105,6 +84,8 @@ setup-env: ## Create .env from .env.example (skips tool installation)
 	./scripts/setup-env.sh
 
 # Services
+
+# check-env: validates .env exists and has no CHANGE_ME placeholders
 check-env:
 	@if [ ! -f .env ]; then \
 	  echo "ERROR: .env not found. Run: cp .env.example .env"; \
@@ -117,6 +98,151 @@ check-env:
 	  exit 1; \
 	fi
 	@echo ".env looks good."
+
+# check-prereqs: detect required dev tools and print install instructions
+check-prereqs:
+	@echo "Checking prerequisites..."
+	@MISSING=0; \
+	for tool in bun uv cargo docker; do \
+	  if command -v $$tool >/dev/null 2>&1; then \
+	    echo "  ✓ $$tool"; \
+	  else \
+	    echo "  ✗ $$tool — not found"; \
+	    MISSING=1; \
+	  fi; \
+	done; \
+	if docker compose version >/dev/null 2>&1; then \
+	  echo "  ✓ docker compose"; \
+	else \
+	  echo "  ✗ docker compose — not found"; \
+	  MISSING=1; \
+	fi; \
+	if [ $$MISSING -eq 1 ]; then \
+	  echo ""; \
+	  echo "Install missing tools:"; \
+	  echo "  bun:   curl -fsSL https://bun.sh/install | bash"; \
+	  echo "  uv:    curl -LsSf https://astral.sh/uv/install.sh | sh"; \
+	  echo "  cargo: curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh"; \
+	  echo "  docker + compose: https://docs.docker.com/engine/install/"; \
+	  exit 1; \
+	fi; \
+	echo "All prerequisites found."
+
+# preflight: port/socket conflict detection before starting services
+preflight:
+	@echo "Running preflight checks..."
+	@FAIL=0; \
+	if ss -tln 2>/dev/null | grep -q ":8001 " || netstat -tln 2>/dev/null | grep -q ".8001 "; then \
+	  echo "  ✗ Port 8001 is in use — is another instance running? Run 'make down-dev' first."; \
+	  FAIL=1; \
+	else \
+	  echo "  ✓ Port 8001 free"; \
+	fi; \
+	if ss -tln 2>/dev/null | grep -q ":4321 " || netstat -tln 2>/dev/null | grep -q ".4321 "; then \
+	  echo "  ✗ Port 4321 is in use — is another instance running? Run 'make down-dev' first."; \
+	  FAIL=1; \
+	else \
+	  echo "  ✓ Port 4321 free"; \
+	fi; \
+	if [ -e "$(PYTHON_SOCK)" ]; then \
+	  if ss -xl 2>/dev/null | grep -q "$(PYTHON_SOCK)" || netstat -xl 2>/dev/null | grep -q "$(PYTHON_SOCK)"; then \
+	    echo "  ✗ Socket $(PYTHON_SOCK) exists and is in use — is another sidecar running?"; \
+	    FAIL=1; \
+	  else \
+	    echo "  ! Stale socket $(PYTHON_SOCK) detected — unlinking"; \
+	    rm -f "$(PYTHON_SOCK)"; \
+	    echo "  ✓ Stale socket cleaned up"; \
+	  fi; \
+	else \
+	  echo "  ✓ Socket path free"; \
+	fi; \
+	if [ $$FAIL -eq 1 ]; then \
+	  echo ""; \
+	  echo "Preflight failed. Run 'make down-dev' to clean up, then retry."; \
+	  exit 1; \
+	fi; \
+	echo "Preflight passed."
+
+# verify-health: poll health endpoints until all OK or timeout
+verify-health:
+	@echo "Verifying service health..."
+	@TIMEOUT=30; \
+	START=$$(date +%s); \
+	while true; do \
+	  NOW=$$(date +%s); \
+	  ELAPSED=$$((NOW - START)); \
+	  if [ $$ELAPSED -ge $$TIMEOUT ]; then \
+	    echo ""; \
+	    echo "Health check timed out after $$TIMEOUT seconds."; \
+	    echo ""; \
+	    echo "Failing endpoints:"; \
+	    curl -sk http://localhost:8001/health 2>/dev/null || echo "  Rust API (8001) — unreachable"; \
+	    curl -sk http://localhost:8001/health/db 2>/dev/null || echo "  DB health (8001/health/db) — unreachable"; \
+	    curl -sk http://localhost:8001/health/python 2>/dev/null || echo "  Python health (8001/health/python) — unreachable"; \
+	    echo ""; \
+	    echo "Troubleshooting:"; \
+	    echo "  - Is the Rust backend running? Run: cd backend && cargo run -p api"; \
+	    echo "  - Is the Python sidecar running? Run: cd python-sidecar && uv run uvicorn app.main:app --uds $(PYTHON_SOCK)"; \
+	    echo "  - Is PostgreSQL running? Run: docker compose -f compose/dev.yml up -d postgres"; \
+	    exit 1; \
+	  fi; \
+	  RUST_OK=0; \
+	  DB_OK=0; \
+	  PY_OK=0; \
+	  RUST_STATUS=$$(curl -sk http://localhost:8001/health 2>/dev/null | grep -o '"status":"[^"]*"' | head -1 | cut -d'"' -f4); \
+	  if [ "$$RUST_STATUS" = "ok" ]; then RUST_OK=1; fi; \
+	  DB_STATUS=$$(curl -sk http://localhost:8001/health/db 2>/dev/null | grep -o '"status":"[^"]*"' | head -1 | cut -d'"' -f4); \
+	  if [ "$$DB_STATUS" = "ok" ]; then DB_OK=1; fi; \
+	  PY_STATUS=$$(curl -sk http://localhost:8001/health/python 2>/dev/null | grep -o '"status":"[^"]*"' | head -1 | cut -d'"' -f4); \
+	  if [ "$$PY_STATUS" = "ok" ]; then PY_OK=1; fi; \
+	  printf "."; \
+	  if [ $$RUST_OK -eq 1 ] && [ $$DB_OK -eq 1 ] && [ $$PY_OK -eq 1 ]; then \
+	    echo ""; \
+	    echo "All services healthy ($$ELAPSED s)"; \
+	    exit 0; \
+	  fi; \
+	  sleep 1; \
+	done
+
+# dev: full stack with prerequisite checks, preflight, and health verification
+dev: check-env check-prereqs preflight
+	@trap '$(MAKE) down-dev' INT TERM; \
+	$(START_DEPS)
+	@echo "Starting Rust backend..."
+	cd backend && set -a && . ../.env && set +a && cargo run -p api &
+	@echo ""
+	@$(MAKE) verify-health
+	@echo ""
+	@echo "=============================================="
+	@echo "  All services healthy. Dashboard:"
+	@echo "  → http://localhost:4321"
+	@echo "=============================================="
+	@echo "Press Ctrl+C to stop everything."
+	@wait
+
+watch: check-env check-prereqs preflight
+	@command -v cargo-watch >/dev/null 2>&1 || { echo "ERROR: cargo-watch not found. Install: cargo install cargo-watch"; exit 1; }
+	@trap '$(MAKE) down-dev' INT TERM; \
+	$(START_DEPS)
+	@echo "Starting Rust backend (watch mode)..."
+	cd backend && set -a && . ../.env && set +a && cargo watch -x 'run -p api' &
+	@echo ""
+	@$(MAKE) verify-health
+	@echo ""
+	@echo "=============================================="
+	@echo "  All services healthy. Dashboard:"
+	@echo "  → http://localhost:4321"
+	@echo "=============================================="
+	@echo "Press Ctrl+C to stop everything."
+	@wait
+
+down-dev:
+	@pkill -f "uvicorn app.main:app" 2>/dev/null || true
+	@pkill -f "cargo run -p api" 2>/dev/null || true
+	@pkill -f "cargo watch" 2>/dev/null || true
+	@pkill -f "bun run dev" 2>/dev/null || true
+	$(COMPOSE_DEV) down
+	@echo "All services stopped."
 
 up: check-env
 	$(COMPOSE_DEV) up -d
@@ -164,8 +290,22 @@ test-python:
 	cd python-sidecar && uv run pytest
 
 test-frontend:
-	@echo "Running frontend tests..."
+	@echo "Running frontend tests (bun)..."
 	cd frontend && bun test
+	@echo "Running frontend tests (vitest)..."
+	cd frontend && bun run test:vitest
+
+test-socket-ci:
+	@echo "Starting test sidecar for socket integration tests..."
+	cd python-sidecar && PYTHONUNBUFFERED=1 uv run uvicorn app.main:app --uds /tmp/fullstackhex-test.sock & \
+	PID=$$!; \
+	sleep 2; \
+	echo "Running socket integration tests..."; \
+	cd backend && PYTHON_SIDECAR_SOCKET=/tmp/fullstackhex-test.sock cargo test -p python-sidecar -- --ignored; \
+	R=$$?; \
+	kill $$PID 2>/dev/null || true; \
+	rm -f /tmp/fullstackhex-test.sock; \
+	exit $$R
 
 # Performance
 bench:

@@ -60,9 +60,26 @@ jobs:
       - name: cargo clippy
         run: cargo clippy --all-targets --all-features -- -D warnings
 
+      - name: Setup Python for socket integration tests
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.14"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v8.1.0
+
+      - name: Start Python sidecar for socket tests
+        run: |
+          cd python-sidecar
+          uv sync --all-extras
+          uv run uvicorn app.main:app --uds /tmp/fullstackhex-python.sock &
+          sleep 2
+          echo "Python sidecar started"
+
       - name: cargo test
         env:
           DATABASE_URL: postgres://postgres:postgres@localhost:5432/testdb
+          PYTHON_SIDECAR_SOCKET: /tmp/fullstackhex-python.sock
         run: cargo test --workspace
 
   python:
@@ -131,8 +148,11 @@ jobs:
       - name: Type check
         run: bun run typecheck
 
-      - name: Test
+      - name: Test (bun)
         run: bun test
+
+      - name: Test (vitest)
+        run: bun run test:vitest
 
       - name: Build
         env:

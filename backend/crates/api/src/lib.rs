@@ -305,4 +305,44 @@ mod tests {
         assert_eq!(v["status"], "unavailable");
         assert!(v["error"].is_string());
     }
+
+    #[tokio::test]
+    async fn health_python_with_trace_id_header_returns_unavailable() {
+        let app = router_with_state(test_state());
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/health/python")
+                    .header("x-trace-id", "test-trace-abc-123")
+                    .body(axum::body::Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let bytes = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        let v: Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(v["status"], "unavailable");
+        assert!(v["error"].is_string());
+    }
+
+    #[tokio::test]
+    async fn health_python_with_empty_trace_id_returns_unavailable() {
+        let app = router_with_state(test_state());
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/health/python")
+                    .header("x-trace-id", "")
+                    .body(axum::body::Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let bytes = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        let v: Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(v["status"], "unavailable");
+        assert!(v["error"].is_string());
+    }
 }

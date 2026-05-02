@@ -70,7 +70,7 @@ jobs:
 
       - name: Start Python sidecar for socket tests
         run: |
-          cd python-sidecar
+          cd ../python-sidecar
           uv sync --all-extras
           uv run uvicorn app.main:app --uds /tmp/fullstackhex-python.sock &
           for i in $(seq 1 20); do

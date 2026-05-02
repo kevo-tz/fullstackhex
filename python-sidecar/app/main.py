@@ -1,3 +1,4 @@
+from datetime import datetime, timezone
 from fastapi import FastAPI, Request
 import logging
 import json
@@ -9,8 +10,9 @@ app = FastAPI()
 
 class JsonFormatter(logging.Formatter):
     def format(self, record: logging.LogRecord) -> str:
+        ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
         obj = {
-            "timestamp": self.formatTime(record, "%Y-%m-%dT%H:%M:%S.%fZ"),
+            "timestamp": ts,
             "level": record.levelname.lower(),
             "target": record.name,
             "message": record.getMessage(),

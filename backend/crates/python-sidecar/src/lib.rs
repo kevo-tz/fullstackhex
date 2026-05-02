@@ -175,6 +175,7 @@ impl PythonSidecar {
         const MAX_RESPONSE_SIZE: usize = 1_048_576; // 1 MiB
         let mut response = Vec::new();
         stream
+            .take(MAX_RESPONSE_SIZE as u64 + 1)
             .read_to_end(&mut response)
             .await
             .map_err(|e| SidecarError::ConnectionFailed(e.to_string()))?;
@@ -510,11 +511,11 @@ mod tests {
     }
 
     // ------------------------------------------------------------------
-    // Socket integration tests — require a real Unix socket server
-    // These tests use real UnixListeners and are skipped by default
-    // because they're timing-sensitive in Rust's parallel test runner.
+    // Socket integration tests — use mock UnixListeners
+    // These tests create in-memory UnixListeners with controlled responses
+    // and are skipped by default because they're timing-sensitive.
     // Run with: cargo test -p python-sidecar -- --ignored
-    // Or via: make test-socket-ci (starts a real Python sidecar first)
+    // Or via: make test-socket-ci
     // ------------------------------------------------------------------
 
     #[tokio::test]

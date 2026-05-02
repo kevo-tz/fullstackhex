@@ -8,6 +8,7 @@ COMPOSE_MON = docker compose -f compose/monitor.yml --env-file .env
 
 PYTHON_TEST_SOCK ?= /tmp/fullstackhex-test.sock
 PID_FILE = /tmp/fullstackhex-dev.pids
+POST_START_DELAY ?= 2
 
 # PostgreSQL readiness tuning
 POSTGRES_RETRIES ?= 6
@@ -217,7 +218,7 @@ dev: check-env check-prereqs preflight
 	echo "Starting Rust backend..."; \
 	cd backend && set -a && . ../.env && set +a && cargo run -p api & \
 	echo $$! >> $(PID_FILE); \
-	sleep 2; \
+	sleep $(POST_START_DELAY); \
 	$(MAKE) verify-health; \
 	echo ""; \
 	echo "=============================================="; \
@@ -235,7 +236,7 @@ watch: check-env check-prereqs preflight
 	echo "Starting Rust backend (watch mode)..."; \
 	cd backend && set -a && . ../.env && set +a && cargo watch -x 'run -p api' & \
 	echo $$! >> $(PID_FILE); \
-	sleep 2; \
+	sleep $(POST_START_DELAY); \
 	$(MAKE) verify-health; \
 	echo ""; \
 	echo "=============================================="; \

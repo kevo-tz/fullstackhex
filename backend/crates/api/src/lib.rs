@@ -133,6 +133,10 @@ async fn health_python(
         .and_then(|v| v.to_str().ok())
         .unwrap_or("");
 
+    if !trace_id.is_empty() {
+        tracing::info!(%trace_id, "health check via sidecar with propagated trace_id");
+    }
+
     let result = if trace_id.is_empty() {
         state.sidecar.health().await
     } else {

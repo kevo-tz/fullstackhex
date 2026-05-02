@@ -59,4 +59,4 @@ async def trace_id_middleware(request: Request, call_next):
 def health(request: Request) -> dict[str, str]:
     trace_id = request.headers.get("x-trace-id", "")
     logger.info("health check", extra={"trace_id": trace_id})
-    return {"status": "ok", "service": "python-sidecar", "version": "0.1.0"}
+    return {"status": "ok", "service": "python-sidecar", "version": "0.6.0"}

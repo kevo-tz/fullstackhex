@@ -485,9 +485,7 @@ mod tests {
         let path = dir.path().join("trace-crlf.sock");
         std::fs::File::create(&path).unwrap();
         let sc = PythonSidecar::new(path, Duration::from_secs(1), 0);
-        let result = sc
-            .get_with_trace_id("/health", "test-id\r\nInjected")
-            .await;
+        let result = sc.get_with_trace_id("/health", "test-id\r\nInjected").await;
         assert!(matches!(result, Err(SidecarError::InvalidResponse(_))));
     }
 
@@ -497,9 +495,7 @@ mod tests {
         let path = dir.path().join("trace-cr.sock");
         std::fs::File::create(&path).unwrap();
         let sc = PythonSidecar::new(path, Duration::from_secs(1), 0);
-        let result = sc
-            .get_with_trace_id("/health", "test-id\rInjected")
-            .await;
+        let result = sc.get_with_trace_id("/health", "test-id\rInjected").await;
         assert!(matches!(result, Err(SidecarError::InvalidResponse(_))));
     }
 
@@ -509,9 +505,7 @@ mod tests {
         let path = dir.path().join("trace-lf.sock");
         std::fs::File::create(&path).unwrap();
         let sc = PythonSidecar::new(path, Duration::from_secs(1), 0);
-        let result = sc
-            .get_with_trace_id("/health", "test-id\nInjected")
-            .await;
+        let result = sc.get_with_trace_id("/health", "test-id\nInjected").await;
         assert!(matches!(result, Err(SidecarError::InvalidResponse(_))));
     }
 

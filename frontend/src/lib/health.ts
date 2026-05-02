@@ -1,49 +1,77 @@
+function jsonLog(obj: Record<string, unknown>): void {
+  console.log(JSON.stringify(obj));
+}
+
+async function handleService(
+  fetchImpl: typeof fetch,
+  url: string,
+  serviceKey: string,
+  targetService: string,
+  defaultStatus: string,
+  traceId: string,
+): Promise<{ status: string }> {
+  try {
+    const res = await fetchImpl(url, {
+      headers: { "x-trace-id": traceId },
+    });
+    const d = await res.json();
+    const status = (d as Record<string, unknown>).status ?? "unknown";
+    jsonLog({
+      timestamp: new Date().toISOString(),
+      level: "info",
+      target: "frontend:health",
+      message: `${serviceKey} health response`,
+      trace_id: traceId,
+      target_service: targetService,
+      response_status: status,
+    });
+    return { status: String(status) };
+  } catch {
+    jsonLog({
+      timestamp: new Date().toISOString(),
+      level: "warn",
+      target: "frontend:health",
+      message: `${serviceKey} health fetch/parse failed`,
+      trace_id: traceId,
+    });
+    return { status: defaultStatus };
+  }
+}
+
 export async function aggregateHealth(
   fetchImpl: typeof fetch,
   apiBase = "http://localhost:8001",
 ): Promise<Record<string, unknown>> {
-  const result: Record<string, unknown> = {
-    rust: { status: "unknown" },
-    db: { status: "unknown" },
-    python: { status: "unknown" },
-  };
+  const traceId = crypto.randomUUID();
+  const start = performance.now();
 
-  const [rustRes, dbRes, pythonRes] = await Promise.allSettled([
-    fetchImpl(`${apiBase}/health`),
-    fetchImpl(`${apiBase}/health/db`),
-    fetchImpl(`${apiBase}/health/python`),
+  jsonLog({
+    timestamp: new Date().toISOString(),
+    level: "info",
+    target: "frontend:health",
+    message: "health check fan-out",
+    trace_id: traceId,
+  });
+
+  const [rustResult, dbResult, pythonResult] = await Promise.all([
+    handleService(fetchImpl, `${apiBase}/health`, "rust", "api", "error", traceId),
+    handleService(fetchImpl, `${apiBase}/health/db`, "db", "db", "error", traceId),
+    handleService(fetchImpl, `${apiBase}/health/python`, "python", "python", "unavailable", traceId),
   ]);
 
-  if (rustRes.status === "fulfilled") {
-    try {
-      const d = await rustRes.value.json();
-      result.rust = { status: (d as Record<string, unknown>).status ?? "unknown" };
-    } catch {
-      result.rust = { status: "error" };
-    }
-  } else {
-    result.rust = { status: "error" };
-  }
+  const durationMs = Math.round(performance.now() - start);
+  jsonLog({
+    timestamp: new Date().toISOString(),
+    level: "info",
+    target: "frontend:health",
+    message: "health check complete",
+    trace_id: traceId,
+    duration_ms: durationMs,
+  });
 
-  if (dbRes.status === "fulfilled") {
-    try {
-      result.db = await dbRes.value.json();
-    } catch {
-      result.db = { status: "error" };
-    }
-  } else {
-    result.db = { status: "error" };
-  }
-
-  if (pythonRes.status === "fulfilled") {
-    try {
-      result.python = await pythonRes.value.json();
-    } catch {
-      result.python = { status: "unavailable" };
-    }
-  } else {
-    result.python = { status: "unavailable" };
-  }
-
-  return result;
+  return {
+    rust: rustResult,
+    db: dbResult,
+    python: pythonResult,
+  };
 }

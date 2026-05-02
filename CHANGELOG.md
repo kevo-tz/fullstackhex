@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.6.0.0] - 2026-05-02
+
+### Added
+- **Structured JSON logging** across all three languages: Rust (`tracing-subscriber` JSON layer), Python (`JsonFormatter` on stderr), and TypeScript (`jsonLog()` wrapper on stdout) — every log line is a JSON object with `timestamp`, `level`, `target`, and `message` fields
+- **trace_id propagation** end-to-end: frontend generates UUIDv7 per poll cycle, Rust forwards `x-trace-id` header to Python sidecar, Python extracts and logs it in both health handler and middleware trace — developers can trace a single dashboard refresh across all three services
+- **`make dev` DX chain**: before starting services, `check-env` validates `.env`, `check-prereqs` verifies `bun`/`uv`/`cargo`/`docker` are installed, `preflight` detects port/socket conflicts and cleans up stale sockets, `verify-health` polls health endpoints every 1s for up to 30s — all three must be OK before the dashboard URL is printed
+- **Cleanup trap**: SIGINT/SIGTERM in `make dev`/`make watch` triggers `make down-dev` via PID_FILE, killing all child processes and Docker containers
+- **Socket CI support**: Python sidecar starts as a CI background step; socket integration tests run via `make test-socket-ci`
+- **Dashboard vitest tests** (jsdom): 13 tests covering initial loading state, all-green, mixed degradation, all-red, and CSS class transitions — mirrors the inline `setStatus()`/`setDetail()` logic from `index.astro`
+- **`docs/logging-conventions.md`**: schema documentation for the structured log format across all three languages
+
+### Changed
+- **Rust main.rs** switched from `println!` to structured JSON tracing (`tracing-subscriber` with `.json()` layer)
+- **Python sidecar** logging rewritten: `JsonFormatter` replaces uvicorn handlers, `trace_id_middleware` logs every HTTP request with method, path, status, duration, and trace_id
+- **Frontend `aggregateHealth()`** now emits structured JSON logs with per-endpoint status and a summary line with `duration_ms`
+- **`make watch`** updated with the same DX chain as `make dev`
+
+### Fixed
+- Python `JsonFormatter` timestamp rendered `%f` literally instead of microseconds (`logging.Formatter.formatTime()` delegates to `time.strftime()` which doesn't support `%f`)
+- Review findings: trace_id continuity in health endpoints, PID tracking for dev processes, logging hardening across layers
+
+---
+
 ## [0.5.0.0] - 2026-05-02
 
 ### Added

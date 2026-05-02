@@ -71,7 +71,27 @@ impl PythonSidecar {
     /// GET a path from the Python sidecar. Returns parsed JSON body.
     /// Checks socket existence before connecting.
     /// Retries connection failures up to `max_retries` with backoff.
+    /// Generates a UUIDv4 trace_id and sends it as an x-trace-id header.
     pub async fn get(&self, path: &str) -> Result<serde_json::Value, SidecarError> {
+        self.get_with_trace_id(path, &uuid::Uuid::new_v4().to_string())
+            .await
+    }
+
+    /// GET a path with an explicit trace_id. Used when the caller wants to
+    /// propagate an existing trace context rather than generating a new one.
+    pub async fn get_with_trace_id(
+        &self,
+        path: &str,
+        trace_id: &str,
+    ) -> Result<serde_json::Value, SidecarError> {
+        self.do_get(path, Some(trace_id)).await
+    }
+
+    async fn do_get(
+        &self,
+        path: &str,
+        trace_id: Option<&str>,
+    ) -> Result<serde_json::Value, SidecarError> {
         if !self.is_available() {
             return Err(SidecarError::SocketNotFound(self.socket_path.clone()));
         }
@@ -87,7 +107,7 @@ impl PythonSidecar {
                 tokio::time::sleep(backoff).await;
             }
 
-            match tokio::time::timeout(self.timeout, self.try_get(path)).await {
+            match tokio::time::timeout(self.timeout, self.try_get(path, trace_id)).await {
                 Ok(Ok(value)) => return Ok(value),
                 Ok(Err(e)) => {
                     // Fast-fail on non-retryable errors
@@ -109,7 +129,11 @@ impl PythonSidecar {
         Err(last_error.unwrap_or(SidecarError::Timeout(self.timeout)))
     }
 
-    async fn try_get(&self, path: &str) -> Result<serde_json::Value, SidecarError> {
+    async fn try_get(
+        &self,
+        path: &str,
+        trace_id: Option<&str>,
+    ) -> Result<serde_json::Value, SidecarError> {
         use tokio::io::{AsyncReadExt, AsyncWriteExt};
         use tokio::net::UnixStream;
 
@@ -119,29 +143,44 @@ impl PythonSidecar {
                 "path contains invalid characters".into(),
             ));
         }
+        // Reject trace_id containing CR or LF to prevent HTTP header injection
+        if let Some(tid) = trace_id
+            && (tid.contains('\r') || tid.contains('\n'))
+        {
+            return Err(SidecarError::InvalidResponse(
+                "trace_id contains invalid characters".into(),
+            ));
+        }
 
         let mut stream = UnixStream::connect(&self.socket_path)
             .await
             .map_err(|e| SidecarError::ConnectionFailed(e.to_string()))?;
 
-        let request = format!(
-            "GET {} HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n",
-            path
-        );
+        let request = if let Some(tid) = trace_id {
+            format!(
+                "GET {} HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\nx-trace-id: {}\r\n\r\n",
+                path, tid
+            )
+        } else {
+            format!(
+                "GET {} HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n",
+                path
+            )
+        };
         stream
             .write_all(request.as_bytes())
             .await
             .map_err(|e| SidecarError::ConnectionFailed(e.to_string()))?;
 
-        const MAX_RESPONSE_SIZE: u64 = 1_048_576; // 1 MiB
+        const MAX_RESPONSE_SIZE: usize = 1_048_576; // 1 MiB
         let mut response = Vec::new();
         stream
-            .take(MAX_RESPONSE_SIZE)
+            .take(MAX_RESPONSE_SIZE as u64 + 1)
             .read_to_end(&mut response)
             .await
             .map_err(|e| SidecarError::ConnectionFailed(e.to_string()))?;
 
-        if response.len() as u64 > MAX_RESPONSE_SIZE {
+        if response.len() > MAX_RESPONSE_SIZE {
             return Err(SidecarError::InvalidResponse(
                 "response exceeded maximum allowed size".into(),
             ));
@@ -186,7 +225,20 @@ impl PythonSidecar {
 
     /// Convenience: GET /health from the sidecar.
     pub async fn health(&self) -> Result<serde_json::Value, SidecarError> {
-        self.get("/health").await
+        let trace_id = uuid::Uuid::new_v4().to_string();
+        tracing::info!(%trace_id, target = "python_sidecar", "health check");
+        let start = std::time::Instant::now();
+        let result = self.get_with_trace_id("/health", &trace_id).await;
+        let duration_ms = start.elapsed().as_millis() as u64;
+        match &result {
+            Ok(_) => {
+                tracing::info!(%trace_id, duration_ms, target = "python_sidecar", "health check OK")
+            }
+            Err(e) => {
+                tracing::warn!(%trace_id, duration_ms, error = %e, target = "python_sidecar", "health check failed")
+            }
+        }
+        result
     }
 }
 
@@ -293,7 +345,8 @@ mod tests {
     // ------------------------------------------------------------------
 
     #[tokio::test]
-    #[ignore = "requires real Unix socket infrastructure — run with --ignored"]
+    #[serial_test::serial]
+    #[ignore = "socket test — run via make test-socket-ci"]
     async fn get_happy_path_via_socket() {
         use tokio::io::AsyncWriteExt;
         use tokio::net::UnixListener;
@@ -317,7 +370,8 @@ mod tests {
     }
 
     #[tokio::test]
-    #[ignore = "requires real Unix socket infrastructure — run with --ignored"]
+    #[serial_test::serial]
+    #[ignore = "socket test — run via make test-socket-ci"]
     async fn get_http_error_via_socket() {
         use tokio::io::AsyncWriteExt;
         use tokio::net::UnixListener;
@@ -343,7 +397,8 @@ mod tests {
     }
 
     #[tokio::test]
-    #[ignore = "requires real Unix socket infrastructure — run with --ignored"]
+    #[serial_test::serial]
+    #[ignore = "socket test — run via make test-socket-ci"]
     async fn get_invalid_json_via_socket() {
         use tokio::io::AsyncWriteExt;
         use tokio::net::UnixListener;
@@ -369,7 +424,8 @@ mod tests {
     }
 
     #[tokio::test]
-    #[ignore = "requires real Unix socket infrastructure — run with --ignored"]
+    #[serial_test::serial]
+    #[ignore = "socket test — run via make test-socket-ci"]
     async fn get_retries_on_connection_refused_via_socket() {
         use tokio::io::AsyncWriteExt;
         use tokio::net::UnixListener;
@@ -422,5 +478,157 @@ mod tests {
         let sc = PythonSidecar::new(path, Duration::from_secs(1), 0);
         let result = sc.get("/health\nX-Injected: true").await;
         assert!(matches!(result, Err(SidecarError::InvalidResponse(_))));
+    }
+
+    #[tokio::test]
+    async fn get_rejects_crlf_in_trace_id() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("trace-crlf.sock");
+        std::fs::File::create(&path).unwrap();
+        let sc = PythonSidecar::new(path, Duration::from_secs(1), 0);
+        let result = sc.get_with_trace_id("/health", "test-id\r\nInjected").await;
+        assert!(matches!(result, Err(SidecarError::InvalidResponse(_))));
+    }
+
+    #[tokio::test]
+    async fn get_rejects_cr_only_in_trace_id() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("trace-cr.sock");
+        std::fs::File::create(&path).unwrap();
+        let sc = PythonSidecar::new(path, Duration::from_secs(1), 0);
+        let result = sc.get_with_trace_id("/health", "test-id\rInjected").await;
+        assert!(matches!(result, Err(SidecarError::InvalidResponse(_))));
+    }
+
+    #[tokio::test]
+    async fn get_rejects_lf_only_in_trace_id() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("trace-lf.sock");
+        std::fs::File::create(&path).unwrap();
+        let sc = PythonSidecar::new(path, Duration::from_secs(1), 0);
+        let result = sc.get_with_trace_id("/health", "test-id\nInjected").await;
+        assert!(matches!(result, Err(SidecarError::InvalidResponse(_))));
+    }
+
+    // ------------------------------------------------------------------
+    // Socket integration tests — use mock UnixListeners
+    // These tests create in-memory UnixListeners with controlled responses
+    // and are skipped by default because they're timing-sensitive.
+    // Run with: cargo test -p python-sidecar -- --ignored
+    // Or via: make test-socket-ci
+    // ------------------------------------------------------------------
+
+    #[tokio::test]
+    #[serial_test::serial]
+    #[ignore = "socket test — run via make test-socket-ci"]
+    async fn get_timeout_via_socket() {
+        use tokio::net::UnixListener;
+
+        let dir = tempfile::tempdir().unwrap();
+        let sock_path = dir.path().join("timeout.sock");
+        let listener = UnixListener::bind(&sock_path).unwrap();
+        let sc = PythonSidecar::new(sock_path, Duration::from_millis(200), 0);
+
+        // Accept but never write — client should time out
+        tokio::spawn(async move {
+            let _ = listener.accept().await;
+            tokio::time::sleep(Duration::from_secs(5)).await;
+        });
+
+        tokio::time::sleep(Duration::from_millis(10)).await;
+        let result = sc.get("/health").await;
+        assert!(
+            matches!(result, Err(SidecarError::Timeout(_))),
+            "expected Timeout, got {:?}",
+            result
+        );
+    }
+
+    #[tokio::test]
+    #[serial_test::serial]
+    #[ignore = "socket test — run via make test-socket-ci"]
+    async fn get_missing_json_fields_via_socket() {
+        use tokio::io::AsyncWriteExt;
+        use tokio::net::UnixListener;
+
+        let dir = tempfile::tempdir().unwrap();
+        let sock_path = dir.path().join("missing.sock");
+        let listener = UnixListener::bind(&sock_path).unwrap();
+        let sc = PythonSidecar::new(sock_path, Duration::from_secs(2), 0);
+
+        tokio::spawn(async move {
+            let (mut stream, _) = listener.accept().await.unwrap();
+            let response = "HTTP/1.1 200 OK\r\n\r\n{\"foo\":\"bar\"}";
+            stream.write_all(response.as_bytes()).await.unwrap();
+        });
+
+        tokio::time::sleep(Duration::from_millis(10)).await;
+        let result = sc.get("/health").await;
+        // Parses successfully — missing fields are fine, JSON is valid
+        assert!(result.is_ok(), "expected Ok, got {:?}", result);
+        let v = result.unwrap();
+        assert_eq!(v["foo"], "bar");
+        // Verify no spurious status field
+        assert!(v.get("status").is_none());
+    }
+
+    #[tokio::test]
+    #[serial_test::serial]
+    #[ignore = "socket test — run via make test-socket-ci"]
+    async fn get_empty_body_via_socket() {
+        use tokio::io::AsyncWriteExt;
+        use tokio::net::UnixListener;
+
+        let dir = tempfile::tempdir().unwrap();
+        let sock_path = dir.path().join("empty.sock");
+        let listener = UnixListener::bind(&sock_path).unwrap();
+        let sc = PythonSidecar::new(sock_path, Duration::from_secs(2), 0);
+
+        tokio::spawn(async move {
+            let (mut stream, _) = listener.accept().await.unwrap();
+            let response = "HTTP/1.1 200 OK\r\n\r\n";
+            stream.write_all(response.as_bytes()).await.unwrap();
+        });
+
+        tokio::time::sleep(Duration::from_millis(10)).await;
+        let result = sc.get("/health").await;
+        assert!(
+            matches!(result, Err(SidecarError::InvalidResponse(_))),
+            "expected InvalidResponse for empty body, got {:?}",
+            result
+        );
+    }
+
+    #[tokio::test]
+    #[serial_test::serial]
+    #[ignore = "socket test — run via make test-socket-ci"]
+    async fn get_trace_id_propagation_via_socket() {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        use tokio::net::UnixListener;
+
+        let dir = tempfile::tempdir().unwrap();
+        let sock_path = dir.path().join("trace.sock");
+        let listener = UnixListener::bind(&sock_path).unwrap();
+        let sc = PythonSidecar::new(sock_path, Duration::from_secs(2), 0);
+
+        tokio::spawn(async move {
+            let (mut stream, _) = listener.accept().await.unwrap();
+            let mut buf = [0u8; 512];
+            let n = stream.read(&mut buf).await.unwrap();
+            let request = String::from_utf8_lossy(&buf[..n]);
+            let received = request.contains("x-trace-id:") && request.contains("qa-propagate-123");
+            let response = format!(
+                "HTTP/1.1 200 OK\r\n\r\n{{\"status\":\"ok\",\"trace_present\":{}}}",
+                received
+            );
+            stream.write_all(response.as_bytes()).await.unwrap();
+        });
+
+        tokio::time::sleep(Duration::from_millis(10)).await;
+        let result = sc.get_with_trace_id("/health", "qa-propagate-123").await;
+        assert!(result.is_ok(), "expected Ok, got {:?}", result);
+        let v = result.unwrap();
+        assert_eq!(v["status"], "ok");
+        assert!(v["trace_present"].as_bool().unwrap_or(false));
     }
 }

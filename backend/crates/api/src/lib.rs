@@ -1,6 +1,6 @@
 use axum::http::{HeaderMap, StatusCode, header};
 use axum::response::IntoResponse;
-use axum::{Json, Router, extract::State, routing::get};
+use axum::{Json, Router, extract::State, http::Request, routing::get};
 use python_sidecar::PythonSidecar;
 #[cfg(test)]
 use serde_json::Value;
@@ -123,8 +123,26 @@ async fn health_db(State(state): State<Arc<AppState>>) -> impl IntoResponse {
     }
 }
 
-async fn health_python(State(state): State<Arc<AppState>>) -> impl IntoResponse {
-    match state.sidecar.health().await {
+async fn health_python(
+    State(state): State<Arc<AppState>>,
+    req: Request<axum::body::Body>,
+) -> impl IntoResponse {
+    let trace_id = req
+        .headers()
+        .get("x-trace-id")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+
+    let result = if trace_id.is_empty() {
+        state.sidecar.health().await
+    } else {
+        state
+            .sidecar
+            .get_with_trace_id("/health", trace_id)
+            .await
+    };
+
+    match result {
         Ok(v) => (
             StatusCode::OK,
             no_cache(),

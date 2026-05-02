@@ -44,9 +44,23 @@ export async function aggregateHealth(
       });
     } catch {
       result.rust = { status: "error" };
+      jsonLog({
+        timestamp: new Date().toISOString(),
+        level: "warn",
+        target: "frontend:health",
+        message: "rust health parse failed",
+        trace_id: traceId,
+      });
     }
   } else {
     result.rust = { status: "error" };
+    jsonLog({
+      timestamp: new Date().toISOString(),
+      level: "warn",
+      target: "frontend:health",
+      message: "rust health fetch rejected",
+      trace_id: traceId,
+    });
   }
 
   if (dbRes.status === "fulfilled") {
@@ -63,9 +77,23 @@ export async function aggregateHealth(
       });
     } catch {
       result.db = { status: "error" };
+      jsonLog({
+        timestamp: new Date().toISOString(),
+        level: "warn",
+        target: "frontend:health",
+        message: "db health parse failed",
+        trace_id: traceId,
+      });
     }
   } else {
     result.db = { status: "error" };
+    jsonLog({
+      timestamp: new Date().toISOString(),
+      level: "warn",
+      target: "frontend:health",
+      message: "db health fetch rejected",
+      trace_id: traceId,
+    });
   }
 
   if (pythonRes.status === "fulfilled") {
@@ -82,9 +110,23 @@ export async function aggregateHealth(
       });
     } catch {
       result.python = { status: "unavailable" };
+      jsonLog({
+        timestamp: new Date().toISOString(),
+        level: "warn",
+        target: "frontend:health",
+        message: "python health parse failed",
+        trace_id: traceId,
+      });
     }
   } else {
     result.python = { status: "unavailable" };
+    jsonLog({
+      timestamp: new Date().toISOString(),
+      level: "warn",
+      target: "frontend:health",
+      message: "python health fetch rejected",
+      trace_id: traceId,
+    });
   }
 
   const durationMs = Math.round(performance.now() - start);

@@ -73,7 +73,10 @@ jobs:
           cd python-sidecar
           uv sync --all-extras
           uv run uvicorn app.main:app --uds /tmp/fullstackhex-python.sock &
-          sleep 2
+          for i in $(seq 1 20); do
+            test -S /tmp/fullstackhex-python.sock && break
+            sleep 0.5
+          done
           echo "Python sidecar started"
 
       - name: cargo test

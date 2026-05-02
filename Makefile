@@ -6,6 +6,9 @@ COMPOSE_DEV = docker compose -f compose/dev.yml --env-file .env
 COMPOSE_PROD = docker compose -f compose/prod.yml --env-file .env
 COMPOSE_MON = docker compose -f compose/monitor.yml --env-file .env
 
+PYTHON_TEST_SOCK ?= /tmp/fullstackhex-test.sock
+PID_FILE = /tmp/fullstackhex-dev.pids
+
 # PostgreSQL readiness tuning
 POSTGRES_RETRIES ?= 6
 POSTGRES_POLL_INTERVAL ?= 5
@@ -21,9 +24,11 @@ START_DEPS = \
 	done; \
 	@echo "PostgreSQL ready (or timeout — Rust will retry connections)"; \
 	@echo "Starting Python sidecar..."; \
-	cd python-sidecar && set -a && . ../.env && set +a && uv run uvicorn app.main:app --uds $(PYTHON_SOCK) &; \
+	cd python-sidecar && set -a && . ../.env && set +a && uv run uvicorn app.main:app --uds $(PYTHON_SOCK) & \
+	echo $$! >> $(PID_FILE); \
 	@echo "Starting frontend..."; \
-	cd frontend && bun run dev &
+	cd frontend && bun run dev & \
+	echo $$! >> $(PID_FILE);
 
 # Help
 help:
@@ -176,9 +181,9 @@ verify-health:
 	    echo "Health check timed out after $$TIMEOUT seconds."; \
 	    echo ""; \
 	    echo "Failing endpoints:"; \
-	    curl -sk http://localhost:8001/health 2>/dev/null || echo "  Rust API (8001) — unreachable"; \
-	    curl -sk http://localhost:8001/health/db 2>/dev/null || echo "  DB health (8001/health/db) — unreachable"; \
-	    curl -sk http://localhost:8001/health/python 2>/dev/null || echo "  Python health (8001/health/python) — unreachable"; \
+	    curl -sk --max-time 5 http://localhost:8001/health 2>/dev/null || echo "  Rust API (8001) — unreachable"; \
+	    curl -sk --max-time 5 http://localhost:8001/health/db 2>/dev/null || echo "  DB health (8001/health/db) — unreachable"; \
+	    curl -sk --max-time 5 http://localhost:8001/health/python 2>/dev/null || echo "  Python health (8001/health/python) — unreachable"; \
 	    echo ""; \
 	    echo "Troubleshooting:"; \
 	    echo "  - Is the Rust backend running? Run: cd backend && cargo run -p api"; \
@@ -189,11 +194,11 @@ verify-health:
 	  RUST_OK=0; \
 	  DB_OK=0; \
 	  PY_OK=0; \
-	  RUST_STATUS=$$(curl -sk http://localhost:8001/health 2>/dev/null | grep -o '"status":"[^"]*"' | head -1 | cut -d'"' -f4); \
+	  RUST_STATUS=$$(curl -sk --max-time 5 http://localhost:8001/health 2>/dev/null | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('status',''))" 2>/dev/null); \
 	  if [ "$$RUST_STATUS" = "ok" ]; then RUST_OK=1; fi; \
-	  DB_STATUS=$$(curl -sk http://localhost:8001/health/db 2>/dev/null | grep -o '"status":"[^"]*"' | head -1 | cut -d'"' -f4); \
+	  DB_STATUS=$$(curl -sk --max-time 5 http://localhost:8001/health/db 2>/dev/null | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('status',''))" 2>/dev/null); \
 	  if [ "$$DB_STATUS" = "ok" ]; then DB_OK=1; fi; \
-	  PY_STATUS=$$(curl -sk http://localhost:8001/health/python 2>/dev/null | grep -o '"status":"[^"]*"' | head -1 | cut -d'"' -f4); \
+	  PY_STATUS=$$(curl -sk --max-time 5 http://localhost:8001/health/python 2>/dev/null | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('status',''))" 2>/dev/null); \
 	  if [ "$$PY_STATUS" = "ok" ]; then PY_OK=1; fi; \
 	  printf "."; \
 	  if [ $$RUST_OK -eq 1 ] && [ $$DB_OK -eq 1 ] && [ $$PY_OK -eq 1 ]; then \
@@ -206,37 +211,47 @@ verify-health:
 
 # dev: full stack with prerequisite checks, preflight, and health verification
 dev: check-env check-prereqs preflight
-	@trap '$(MAKE) down-dev' INT TERM; \
-	$(START_DEPS)
-	@echo "Starting Rust backend..."
-	cd backend && set -a && . ../.env && set +a && cargo run -p api &
-	@echo ""
-	@$(MAKE) verify-health
-	@echo ""
-	@echo "=============================================="
-	@echo "  All services healthy. Dashboard:"
-	@echo "  → http://localhost:4321"
-	@echo "=============================================="
-	@echo "Press Ctrl+C to stop everything."
-	@wait
+	@rm -f $(PID_FILE); \
+	trap '$(MAKE) down-dev' INT TERM; \
+	$(START_DEPS); \
+	echo "Starting Rust backend..."; \
+	cd backend && set -a && . ../.env && set +a && cargo run -p api & \
+	echo $$! >> $(PID_FILE); \
+	sleep 2; \
+	$(MAKE) verify-health; \
+	echo ""; \
+	echo "=============================================="; \
+	echo "  All services healthy. Dashboard:"; \
+	echo "  → http://localhost:4321"; \
+	echo "=============================================="; \
+	echo "Press Ctrl+C to stop everything."; \
+	wait
 
 watch: check-env check-prereqs preflight
-	@command -v cargo-watch >/dev/null 2>&1 || { echo "ERROR: cargo-watch not found. Install: cargo install cargo-watch"; exit 1; }
-	@trap '$(MAKE) down-dev' INT TERM; \
-	$(START_DEPS)
-	@echo "Starting Rust backend (watch mode)..."
-	cd backend && set -a && . ../.env && set +a && cargo watch -x 'run -p api' &
-	@echo ""
-	@$(MAKE) verify-health
-	@echo ""
-	@echo "=============================================="
-	@echo "  All services healthy. Dashboard:"
-	@echo "  → http://localhost:4321"
-	@echo "=============================================="
-	@echo "Press Ctrl+C to stop everything."
-	@wait
+	@command -v cargo-watch >/dev/null 2>&1 || { echo "ERROR: cargo-watch not found. Install: cargo install cargo-watch"; exit 1; }; \
+	rm -f $(PID_FILE); \
+	trap '$(MAKE) down-dev' INT TERM; \
+	$(START_DEPS); \
+	echo "Starting Rust backend (watch mode)..."; \
+	cd backend && set -a && . ../.env && set +a && cargo watch -x 'run -p api' & \
+	echo $$! >> $(PID_FILE); \
+	sleep 2; \
+	$(MAKE) verify-health; \
+	echo ""; \
+	echo "=============================================="; \
+	echo "  All services healthy. Dashboard:"; \
+	echo "  → http://localhost:4321"; \
+	echo "=============================================="; \
+	echo "Press Ctrl+C to stop everything."; \
+	wait
 
 down-dev:
+	@if [ -f $(PID_FILE) ]; then \
+	  while read pid; do \
+	    kill $$pid 2>/dev/null || true; \
+	  done < $(PID_FILE); \
+	  rm -f $(PID_FILE); \
+	fi
 	@pkill -f "uvicorn app.main:app" 2>/dev/null || true
 	@pkill -f "cargo run -p api" 2>/dev/null || true
 	@pkill -f "cargo watch" 2>/dev/null || true
@@ -297,14 +312,17 @@ test-frontend:
 
 test-socket-ci:
 	@echo "Starting test sidecar for socket integration tests..."
-	cd python-sidecar && PYTHONUNBUFFERED=1 uv run uvicorn app.main:app --uds /tmp/fullstackhex-test.sock & \
+	cd python-sidecar && PYTHONUNBUFFERED=1 uv run uvicorn app.main:app --uds $(PYTHON_TEST_SOCK) & \
 	PID=$$!; \
-	sleep 2; \
+	for i in $$(seq 1 20); do \
+	  test -S $(PYTHON_TEST_SOCK) && break; \
+	  sleep 0.3; \
+	done; \
 	echo "Running socket integration tests..."; \
-	cd backend && PYTHON_SIDECAR_SOCKET=/tmp/fullstackhex-test.sock cargo test -p python-sidecar -- --ignored; \
+	cd backend && PYTHON_SIDECAR_SOCKET=$(PYTHON_TEST_SOCK) cargo test -p python-sidecar -- --ignored; \
 	R=$$?; \
 	kill $$PID 2>/dev/null || true; \
-	rm -f /tmp/fullstackhex-test.sock; \
+	rm -f $(PYTHON_TEST_SOCK); \
 	exit $$R
 
 # Performance

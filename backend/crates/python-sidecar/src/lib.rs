@@ -143,6 +143,14 @@ impl PythonSidecar {
                 "path contains invalid characters".into(),
             ));
         }
+        // Reject trace_id containing CR or LF to prevent HTTP header injection
+        if let Some(tid) = trace_id {
+            if tid.contains('\r') || tid.contains('\n') {
+                return Err(SidecarError::InvalidResponse(
+                    "trace_id contains invalid characters".into(),
+                ));
+            }
+        }
 
         let mut stream = UnixStream::connect(&self.socket_path)
             .await
@@ -164,15 +172,14 @@ impl PythonSidecar {
             .await
             .map_err(|e| SidecarError::ConnectionFailed(e.to_string()))?;
 
-        const MAX_RESPONSE_SIZE: u64 = 1_048_576; // 1 MiB
+        const MAX_RESPONSE_SIZE: usize = 1_048_576; // 1 MiB
         let mut response = Vec::new();
         stream
-            .take(MAX_RESPONSE_SIZE)
             .read_to_end(&mut response)
             .await
             .map_err(|e| SidecarError::ConnectionFailed(e.to_string()))?;
 
-        if response.len() as u64 > MAX_RESPONSE_SIZE {
+        if response.len() > MAX_RESPONSE_SIZE {
             return Err(SidecarError::InvalidResponse(
                 "response exceeded maximum allowed size".into(),
             ));

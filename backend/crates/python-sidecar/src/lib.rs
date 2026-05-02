@@ -144,12 +144,12 @@ impl PythonSidecar {
             ));
         }
         // Reject trace_id containing CR or LF to prevent HTTP header injection
-        if let Some(tid) = trace_id {
-            if tid.contains('\r') || tid.contains('\n') {
-                return Err(SidecarError::InvalidResponse(
-                    "trace_id contains invalid characters".into(),
-                ));
-            }
+        if let Some(tid) = trace_id
+            && (tid.contains('\r') || tid.contains('\n'))
+        {
+            return Err(SidecarError::InvalidResponse(
+                "trace_id contains invalid characters".into(),
+            ));
         }
 
         let mut stream = UnixStream::connect(&self.socket_path)

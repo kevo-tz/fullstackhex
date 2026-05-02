@@ -1,6 +1,6 @@
 use axum::http::{HeaderMap, StatusCode, header};
 use axum::response::IntoResponse;
-use axum::{Json, Router, extract::State, routing::get};
+use axum::{Json, Router, extract::State, http::Request, routing::get};
 use python_sidecar::PythonSidecar;
 #[cfg(test)]
 use serde_json::Value;
@@ -123,8 +123,27 @@ async fn health_db(State(state): State<Arc<AppState>>) -> impl IntoResponse {
     }
 }
 
-async fn health_python(State(state): State<Arc<AppState>>) -> impl IntoResponse {
-    match state.sidecar.health().await {
+async fn health_python(
+    State(state): State<Arc<AppState>>,
+    req: Request<axum::body::Body>,
+) -> impl IntoResponse {
+    let trace_id = req
+        .headers()
+        .get("x-trace-id")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+
+    if !trace_id.is_empty() {
+        tracing::info!(%trace_id, "health check via sidecar with propagated trace_id");
+    }
+
+    let result = if trace_id.is_empty() {
+        state.sidecar.health().await
+    } else {
+        state.sidecar.get_with_trace_id("/health", trace_id).await
+    };
+
+    match result {
         Ok(v) => (
             StatusCode::OK,
             no_cache(),
@@ -282,6 +301,46 @@ mod tests {
             )
             .await
             .unwrap();
+        let bytes = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        let v: Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(v["status"], "unavailable");
+        assert!(v["error"].is_string());
+    }
+
+    #[tokio::test]
+    async fn health_python_with_trace_id_header_returns_unavailable() {
+        let app = router_with_state(test_state());
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/health/python")
+                    .header("x-trace-id", "test-trace-abc-123")
+                    .body(axum::body::Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let bytes = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        let v: Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(v["status"], "unavailable");
+        assert!(v["error"].is_string());
+    }
+
+    #[tokio::test]
+    async fn health_python_with_empty_trace_id_returns_unavailable() {
+        let app = router_with_state(test_state());
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/health/python")
+                    .header("x-trace-id", "")
+                    .body(axum::body::Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
         let bytes = to_bytes(response.into_body(), usize::MAX).await.unwrap();
         let v: Value = serde_json::from_slice(&bytes).unwrap();
         assert_eq!(v["status"], "unavailable");

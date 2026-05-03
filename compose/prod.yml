@@ -117,8 +117,12 @@ services:
       PYTHON_SIDECAR_SOCKET: /tmp/sidecar/python-sidecar.sock
     volumes:
       - sidecar_socket:/tmp/sidecar
-    # No depends_on backend: Python binds the socket (server); Rust connects (client).
-    # Python must be up before Rust attempts to connect.
+    healthcheck:
+      test: ["CMD-SHELL", "test -S /tmp/sidecar/python-sidecar.sock"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
     networks:
       - fullstackhex-network
     deploy:
@@ -265,3 +269,78 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
+
+  redis-exporter:
+    image: oliver006/redis_exporter:latest
+    container_name: fullstackhex_redis_exporter
+    restart: unless-stopped
+    expose:
+      - "9121"
+    environment:
+      REDIS_ADDR: "redis://fullstackhex_redis:6379"
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - fullstackhex-network
+    deploy:
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: 64M
+
+  postgres-exporter:
+    image: prometheuscommunity/postgres-exporter:latest
+    container_name: fullstackhex_postgres_exporter
+    restart: unless-stopped
+    expose:
+      - "9187"
+    environment:
+      # Use individual vars to avoid shell injection if password contains special chars
+      DATA_SOURCE_USER: ${POSTGRES_USER:?POSTGRES_USER must be set}
+      DATA_SOURCE_PASS: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}
+      DATA_SOURCE_HOST: fullstackhex_db
+      DATA_SOURCE_PORT: "5432"
+      DATA_SOURCE_DB: ${POSTGRES_DB:-app_database}
+      DATA_SOURCE_SSLMODE: disable
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - fullstackhex-network
+    deploy:
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: 64M
+
+  nginx-exporter:
+    image: nginx/nginx-prometheus-exporter:latest
+    container_name: fullstackhex_nginx_exporter
+    restart: unless-stopped
+    expose:
+      - "9113"
+    command:
+      - "-nginx.scrape-uri=http://fullstackhex_nginx:80/stub_status"
+    depends_on:
+      nginx:
+        condition: service_started
+    networks:
+      - fullstackhex-network
+    deploy:
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: 64M
+
+  certbot:
+    image: certbot/certbot:latest
+    container_name: fullstackhex_certbot
+    restart: unless-stopped
+    volumes:
+      - ./nginx/certs:/etc/letsencrypt
+      - ./nginx/certbot-data:/var/lib/certbot
+    entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew; sleep 12h; done'"
+    networks:
+      - fullstackhex-network

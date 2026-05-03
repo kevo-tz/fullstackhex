@@ -15,6 +15,9 @@ serde_json = { workspace = true }
 sqlx = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
+metrics = { workspace = true }
+metrics-exporter-prometheus = { workspace = true }
+dotenvy = "0.15"
 db = { path = "../db" }
 python-sidecar = { path = "../python-sidecar" }
 

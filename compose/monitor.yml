@@ -28,6 +28,8 @@ services:
       - "--storage.tsdb.path=/prometheus"
       - "--storage.tsdb.retention.time=15d"
       - "--web.enable-lifecycle"
+    extra_hosts:
+      - "backend:host-gateway"
     networks:
       - fullstackhex-network
     healthcheck:
@@ -63,3 +65,77 @@ services:
       timeout: 5s
       retries: 5
       start_period: 20s
+
+  alertmanager:
+    image: prom/alertmanager:latest
+    container_name: fullstackhex_alertmanager
+    restart: unless-stopped
+    ports:
+      - "${ALERTMANAGER_PORT:-9093}:9093"
+    volumes:
+      - ../monitoring/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+    command:
+      - "--config.file=/etc/alertmanager/alertmanager.yml"
+    networks:
+      - fullstackhex-network
+
+  node-exporter:
+    image: prom/node-exporter:latest
+    container_name: fullstackhex_node_exporter
+    restart: unless-stopped
+    ports:
+      - "${NODE_EXPORTER_PORT:-9100}:9100"
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/host/rootfs:ro
+    command:
+      - "--path.rootfs=/host/rootfs"
+      - "--path.procfs=/host/proc"
+      - "--path.sysfs=/host/sys"
+    networks:
+      - fullstackhex-network
+    deploy:
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: 64M
+
+  redis-exporter:
+    image: oliver006/redis_exporter:latest
+    container_name: fullstackhex_redis_exporter_mon
+    restart: unless-stopped
+    expose:
+      - "9121"
+    environment:
+      REDIS_ADDR: "redis://fullstackhex_redis:6379"
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+    networks:
+      - fullstackhex-network
+    deploy:
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: 64M
+
+  postgres-exporter:
+    image: prometheuscommunity/postgres-exporter:latest
+    container_name: fullstackhex_postgres_exporter_mon
+    restart: unless-stopped
+    expose:
+      - "9187"
+    environment:
+      # Use individual vars to avoid shell injection if password contains special chars
+      DATA_SOURCE_USER: ${POSTGRES_USER:?POSTGRES_USER must be set}
+      DATA_SOURCE_PASS: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}
+      DATA_SOURCE_HOST: fullstackhex_db
+      DATA_SOURCE_PORT: "5432"
+      DATA_SOURCE_DB: ${POSTGRES_DB:-app_database}
+      DATA_SOURCE_SSLMODE: disable
+    networks:
+      - fullstackhex-network
+    deploy:
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: 64M

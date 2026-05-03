@@ -1,6 +1,7 @@
 use axum::http::{HeaderMap, StatusCode, header};
 use axum::response::IntoResponse;
-use axum::{Json, Router, extract::State, http::Request, routing::get};
+use axum::{Json, Router, extract::State, http::Request, middleware, routing::get};
+use metrics_exporter_prometheus::PrometheusHandle;
 use python_sidecar::PythonSidecar;
 #[cfg(test)]
 use serde_json::Value;
@@ -9,6 +10,8 @@ use sqlx::PgPool;
 use sqlx::postgres::PgPoolOptions;
 use std::sync::Arc;
 use std::time::Duration;
+
+pub mod metrics;
 
 /// Status of the database connection pool.
 pub enum DbStatus {
@@ -23,10 +26,16 @@ pub enum DbStatus {
 pub struct AppState {
     pub db: DbStatus,
     pub sidecar: PythonSidecar,
+    pub prometheus_handle: PrometheusHandle,
+    /// Abort handle for the background DB pool gauge task.
+    /// Only present when the database is connected.
+    pub gauge_task: Option<tokio::task::AbortHandle>,
 }
 
 /// Build the router with default state (from environment).
-pub async fn router() -> Router {
+/// Returns the router and the shared state so the caller can clean up
+/// background tasks (e.g. abort the DB pool gauge) after shutdown.
+pub async fn router(prometheus_handle: PrometheusHandle) -> (Router, Arc<AppState>) {
     let db = match std::env::var("DATABASE_URL") {
         Ok(url) => {
             match PgPoolOptions::new()
@@ -42,21 +51,35 @@ pub async fn router() -> Router {
         Err(_) => DbStatus::NotConfigured,
     };
 
-    let state = AppState {
-        db,
-        sidecar: PythonSidecar::from_env(),
+    let gauge_task = match &db {
+        DbStatus::Connected(pool) => Some(metrics::spawn_pool_gauge_task(pool.clone())),
+        _ => None,
     };
 
-    router_with_state(state)
+    let state = Arc::new(AppState {
+        db,
+        sidecar: PythonSidecar::from_env(),
+        prometheus_handle,
+        gauge_task,
+    });
+
+    (build_router(state.clone()), state)
 }
 
 /// Build the router with explicit state (for testing).
 pub fn router_with_state(state: AppState) -> Router {
+    build_router(Arc::new(state))
+}
+
+fn build_router(state: Arc<AppState>) -> Router {
     Router::new()
         .route("/health", get(health))
         .route("/health/db", get(health_db))
         .route("/health/python", get(health_python))
-        .with_state(Arc::new(state))
+        .route("/metrics", get(metrics_handler))
+        .route("/metrics/python", get(metrics_python_proxy))
+        .layer(middleware::from_fn(metrics::track_metrics))
+        .with_state(state)
 }
 
 fn no_cache() -> HeaderMap {
@@ -86,7 +109,7 @@ async fn health_db(State(state): State<Arc<AppState>>) -> impl IntoResponse {
         DbStatus::NotConfigured => None,
         DbStatus::ConnectionFailed(msg) => {
             return (
-                StatusCode::OK,
+                StatusCode::SERVICE_UNAVAILABLE,
                 no_cache(),
                 Json(json!({
                     "status": "error",
@@ -115,7 +138,7 @@ async fn health_db(State(state): State<Arc<AppState>>) -> impl IntoResponse {
                 ),
             };
             (
-                StatusCode::OK,
+                StatusCode::SERVICE_UNAVAILABLE,
                 no_cache(),
                 Json(json!({ "status": "error", "error": error, "fix": fix })),
             )
@@ -168,6 +191,10 @@ async fn health_python(
                     format!("request timed out after {d:?}"),
                     format!("The Python sidecar is not responding. Restart it with: cd python-sidecar && uv run uvicorn app.main:app --uds {sock_display}"),
                 ),
+                python_sidecar::SidecarError::InvalidInput(msg) => (
+                    format!("invalid input: {msg}"),
+                    "The request contains invalid characters.".to_string(),
+                ),
                 python_sidecar::SidecarError::InvalidResponse(msg) => (
                     format!("invalid response: {msg}"),
                     "The Python sidecar returned an unexpected response. Check its logs for errors.".to_string(),
@@ -178,9 +205,45 @@ async fn health_python(
                 ),
             };
             (
-                StatusCode::OK,
+                StatusCode::SERVICE_UNAVAILABLE,
                 no_cache(),
                 Json(json!({ "status": "unavailable", "error": error_msg, "fix": fix_msg })),
+            )
+        }
+    }
+}
+
+async fn metrics_handler(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+    let body = metrics::render_metrics(&state.prometheus_handle);
+    (
+        StatusCode::OK,
+        [(header::CONTENT_TYPE, "text/plain; charset=utf-8")],
+        body,
+    )
+}
+
+async fn metrics_python_proxy(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+    match state.sidecar.get_raw("/metrics").await {
+        Ok(body) => (
+            StatusCode::OK,
+            [(header::CONTENT_TYPE, "text/plain; charset=utf-8")],
+            body,
+        ),
+        Err(python_sidecar::SidecarError::HttpError { status, body }) => {
+            let code = StatusCode::from_u16(status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
+            tracing::warn!(status = %status, "Python sidecar returned HTTP error for /metrics");
+            (
+                code,
+                [(header::CONTENT_TYPE, "text/plain; charset=utf-8")],
+                format!("# Python metrics error: {body}").into_bytes(),
+            )
+        }
+        Err(e) => {
+            tracing::warn!(error = %e, "failed to proxy Python metrics");
+            (
+                StatusCode::SERVICE_UNAVAILABLE,
+                [(header::CONTENT_TYPE, "text/plain; charset=utf-8")],
+                format!("# Python metrics unavailable: {e}").into_bytes(),
             )
         }
     }
@@ -201,8 +264,11 @@ mod tests {
                 Duration::from_secs(1),
                 0,
             ),
+            prometheus_handle: metrics::init_metrics_recorder(),
+            gauge_task: None,
         }
     }
+
     #[tokio::test]
     async fn health_returns_200() {
         let app = router_with_state(test_state());
@@ -242,7 +308,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn health_db_returns_200() {
+    async fn health_db_returns_503_when_not_configured() {
         let app = router_with_state(test_state());
         let response = app
             .oneshot(
@@ -253,7 +319,7 @@ mod tests {
             )
             .await
             .unwrap();
-        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
     }
 
     #[tokio::test]
@@ -275,7 +341,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn health_python_returns_200() {
+    async fn health_python_returns_503_when_no_socket() {
         let app = router_with_state(test_state());
         let response = app
             .oneshot(
@@ -286,7 +352,7 @@ mod tests {
             )
             .await
             .unwrap();
-        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
     }
 
     #[tokio::test]
@@ -320,7 +386,7 @@ mod tests {
             )
             .await
             .unwrap();
-        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
         let bytes = to_bytes(response.into_body(), usize::MAX).await.unwrap();
         let v: Value = serde_json::from_slice(&bytes).unwrap();
         assert_eq!(v["status"], "unavailable");
@@ -340,10 +406,135 @@ mod tests {
             )
             .await
             .unwrap();
-        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
         let bytes = to_bytes(response.into_body(), usize::MAX).await.unwrap();
         let v: Value = serde_json::from_slice(&bytes).unwrap();
         assert_eq!(v["status"], "unavailable");
         assert!(v["error"].is_string());
+    }
+
+    #[tokio::test]
+    async fn metrics_endpoint_returns_prometheus_text() {
+        let app = router_with_state(test_state());
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/metrics")
+                    .body(axum::body::Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(
+            response.headers().get("content-type").unwrap(),
+            "text/plain; charset=utf-8"
+        );
+        let bytes = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        let body = String::from_utf8(bytes.to_vec()).unwrap();
+        assert!(
+            body.contains("# HELP") || body.contains("http_requests_total"),
+            "metrics body should contain prometheus content: {}",
+            body
+        );
+    }
+
+    #[tokio::test]
+    async fn middleware_increments_request_counter() {
+        let app = router_with_state(test_state());
+        // Make a request to /health
+        let _ = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/health")
+                    .body(axum::body::Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        // Now check /metrics for the counter
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/metrics")
+                    .body(axum::body::Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let bytes = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        let body = String::from_utf8(bytes.to_vec()).unwrap();
+        assert!(
+            body.contains("http_requests_total"),
+            "metrics should contain http_requests_total: {}",
+            body
+        );
+    }
+
+    #[tokio::test]
+    async fn middleware_records_request_histogram() {
+        let app = router_with_state(test_state());
+        let _ = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/health")
+                    .body(axum::body::Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/metrics")
+                    .body(axum::body::Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let bytes = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        let body = String::from_utf8(bytes.to_vec()).unwrap();
+        assert!(
+            body.contains("http_request_duration_seconds_bucket"),
+            "metrics should contain http_request_duration_seconds_bucket: {}",
+            body
+        );
+    }
+
+    #[tokio::test]
+    async fn metrics_python_proxy_unavailable_when_no_socket() {
+        let app = router_with_state(test_state());
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/metrics/python")
+                    .body(axum::body::Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+    }
+
+    #[tokio::test]
+    async fn normalize_route_bounds_known_paths() {
+        assert_eq!(metrics::normalize_route("/health"), "/health");
+        assert_eq!(metrics::normalize_route("/health/db"), "/health/db");
+        assert_eq!(metrics::normalize_route("/health/python"), "/health/python");
+        assert_eq!(metrics::normalize_route("/metrics"), "/metrics");
+        assert_eq!(
+            metrics::normalize_route("/metrics/python"),
+            "/metrics/python"
+        );
+    }
+
+    #[tokio::test]
+    async fn normalize_route_collapses_unknown_paths() {
+        assert_eq!(metrics::normalize_route("/api/users/123"), "unknown");
+        assert_eq!(metrics::normalize_route("/admin"), "unknown");
     }
 }

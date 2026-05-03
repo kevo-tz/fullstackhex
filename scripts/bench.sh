@@ -185,20 +185,25 @@ benchmark_frontend_ttfb() {
 main() {
     # Check for --help flag
     if [[ "$1" == "--help" || "$1" == "-h" ]]; then
-        echo "Usage: $0 [--json]"
+        echo "Usage: $0 [--json] [--compare]"
         echo ""
         echo "Options:"
         echo "  --json           Output results in JSON format"
+        echo "  --compare        Compare against baseline (non-blocking warning)"
         echo "  --help, -h       Show this help message"
         exit 0
     fi
     
     # Check for JSON output flag
     local JSON_OUTPUT=false
-    if [[ "$1" == "--json" ]]; then
-        JSON_OUTPUT=true
-        shift
-    fi
+    local COMPARE=false
+    while [[ "$1" == --* ]]; do
+        case "$1" in
+            --json) JSON_OUTPUT=true; shift ;;
+            --compare) COMPARE=true; shift ;;
+            *) break ;;
+        esac
+    done
 
     if [ "$JSON_OUTPUT" = false ]; then
         log_info "FullStackHex Performance Benchmarks (Lite - using Apache Bench)"
@@ -234,6 +239,21 @@ log_info "  Requests: $BENCHLITE_REQUESTS"
         failed=1
     fi
     
+    # Baseline comparison (non-blocking warning)
+    if [ "$COMPARE" = true ] && [ -f benches/baseline/baseline.json ]; then
+        log_info "Comparing against baseline..."
+        local baseline_p99=$(jq -r '.benchmarks[0].result.p99_ms' benches/baseline/baseline.json 2>/dev/null || echo "0")
+        local current_p99=$(echo "$health_result" | jq -r '.p99_ms' 2>/dev/null || echo "0")
+        if [ -n "$baseline_p99" ] && [ -n "$current_p99" ] && [ "$baseline_p99" != "0" ]; then
+            local delta=$(echo "scale=1; (($current_p99 - $baseline_p99) / $baseline_p99) * 100" | bc -l 2>/dev/null || echo "0")
+            if [ "${delta%.*}" -gt 20 ] 2>/dev/null; then
+                log_warning "p99 regression detected: ${delta}% slower than baseline (baseline: ${baseline_p99}ms, current: ${current_p99}ms)"
+            else
+                log_success "p99 within baseline tolerance (${delta}% delta)"
+            fi
+        fi
+    fi
+
     if [ "$JSON_OUTPUT" = true ]; then
         # Output JSON results (simple format without external dependencies)
         echo "{"

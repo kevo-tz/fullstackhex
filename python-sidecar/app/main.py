@@ -1,11 +1,31 @@
 from datetime import datetime, timezone
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, Response
 import logging
 import json
 import sys
 import time
 
+from prometheus_client import (
+    Counter,
+    Histogram,
+    generate_latest,
+    CONTENT_TYPE_LATEST,
+)
+
 app = FastAPI()
+
+# Prometheus metrics
+PYTHON_REQUESTS_TOTAL = Counter(
+    "python_requests_total",
+    "Total HTTP requests",
+    ["method", "endpoint", "status"],
+)
+PYTHON_REQUEST_DURATION = Histogram(
+    "python_request_duration_seconds",
+    "HTTP request duration",
+    ["method", "endpoint"],
+    buckets=[0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0],
+)
 
 
 class JsonFormatter(logging.Formatter):
@@ -43,7 +63,8 @@ async def trace_id_middleware(request: Request, call_next):
     trace_id = request.headers.get("x-trace-id", "")
     start = time.monotonic()
     response = await call_next(request)
-    duration_ms = int((time.monotonic() - start) * 1000)
+    duration = time.monotonic() - start
+    duration_ms = int(duration * 1000)
     logger.info(
         f"{request.method} {request.url.path} → {response.status_code}",
         extra={
@@ -52,6 +73,11 @@ async def trace_id_middleware(request: Request, call_next):
             "status_code": response.status_code,
         },
     )
+    # Record Prometheus metrics
+    endpoint = request.url.path
+    status = str(response.status_code)
+    PYTHON_REQUESTS_TOTAL.labels(method=request.method, endpoint=endpoint, status=status).inc()
+    PYTHON_REQUEST_DURATION.labels(method=request.method, endpoint=endpoint).observe(duration)
     return response
 
 
@@ -59,4 +85,13 @@ async def trace_id_middleware(request: Request, call_next):
 def health(request: Request) -> dict[str, str]:
     trace_id = request.headers.get("x-trace-id", "")
     logger.info("health check", extra={"trace_id": trace_id})
-    return {"status": "ok", "service": "python-sidecar", "version": "0.6.0"}
+    # Bump this version together with VERSION file at repo root
+    return {"status": "ok", "service": "python-sidecar", "version": "0.7.0"}
+
+
+@app.get("/metrics")
+def metrics() -> Response:
+    return Response(
+        content=generate_latest(),
+        media_type=CONTENT_TYPE_LATEST,
+    )

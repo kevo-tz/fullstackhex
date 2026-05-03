@@ -13,6 +13,7 @@
 
 networks:
   fullstackhex-network:
+    name: fullstackhex-network
     driver: bridge
     ipam:
       config:
@@ -147,3 +148,37 @@ services:
       - fullstackhex-network
     profiles:
       - tools
+
+  redis-exporter:
+    image: oliver006/redis_exporter:latest
+    container_name: fullstackhex_redis_exporter
+    restart: unless-stopped
+    ports:
+      - "${REDIS_EXPORTER_PORT:-9121}:9121"
+    environment:
+      REDIS_ADDR: "redis://fullstackhex_redis:6379"
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - fullstackhex-network
+
+  postgres-exporter:
+    image: prometheuscommunity/postgres-exporter:latest
+    container_name: fullstackhex_postgres_exporter
+    restart: unless-stopped
+    ports:
+      - "${POSTGRES_EXPORTER_PORT:-9187}:9187"
+    environment:
+      # Use individual vars to avoid shell injection if password contains special chars
+      DATA_SOURCE_USER: ${POSTGRES_USER:-app_user}
+      DATA_SOURCE_PASS: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}
+      DATA_SOURCE_HOST: fullstackhex_db
+      DATA_SOURCE_PORT: "5432"
+      DATA_SOURCE_DB: ${POSTGRES_DB:-app_database}
+      DATA_SOURCE_SSLMODE: disable
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - fullstackhex-network

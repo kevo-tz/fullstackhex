@@ -20,7 +20,9 @@ A production-ready full-stack template combining a Rust/Axum backend, Python sid
 - **Ships complete** — every source file, config, and test is committed. Clone and run — no scaffolding step.
 - **`make setup`** — installs Rust, Bun, uv and creates `.env` from `.env.example`. That's all first-time setup requires.
 - **Dev infrastructure via Docker Compose** — PostgreSQL 18, Redis 8, and RustFS spin up with a single command; optional Adminer and Redis Commander behind a `tools` profile.
-- **Monitoring stack overlay** — `compose/monitor.yml` adds Prometheus + Grafana with provisioning and starter dashboard.
+- **Monitoring stack overlay** — `compose/monitor.yml` adds Prometheus + Grafana with 5 auto-provisioned dashboards (API, DB, Python, Infrastructure, SLOs).
+- **Metrics out of the box** — Rust backend exposes `/metrics` with request counters and latency histograms; Python sidecar metrics proxied via `/metrics/python`.
+- **Production deployable** — `make deploy` pushes to a VPS via SSH+rsync; nginx + TLS + certbot auto-renewal included.
 - **Full test suites committed** — Rust/Python/Frontend unit, integration, and smoke tests ship in the repo.
 - **Security automation** — local `detect-secrets` pre-commit checks plus CI `gitleaks` scanning.
 - **Dependency automation** — Dependabot updates for Rust, Python, frontend, and GitHub Actions.
@@ -43,7 +45,23 @@ make dev
 Dashboard at http://localhost:4321 — three green dots means everything is healthy.
 
 For infra-only (run backend/frontend manually): `make up`.
-Production template: use `.env.prod.example` for reference values.
+
+### Production Deploy
+
+```bash
+# 1. Set deploy target in .env
+#    DEPLOY_HOST=your-vps.example.com
+#    DEPLOY_USER=ubuntu
+#    DEPLOY_PATH=/opt/fullstackhex
+
+# 2. Ensure ssh-agent has your key
+ssh-add ~/.ssh/id_ed25519
+
+# 3. Deploy
+make deploy
+```
+
+See [docs/INFRASTRUCTURE.md](docs/INFRASTRUCTURE.md) for full production setup including TLS certificates and PostgreSQL backups.
 
 ## Documentation
 

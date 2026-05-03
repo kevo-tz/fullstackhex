@@ -76,12 +76,8 @@ async def trace_id_middleware(request: Request, call_next):
     # Record Prometheus metrics
     endpoint = request.url.path
     status = str(response.status_code)
-    PYTHON_REQUESTS_TOTAL.labels(
-        method=request.method, endpoint=endpoint, status=status
-    ).inc()
-    PYTHON_REQUEST_DURATION.labels(
-        method=request.method, endpoint=endpoint
-    ).observe(duration)
+    PYTHON_REQUESTS_TOTAL.labels(method=request.method, endpoint=endpoint, status=status).inc()
+    PYTHON_REQUEST_DURATION.labels(method=request.method, endpoint=endpoint).observe(duration)
     return response
 
 

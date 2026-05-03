@@ -24,53 +24,53 @@ scrape_configs:
     scrape_interval: 5s
     static_configs:
       - targets: ['backend:8001']
+        labels:
+          service: 'rust-api'
+          tier: 'backend'
     metrics_path: '/metrics'
-    labels:
-      service: 'rust-api'
-      tier: 'backend'
 
   # Python Sidecar - proxied through Rust backend
   - job_name: 'python-sidecar'
     scrape_interval: 10s
     static_configs:
       - targets: ['backend:8001']
+        labels:
+          service: 'python-api'
+          tier: 'backend'
     metrics_path: '/metrics/python'
-    labels:
-      service: 'python-api'
-      tier: 'backend'
 
   # Node Exporter - system metrics
   - job_name: 'node-exporter'
     scrape_interval: 15s
     static_configs:
       - targets: ['node-exporter:9100']
-    labels:
-      service: 'system'
-      tier: 'infrastructure'
+        labels:
+          service: 'system'
+          tier: 'infrastructure'
 
   # Redis Exporter
   - job_name: 'redis'
     scrape_interval: 15s
     static_configs:
       - targets: ['redis-exporter:9121']
-    labels:
-      service: 'redis'
-      tier: 'infrastructure'
+        labels:
+          service: 'redis'
+          tier: 'infrastructure'
 
   # PostgreSQL Exporter
   - job_name: 'postgres'
     scrape_interval: 15s
     static_configs:
       - targets: ['postgres-exporter:9187']
-    labels:
-      service: 'postgres'
-      tier: 'infrastructure'
+        labels:
+          service: 'postgres'
+          tier: 'infrastructure'
 
   # Nginx Exporter (production only)
   - job_name: 'nginx'
     scrape_interval: 15s
     static_configs:
       - targets: ['nginx-exporter:9113']
-    labels:
-      service: 'nginx'
-      tier: 'infrastructure'
+        labels:
+          service: 'nginx'
+          tier: 'infrastructure'

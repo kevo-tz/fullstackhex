@@ -357,7 +357,7 @@ deploy: check-env
 	rsync -avz --exclude='.git' --exclude='target' --exclude='node_modules' \
 	  compose/ nginx/ scripts/ Makefile .env \
 	  $(DEPLOY_USER)@$(DEPLOY_HOST):$(DEPLOY_PATH)/
-	ssh $(DEPLOY_USER)@$(DEPLOY_HOST) "cd $(DEPLOY_PATH) && docker compose -f compose/prod.yml up -d --wait"
+	ssh $(DEPLOY_USER)@$(DEPLOY_HOST) "cd $(DEPLOY_PATH) && chmod 600 .env && docker compose -f compose/prod.yml up -d --wait"
 	$(MAKE) deploy-check
 
 # Post-deploy health check: poll remote /health until OK or timeout
@@ -373,7 +373,12 @@ deploy-check:
 	    echo "Deploy health check timed out after $$TIMEOUT seconds."; \
 	    exit 1; \
 	  fi; \
-	  STATUS=$$(curl -sk --max-time 5 "https://$(DEPLOY_HOST)/health" 2>/dev/null | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('status',''))" 2>/dev/null); \
+	  CURL_FLAGS="--max-time 5"; \
+	  RESP=$$(curl -sS $$CURL_FLAGS "https://$(DEPLOY_HOST)/health" 2>/dev/null); \
+	  if [ -z "$$RESP" ]; then \
+	    RESP=$$(curl -sk $$CURL_FLAGS "https://$(DEPLOY_HOST)/health" 2>/dev/null); \
+	  fi; \
+	  STATUS=$$(echo "$$RESP" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('status',''))" 2>/dev/null); \
 	  if [ "$$STATUS" = "ok" ]; then \
 	    echo ""; \
 	    echo "Remote health OK ($$ELAPSED s)"; \

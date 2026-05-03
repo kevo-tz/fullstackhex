@@ -48,10 +48,16 @@ Start here for the FullStackHex documentation. Documents are listed in recommend
 | ARCHITECTURE.md | Understand the stack | 2 min |
 | SERVICES.md | Service API details | 4 min |
 | INFRASTRUCTURE.md | Docker/infra reference | 5 min |
+| MONITORING.md | Prometheus + Grafana setup | 4 min |
+| CI.md | CI/CD pipeline reference | 3 min |
 | INITIALIZATION.md | Template for new projects | 3 min |
 | performance-budget.md | Performance targets and CI gates | 2 min |
+| logging-conventions.md | Structured log format schema | 2 min |
 
 ## Related Docs
 
 - [Previous: performance-budget.md](./performance-budget.md) - Performance targets and CI gates
+- [MONITORING.md](./MONITORING.md) - Prometheus + Grafana setup and dashboards
+- [CI.md](./CI.md) - CI/CD pipeline and debugging
+- [logging-conventions.md](./logging-conventions.md) - Structured log format across languages
 - [All Docs](./INDEX.md) - Full documentation index

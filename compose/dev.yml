@@ -147,3 +147,31 @@ services:
       - fullstackhex-network
     profiles:
       - tools
+
+  redis-exporter:
+    image: oliver006/redis_exporter:latest
+    container_name: fullstackhex_redis_exporter
+    restart: unless-stopped
+    ports:
+      - "${REDIS_EXPORTER_PORT:-9121}:9121"
+    environment:
+      REDIS_ADDR: "redis://fullstackhex_redis:6379"
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - fullstackhex-network
+
+  postgres-exporter:
+    image: prometheuscommunity/postgres-exporter:latest
+    container_name: fullstackhex_postgres_exporter
+    restart: unless-stopped
+    ports:
+      - "${POSTGRES_EXPORTER_PORT:-9187}:9187"
+    environment:
+      DATA_SOURCE_NAME: "postgresql://${POSTGRES_USER:-app_user}:${POSTGRES_PASSWORD}@fullstackhex_db:5432/${POSTGRES_DB:-app_database}?sslmode=disable"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - fullstackhex-network

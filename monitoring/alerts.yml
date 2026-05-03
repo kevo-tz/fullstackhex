@@ -1,0 +1,30 @@
+# FullStackHex Alert Rules
+# These rules are evaluated by Prometheus.
+# Alertmanager handles routing (see alertmanager.yml).
+#
+# NOTE: Rules are commented out by default (opt-in).
+# Uncomment the groups block to enable alerting.
+
+# groups:
+#   - name: fullstackhex
+#     rules:
+#       - alert: ServiceDown
+#         expr: up == 0
+#         for: 5m
+#         labels:
+#           severity: critical
+#         annotations:
+#           summary: "Service {{ $labels.job }} is down"
+#           description: "Service {{ $labels.job }} has been down for more than 5 minutes."
+#
+#       - alert: HighLatency
+#         expr: |
+#           histogram_quantile(0.99,
+#             sum(rate(http_request_duration_seconds_bucket[5m])) by (le)
+#           ) > 0.1
+#         for: 5m
+#         labels:
+#           severity: warning
+#         annotations:
+#           summary: "High p99 latency detected"
+#           description: "p99 latency is {{ $value }}s (threshold: 0.1s)."

@@ -26,6 +26,8 @@ docker compose -f compose/monitor.yml up -d
 
 ## Pre-configured Dashboards
 
+All dashboards are auto-provisioned from `monitoring/grafana/dashboards/`.
+
 ### FullStackHex Overview Dashboard
 
 Located at: `monitoring/grafana/dashboards/overview.json`
@@ -33,11 +35,35 @@ Located at: `monitoring/grafana/dashboards/overview.json`
 **Panels included:**
 1. **Service Health Overview** - Shows Up/Down status for all services
 2. **Request Rate (RPS)** - Requests per second
-3. **p99 Latency (ms)** - 99th percentile response time
+3. **p99 Latency (s)** - 99th percentile response time
 4. **Error Rate (%)** - Percentage of 5xx responses
 5. **System Metrics** - CPU and Memory usage
 
-**Access:** Grafana → Dashboards → FullStackHex - Overview
+### Database Dashboard
+
+Located at: `monitoring/grafana/dashboards/database.json`
+
+**Panels:** Active connections, query rate, cache hit ratio, slow queries.
+
+### Python Sidecar Dashboard
+
+Located at: `monitoring/grafana/dashboards/python.json`
+
+**Panels:** Request rate, error rate, p99 latency, socket health.
+
+### Infrastructure Dashboard
+
+Located at: `monitoring/grafana/dashboards/infra.json`
+
+**Panels:** CPU usage, memory usage, disk I/O, nginx request rate.
+
+### SLO Dashboard
+
+Located at: `monitoring/grafana/dashboards/slo.json`
+
+**Panels:** Error rate vs SLO, p99 latency vs SLO, uptime %, error budget burn.
+
+> **Note:** The SLO dashboard may show empty panels for fresh templates with no traffic. This is expected — data appears once requests start flowing.
 
 ### Importing Dashboards
 
@@ -52,13 +78,18 @@ If the dashboard isn't auto-loaded:
 
 ### Application Metrics (from Rust Backend)
 
-| Metric | Description | Target | Alert Threshold |
-|--------|-------------|--------|------------------|
-| `http_requests_total` | Total HTTP requests | - | - |
-| `http_request_duration_ms` | Request latency histogram | p50 < 5ms, p99 < 20ms | p99 > 100ms |
-| `http_requests_total{status=~"5.."}` | Server errors | < 1% | > 5% |
-| `rust_sidecar_requests_total` | Requests to Python sidecar | - | - |
-| `rust_sidecar_duration_ms` | Sidecar latency | p99 < 50ms | p99 > 200ms |
+| Metric | Type | Labels | Description |
+|--------|------|--------|-------------|
+| `http_requests_total` | Counter | `method`, `route`, `status` | Total HTTP requests |
+| `http_request_duration_seconds` | Histogram | `method`, `route` | Request latency (seconds) |
+| `db_pool_connections` | Gauge | `state` (`idle` / `used`) | DB connection pool size |
+
+### Application Metrics (from Python Sidecar)
+
+| Metric | Type | Labels | Description |
+|--------|------|--------|-------------|
+| `python_requests_total` | Counter | `method`, `endpoint`, `status` | Total Python requests |
+| `python_request_duration_seconds` | Histogram | `method`, `endpoint` | Python request latency (seconds) |
 
 ### System Metrics (from Node Exporter)
 
@@ -135,61 +166,28 @@ groups:
           description: "p99 latency is {{ $value }}ms"
 ```
 
-## Exposing Metrics from Rust Backend
+## Metrics Architecture
 
-### Add Metrics Middleware
+Metrics are collected via the `metrics` + `metrics-exporter-prometheus` crates.
 
-In `backend/crates/api/src/main.rs`:
+### How it works
 
-```rust
-use prometheus::{register_histogram, register_counter, Histogram, Counter};
+1. **Tower middleware** (`backend/crates/api/src/metrics.rs::track_metrics`) records every request:
+   - `http_requests_total` counter with `method`, `route`, `status` labels
+   - `http_request_duration_seconds` histogram with custom buckets
+2. **Background task** updates `db_pool_connections` gauge every 15s
+3. **`/metrics` endpoint** renders all metrics in Prometheus text format
+4. **`/metrics/python` endpoint** proxies Python sidecar metrics over the Unix socket
+5. **Prometheus** scrapes both endpoints every 5-15s
+6. **Grafana** displays the data via 5 pre-configured dashboards
 
-// Define metrics
-lazy_static! {
-    static ref HTTP_REQUESTS: Counter = register_counter!(
-        "http_requests_total",
-        "Total HTTP requests"
-    ).unwrap();
+### Route label normalization
 
-    static ref HTTP_DURATION: Histogram = register_histogram!(
-        "http_request_duration_ms",
-        "HTTP request duration in milliseconds"
-    ).unwrap();
-}
+To prevent cardinality explosion, the middleware normalizes paths:
+- `/health`, `/health/db`, `/health/python` → exact match
+- Everything else → `unknown`
 
-// Add middleware to track metrics
-app = app.layer(
-    tower_http::trace::TraceLayer::new_for_http()
-        .on_request(|_req: &http::Request<_>, _span: &tracing::Span| {
-            HTTP_REQUESTS.inc();
-        })
-        .on_response(|_resp: &http::Response<_>, latency: std::time::Duration, _span: &tracing::Span| {
-            let ms = latency.as_millis() as f64;
-            HTTP_DURATION.observe(ms);
-        })
-);
-```
-
-### Expose `/metrics` Endpoint
-
-```rust
-use prometheus::Encoder;
-
-async fn metrics_handler() -> impl IntoResponse {
-    let encoder = prometheus::TextEncoder::new();
-    let mut buffer = Vec::new();
-    let metrics = prometheus::gather();
-    encoder.encode(&metrics, &mut buffer).unwrap();
-    (
-        StatusCode::OK,
-        [(header::CONTENT_TYPE, encoder.format_type())],
-        buffer,
-    )
-}
-
-// In your router
-let app = app.route("/metrics", get(metrics_handler));
-```
+Add new routes to `normalize_route()` in `backend/crates/api/src/metrics.rs` to track them correctly.
 
 ## Troubleshooting
 

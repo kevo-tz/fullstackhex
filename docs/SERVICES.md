@@ -77,6 +77,23 @@ Response:
 ```
 
 > **Note:** The Python sidecar `/health` response includes an additional field: `{"status": "ok", "service": "python-sidecar"}`.
+
+#### Metrics (Prometheus)
+```
+GET /metrics
+```
+
+Returns Prometheus text format with:
+- `http_requests_total` — Counter, labels: `method`, `route`, `status`
+- `http_request_duration_seconds` — Histogram, labels: `method`, `route`
+- `db_pool_connections` — Gauge, labels: `state` (`idle` / `used`)
+
+```
+GET /metrics/python
+```
+
+Proxies Python sidecar metrics. Returns `503` if Python is unreachable.
+
 ```
 ANY /api/python/{path}  → Forwards request method/path/body to Python sidecar via Unix socket
 ```

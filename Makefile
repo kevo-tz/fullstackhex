@@ -4,7 +4,7 @@
 # Default values (override with: make up POSTGRES_PASSWORD=mypassword)
 COMPOSE_DEV = docker compose -f compose/dev.yml --env-file .env
 COMPOSE_PROD = docker compose -f compose/prod.yml --env-file .env
-COMPOSE_MON = docker compose -f compose/monitor.yml --env-file .env
+COMPOSE_MON = docker compose -f compose/monitor.yml --env-file .env -p fullstackhex-monitor
 
 PYTHON_TEST_SOCK ?= /tmp/fullstackhex-test.sock
 PID_FILE = /tmp/fullstackhex-dev.pids
@@ -346,3 +346,46 @@ prod-up:
 
 prod-down:
 	$(COMPOSE_PROD) down
+
+# Deployment to VPS via SSH + rsync
+# Requires: ssh-agent with key loaded, .env with DEPLOY_HOST, DEPLOY_USER, DEPLOY_PATH
+deploy: check-env
+	@echo "Deploying to $(DEPLOY_HOST)..."
+	@test -n "$(DEPLOY_HOST)" || { echo "ERROR: DEPLOY_HOST not set in .env"; exit 1; }
+	@test -n "$(DEPLOY_USER)" || { echo "ERROR: DEPLOY_USER not set in .env"; exit 1; }
+	@test -n "$(DEPLOY_PATH)" || { echo "ERROR: DEPLOY_PATH not set in .env"; exit 1; }
+	rsync -avz --exclude='.git' --exclude='target' --exclude='node_modules' \
+	  compose/ nginx/ scripts/ Makefile .env \
+	  $(DEPLOY_USER)@$(DEPLOY_HOST):$(DEPLOY_PATH)/
+	ssh $(DEPLOY_USER)@$(DEPLOY_HOST) "cd $(DEPLOY_PATH) && docker compose -f compose/prod.yml up -d --wait"
+	$(MAKE) deploy-check
+
+# Post-deploy health check: poll remote /health until OK or timeout
+deploy-check:
+	@echo "Checking remote health at $(DEPLOY_HOST)..."
+	@TIMEOUT=60; \
+	START=$$(date +%s); \
+	while true; do \
+	  NOW=$$(date +%s); \
+	  ELAPSED=$$((NOW - START)); \
+	  if [ $$ELAPSED -ge $$TIMEOUT ]; then \
+	    echo ""; \
+	    echo "Deploy health check timed out after $$TIMEOUT seconds."; \
+	    exit 1; \
+	  fi; \
+	  STATUS=$$(curl -sk --max-time 5 "https://$(DEPLOY_HOST)/health" 2>/dev/null | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('status',''))" 2>/dev/null); \
+	  if [ "$$STATUS" = "ok" ]; then \
+	    echo ""; \
+	    echo "Remote health OK ($$ELAPSED s)"; \
+	    exit 0; \
+	  fi; \
+	  printf "."; \
+	  sleep 1; \
+	done
+
+# Restart production stack (pulls latest images)
+prod-restart:
+	@test -n "$(DEPLOY_HOST)" || { echo "ERROR: DEPLOY_HOST not set in .env"; exit 1; }
+	@test -n "$(DEPLOY_USER)" || { echo "ERROR: DEPLOY_USER not set in .env"; exit 1; }
+	@test -n "$(DEPLOY_PATH)" || { echo "ERROR: DEPLOY_PATH not set in .env"; exit 1; }
+	ssh $(DEPLOY_USER)@$(DEPLOY_HOST) "cd $(DEPLOY_PATH) && docker compose -f compose/prod.yml down && docker compose -f compose/prod.yml up -d --wait"

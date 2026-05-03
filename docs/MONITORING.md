@@ -136,7 +136,11 @@ Evaluation group: warning
 
 ### In Prometheus (Alertmanager)
 
-Create `monitoring/alerts.yml`:
+Alert rules are defined in `monitoring/alerts.yml` and loaded by Prometheus via `rule_files` in `prometheus.yml`.
+
+> **Note:** Alert rules are commented out by default (opt-in). Uncomment the `groups` block in `monitoring/alerts.yml` to enable alerting.
+
+Example rules included:
 
 ```yaml
 groups:
@@ -169,6 +173,10 @@ groups:
 ## Metrics Architecture
 
 Metrics are collected via the `metrics` + `metrics-exporter-prometheus` crates.
+
+### Security
+
+In production, the `/metrics` endpoint is restricted to the internal Docker network (`172.20.0.0/16`) via nginx. External access returns 403. Prometheus scrapes from within the Docker network, so this works transparently.
 
 ### How it works
 

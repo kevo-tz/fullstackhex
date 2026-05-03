@@ -297,7 +297,13 @@ services:
     expose:
       - "9187"
     environment:
-      DATA_SOURCE_NAME: "postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@fullstackhex_db:5432/${POSTGRES_DB:-app_database}?sslmode=disable"
+      # Use individual vars to avoid shell injection if password contains special chars
+      DATA_SOURCE_USER: ${POSTGRES_USER:?POSTGRES_USER must be set}
+      DATA_SOURCE_PASS: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}
+      DATA_SOURCE_HOST: fullstackhex_db
+      DATA_SOURCE_PORT: "5432"
+      DATA_SOURCE_DB: ${POSTGRES_DB:-app_database}
+      DATA_SOURCE_SSLMODE: disable
     depends_on:
       postgres:
         condition: service_healthy

@@ -121,7 +121,9 @@ async fn health_content_type_is_json() {
 // ---------------------------------------------------------------------------
 
 #[tokio::test]
+#[serial]
 async fn health_db_returns_503_when_not_configured() {
+    let _guard = EnvGuard::remove("DATABASE_URL");
     let (app, _state) = router(test_prometheus_handle()).await;
     let response = app
         .oneshot(

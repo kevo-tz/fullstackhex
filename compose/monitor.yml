@@ -28,6 +28,8 @@ services:
       - "--storage.tsdb.path=/prometheus"
       - "--storage.tsdb.retention.time=15d"
       - "--web.enable-lifecycle"
+    extra_hosts:
+      - "backend:host-gateway"
     networks:
       - fullstackhex-network
     healthcheck:

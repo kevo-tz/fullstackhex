@@ -66,7 +66,8 @@ scrape_configs:
           service: 'postgres'
           tier: 'infrastructure'
 
-  # Nginx Exporter (production only)
+  # Nginx Exporter — production only (compose/prod.yml).
+  # Expected DOWN in dev: nginx-exporter is not in compose/monitor.yml.
   - job_name: 'nginx'
     scrape_interval: 15s
     static_configs:

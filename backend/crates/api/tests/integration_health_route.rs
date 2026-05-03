@@ -121,7 +121,7 @@ async fn health_content_type_is_json() {
 // ---------------------------------------------------------------------------
 
 #[tokio::test]
-async fn health_db_returns_200() {
+async fn health_db_returns_503_when_not_configured() {
     let (app, _state) = router(test_prometheus_handle()).await;
     let response = app
         .oneshot(
@@ -133,7 +133,7 @@ async fn health_db_returns_200() {
         .await
         .unwrap();
 
-    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
 }
 
 #[tokio::test]
@@ -187,7 +187,8 @@ async fn health_db_ok_when_database_url_set() {
         .await
         .unwrap();
 
-    assert_eq!(response.status(), StatusCode::OK);
+    // Connection failed → 503
+    assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
 
     let bytes = to_bytes(response.into_body(), usize::MAX).await.unwrap();
     let v: Value = serde_json::from_slice(&bytes).expect("response must be valid JSON");
@@ -203,7 +204,9 @@ async fn health_db_ok_when_database_url_set() {
 // ---------------------------------------------------------------------------
 
 #[tokio::test]
-async fn health_python_returns_200() {
+#[serial]
+async fn health_python_returns_503_when_no_socket() {
+    let _guard = EnvGuard::set("PYTHON_SIDECAR_SOCKET", "/tmp/__nonexistent_503_test__.sock");
     let (app, _state) = router(test_prometheus_handle()).await;
     let response = app
         .oneshot(
@@ -215,7 +218,7 @@ async fn health_python_returns_200() {
         .await
         .unwrap();
 
-    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
 }
 
 #[tokio::test]
@@ -257,9 +260,11 @@ async fn health_python_ok_when_socket_present() {
     // The handler first checks is_available() which uses Path::exists().
     // If the file exists but is not a Unix socket, connect() will fail
     // and we'll get ConnectionFailed rather than SocketNotFound.
-    let socket_path = "/tmp/__test_python_sidecar_present__.sock";
-    std::fs::File::create(socket_path).expect("should be able to create test socket file");
-    let _guard = EnvGuard::set("PYTHON_SIDECAR_SOCKET", socket_path);
+    // NamedTempFile auto-cleans up on drop, even if the test panics.
+    let socket_file = tempfile::NamedTempFile::new()
+        .expect("should be able to create test socket file");
+    let socket_path = socket_file.path().to_str().unwrap().to_string();
+    let _guard = EnvGuard::set("PYTHON_SIDECAR_SOCKET", &socket_path);
 
     let (app, _state) = router(test_prometheus_handle()).await;
     let response = app
@@ -282,8 +287,6 @@ async fn health_python_ok_when_socket_present() {
         v["status"].is_string(),
         "status field must be present and a string"
     );
-
-    let _ = std::fs::remove_file(socket_path);
 }
 
 // ---------------------------------------------------------------------------

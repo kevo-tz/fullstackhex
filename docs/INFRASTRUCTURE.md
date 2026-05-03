@@ -655,6 +655,41 @@ cp .env.example .env
 docker compose -f compose/prod.yml up -d
 ```
 
+### Deploy to a VPS
+
+The `make deploy` target pushes the stack to a remote server via SSH + rsync.
+
+**Prerequisites:**
+1. SSH key loaded in `ssh-agent` (or set `DEPLOY_SSH_KEY` in `.env`)
+2. `.env` contains:
+   ```env
+   DEPLOY_HOST=your-vps.example.com
+   DEPLOY_USER=ubuntu
+   DEPLOY_PATH=/opt/fullstackhex
+   ```
+3. Docker + Docker Compose installed on the VPS
+
+**Deploy:**
+```bash
+make deploy
+```
+
+This runs:
+1. `rsync` compose files, nginx config, and `.env` to the VPS
+2. `ssh` to run `docker compose -f compose/prod.yml up -d --wait`
+3. `make deploy-check` polls `https://$DEPLOY_HOST/health` until OK
+
+**Restart (pull latest images):**
+```bash
+make prod-restart
+```
+
+**PostgreSQL backups:**
+```bash
+# One-liner for cron (runs on the VPS)
+ssh $DEPLOY_USER@$DEPLOY_HOST "docker exec fullstackhex_db pg_dump -U $POSTGRES_USER $POSTGRES_DB" > backup_$(date +%Y%m%d).sql
+```
+
 ---
 
 ## Nginx Configuration

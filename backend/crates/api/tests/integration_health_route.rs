@@ -3,12 +3,17 @@
 /// These tests spin up the real axum router in-process and drive it with
 /// actual HTTP requests via `tower::ServiceExt`.  Tests that mutate
 /// environment use `#[serial]` to prevent concurrent execution.
+use api::metrics::init_metrics_recorder;
 use api::router;
 use axum::body::to_bytes;
 use axum::http::{Request, StatusCode};
 use serde_json::Value;
 use serial_test::serial;
 use tower::ServiceExt;
+
+fn test_prometheus_handle() -> metrics_exporter_prometheus::PrometheusHandle {
+    init_metrics_recorder()
+}
 
 /// Save/restore guard for environment variables in tests.
 /// On creation, captures the current value (if any). On drop, restores it.
@@ -49,7 +54,7 @@ impl Drop for EnvGuard {
 
 #[tokio::test]
 async fn health_returns_200() {
-    let app = router().await;
+    let (app, _state) = router(test_prometheus_handle()).await;
     let response = app
         .oneshot(
             Request::builder()
@@ -65,7 +70,7 @@ async fn health_returns_200() {
 
 #[tokio::test]
 async fn health_returns_json_with_status_ok() {
-    let app = router().await;
+    let (app, _state) = router(test_prometheus_handle()).await;
     let response = app
         .oneshot(
             Request::builder()
@@ -88,7 +93,7 @@ async fn health_returns_json_with_status_ok() {
 
 #[tokio::test]
 async fn health_content_type_is_json() {
-    let app = router().await;
+    let (app, _state) = router(test_prometheus_handle()).await;
     let response = app
         .oneshot(
             Request::builder()
@@ -117,7 +122,7 @@ async fn health_content_type_is_json() {
 
 #[tokio::test]
 async fn health_db_returns_200() {
-    let app = router().await;
+    let (app, _state) = router(test_prometheus_handle()).await;
     let response = app
         .oneshot(
             Request::builder()
@@ -136,7 +141,7 @@ async fn health_db_returns_200() {
 async fn health_db_error_when_no_database_url() {
     let _guard = EnvGuard::remove("DATABASE_URL");
 
-    let app = router().await;
+    let (app, _state) = router(test_prometheus_handle()).await;
     let response = app
         .oneshot(
             Request::builder()
@@ -171,7 +176,7 @@ async fn health_db_ok_when_database_url_set() {
         "postgres://localhost:5432/nonexistent_test_db",
     );
 
-    let app = router().await;
+    let (app, _state) = router(test_prometheus_handle()).await;
     let response = app
         .oneshot(
             Request::builder()
@@ -199,7 +204,7 @@ async fn health_db_ok_when_database_url_set() {
 
 #[tokio::test]
 async fn health_python_returns_200() {
-    let app = router().await;
+    let (app, _state) = router(test_prometheus_handle()).await;
     let response = app
         .oneshot(
             Request::builder()
@@ -221,7 +226,7 @@ async fn health_python_unavailable_when_socket_absent() {
         "/tmp/__nonexistent_test_socket__.sock",
     );
 
-    let app = router().await;
+    let (app, _state) = router(test_prometheus_handle()).await;
     let response = app
         .oneshot(
             Request::builder()
@@ -256,7 +261,7 @@ async fn health_python_ok_when_socket_present() {
     std::fs::File::create(socket_path).expect("should be able to create test socket file");
     let _guard = EnvGuard::set("PYTHON_SIDECAR_SOCKET", socket_path);
 
-    let app = router().await;
+    let (app, _state) = router(test_prometheus_handle()).await;
     let response = app
         .oneshot(
             Request::builder()
@@ -322,6 +327,8 @@ async fn health_db_ok_with_real_pool() {
             Duration::from_secs(1),
             0,
         ),
+        prometheus_handle: test_prometheus_handle(),
+        gauge_task: None,
     };
 
     let app = api::router_with_state(state);
@@ -375,6 +382,8 @@ async fn health_python_ok_with_mock_socket() {
     let state = AppState {
         db: DbStatus::NotConfigured,
         sidecar: sc,
+        prometheus_handle: test_prometheus_handle(),
+        gauge_task: None,
     };
 
     let app = router_with_state(state);
@@ -407,7 +416,7 @@ async fn health_python_ok_with_mock_socket() {
 
 #[tokio::test]
 async fn unknown_route_returns_404() {
-    let app = router().await;
+    let (app, _state) = router(test_prometheus_handle()).await;
     let response = app
         .oneshot(
             Request::builder()

@@ -197,6 +197,40 @@ jobs:
         working-directory: frontend
         run: bun test
 
+  infra:
+    name: infra
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Validate dev compose config
+        run: docker compose -f compose/dev.yml config
+
+      - name: Validate prod compose config
+        run: docker compose -f compose/prod.yml config
+
+      - name: Validate monitor compose config
+        run: docker compose -f compose/monitor.yml config
+
+      - name: Validate Grafana dashboard JSON
+        run: |
+          for f in monitoring/grafana/dashboards/*.json; do
+            jq empty "$f" || { echo "Invalid JSON: $f"; exit 1; }
+          done
+
+      - name: Verify Dockerfile.rust builds
+        run: docker build -f compose/Dockerfile.rust -t test-rust-build .
+
+      - name: Performance regression check (non-blocking)
+        continue-on-error: true
+        run: |
+          if [ -f benches/baseline/baseline.json ]; then
+            ./scripts/bench.sh --compare || true
+          else
+            echo "No baseline found — skipping comparison"
+          fi
+
   security:
     name: security
     runs-on: ubuntu-latest

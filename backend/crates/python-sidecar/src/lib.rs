@@ -138,8 +138,8 @@ impl PythonSidecar {
             if attempt > 0 {
                 const BACKOFF_BASE_MS: u64 = 100;
                 const MAX_BACKOFF_MS: u64 = 30_000; // 30 seconds
-                let raw_ms = BACKOFF_BASE_MS
-                    .saturating_mul(2u64.saturating_pow(attempt.saturating_sub(1)));
+                let raw_ms =
+                    BACKOFF_BASE_MS.saturating_mul(2u64.saturating_pow(attempt.saturating_sub(1)));
                 let backoff = Duration::from_millis(raw_ms.min(MAX_BACKOFF_MS));
                 tokio::time::sleep(backoff).await;
             }

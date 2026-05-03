@@ -109,7 +109,7 @@ async fn health_db(State(state): State<Arc<AppState>>) -> impl IntoResponse {
         DbStatus::NotConfigured => None,
         DbStatus::ConnectionFailed(msg) => {
             return (
-                StatusCode::OK,
+                StatusCode::SERVICE_UNAVAILABLE,
                 no_cache(),
                 Json(json!({
                     "status": "error",
@@ -138,7 +138,7 @@ async fn health_db(State(state): State<Arc<AppState>>) -> impl IntoResponse {
                 ),
             };
             (
-                StatusCode::OK,
+                StatusCode::SERVICE_UNAVAILABLE,
                 no_cache(),
                 Json(json!({ "status": "error", "error": error, "fix": fix })),
             )
@@ -205,7 +205,7 @@ async fn health_python(
                 ),
             };
             (
-                StatusCode::OK,
+                StatusCode::SERVICE_UNAVAILABLE,
                 no_cache(),
                 Json(json!({ "status": "unavailable", "error": error_msg, "fix": fix_msg })),
             )
@@ -308,7 +308,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn health_db_returns_200() {
+    async fn health_db_returns_503_when_not_configured() {
         let app = router_with_state(test_state());
         let response = app
             .oneshot(
@@ -319,7 +319,7 @@ mod tests {
             )
             .await
             .unwrap();
-        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
     }
 
     #[tokio::test]
@@ -341,7 +341,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn health_python_returns_200() {
+    async fn health_python_returns_503_when_no_socket() {
         let app = router_with_state(test_state());
         let response = app
             .oneshot(
@@ -352,7 +352,7 @@ mod tests {
             )
             .await
             .unwrap();
-        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
     }
 
     #[tokio::test]
@@ -386,7 +386,7 @@ mod tests {
             )
             .await
             .unwrap();
-        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
         let bytes = to_bytes(response.into_body(), usize::MAX).await.unwrap();
         let v: Value = serde_json::from_slice(&bytes).unwrap();
         assert_eq!(v["status"], "unavailable");
@@ -406,7 +406,7 @@ mod tests {
             )
             .await
             .unwrap();
-        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
         let bytes = to_bytes(response.into_body(), usize::MAX).await.unwrap();
         let v: Value = serde_json::from_slice(&bytes).unwrap();
         assert_eq!(v["status"], "unavailable");

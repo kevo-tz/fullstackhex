@@ -2,7 +2,9 @@ use std::net::SocketAddr;
 
 #[tokio::main]
 async fn main() {
-    let _ = dotenvy::dotenv();
+    if let Err(e) = dotenvy::dotenv() {
+        tracing::warn!(error = %e, "failed to load .env file — continuing with existing environment");
+    }
 
     tracing_subscriber::fmt()
         .json()

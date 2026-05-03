@@ -3,7 +3,6 @@
 #
 # NOTE: No receivers are configured by default.
 # Teams should add their own Slack, PagerDuty, or email receivers.
-# See docs/EXAMPLES.md for copy-paste receiver configurations.
 
 global:
   # smtp_smarthost: 'localhost:587'

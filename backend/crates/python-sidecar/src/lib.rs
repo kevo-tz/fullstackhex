@@ -137,9 +137,10 @@ impl PythonSidecar {
         for attempt in 0..=self.max_retries {
             if attempt > 0 {
                 const BACKOFF_BASE_MS: u64 = 100;
-                let backoff = Duration::from_millis(
-                    BACKOFF_BASE_MS.saturating_mul(2u64.saturating_pow(attempt - 1).min(1_000_000)),
-                );
+                const MAX_BACKOFF_MS: u64 = 30_000; // 30 seconds
+                let raw_ms = BACKOFF_BASE_MS
+                    .saturating_mul(2u64.saturating_pow(attempt.saturating_sub(1)));
+                let backoff = Duration::from_millis(raw_ms.min(MAX_BACKOFF_MS));
                 tokio::time::sleep(backoff).await;
             }
 
@@ -195,6 +196,14 @@ impl PythonSidecar {
         {
             return Err(SidecarError::InvalidInput(
                 "trace_id contains invalid characters".into(),
+            ));
+        }
+        // Reject overlong trace_id to prevent memory exhaustion via large header
+        if let Some(tid) = trace_id
+            && tid.len() > 256
+        {
+            return Err(SidecarError::InvalidInput(
+                "trace_id exceeds maximum length (256 bytes)".into(),
             ));
         }
 

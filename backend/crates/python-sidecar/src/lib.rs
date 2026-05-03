@@ -12,6 +12,8 @@ pub enum SidecarError {
     Timeout(Duration),
     #[error("invalid JSON response: {0}")]
     InvalidResponse(String),
+    #[error("invalid input: {0}")]
+    InvalidInput(String),
     #[error("HTTP error from sidecar: {status} — {body}")]
     HttpError { status: u16, body: String },
 }
@@ -87,11 +89,45 @@ impl PythonSidecar {
         self.do_get(path, Some(trace_id)).await
     }
 
+    /// GET raw bytes from a path. Returns the response body without JSON parsing.
+    pub async fn get_raw(&self, path: &str) -> Result<Vec<u8>, SidecarError> {
+        self.get_raw_with_trace_id(path, &uuid::Uuid::new_v4().to_string())
+            .await
+    }
+
+    /// GET raw bytes with an explicit trace_id.
+    pub async fn get_raw_with_trace_id(
+        &self,
+        path: &str,
+        trace_id: &str,
+    ) -> Result<Vec<u8>, SidecarError> {
+        self.do_get_raw(path, Some(trace_id)).await
+    }
+
     async fn do_get(
         &self,
         path: &str,
         trace_id: Option<&str>,
     ) -> Result<serde_json::Value, SidecarError> {
+        let body = self.do_request_inner(path, trace_id).await?;
+        serde_json::from_slice(&body).map_err(|e| SidecarError::InvalidResponse(e.to_string()))
+    }
+
+    async fn do_get_raw(
+        &self,
+        path: &str,
+        trace_id: Option<&str>,
+    ) -> Result<Vec<u8>, SidecarError> {
+        self.do_request_inner(path, trace_id).await
+    }
+
+    /// Shared retry-with-backoff loop. Calls perform_request and handles
+    /// status-code checks, retries, and fast-fail classification.
+    async fn do_request_inner(
+        &self,
+        path: &str,
+        trace_id: Option<&str>,
+    ) -> Result<Vec<u8>, SidecarError> {
         if !self.is_available() {
             return Err(SidecarError::SocketNotFound(self.socket_path.clone()));
         }
@@ -101,19 +137,30 @@ impl PythonSidecar {
         for attempt in 0..=self.max_retries {
             if attempt > 0 {
                 const BACKOFF_BASE_MS: u64 = 100;
-                let backoff = Duration::from_millis(
-                    BACKOFF_BASE_MS.saturating_mul(2u64.saturating_pow(attempt - 1).min(1_000_000)),
-                );
+                const MAX_BACKOFF_MS: u64 = 30_000; // 30 seconds
+                let raw_ms =
+                    BACKOFF_BASE_MS.saturating_mul(2u64.saturating_pow(attempt.saturating_sub(1)));
+                let backoff = Duration::from_millis(raw_ms.min(MAX_BACKOFF_MS));
                 tokio::time::sleep(backoff).await;
             }
 
-            match tokio::time::timeout(self.timeout, self.try_get(path, trace_id)).await {
-                Ok(Ok(value)) => return Ok(value),
+            match tokio::time::timeout(self.timeout, self.perform_request(path, trace_id)).await {
+                Ok(Ok((status_code, body))) => {
+                    if status_code >= 400 {
+                        let body_str = String::from_utf8_lossy(&body).to_string();
+                        return Err(SidecarError::HttpError {
+                            status: status_code,
+                            body: body_str,
+                        });
+                    }
+                    return Ok(body);
+                }
                 Ok(Err(e)) => {
                     // Fast-fail on non-retryable errors
                     match &e {
                         SidecarError::SocketNotFound(_)
                         | SidecarError::InvalidResponse(_)
+                        | SidecarError::InvalidInput(_)
                         | SidecarError::HttpError { .. } => return Err(e),
                         SidecarError::ConnectionFailed(_) | SidecarError::Timeout(_) => {
                             last_error = Some(e);
@@ -129,17 +176,17 @@ impl PythonSidecar {
         Err(last_error.unwrap_or(SidecarError::Timeout(self.timeout)))
     }
 
-    async fn try_get(
+    async fn perform_request(
         &self,
         path: &str,
         trace_id: Option<&str>,
-    ) -> Result<serde_json::Value, SidecarError> {
+    ) -> Result<(u16, Vec<u8>), SidecarError> {
         use tokio::io::{AsyncReadExt, AsyncWriteExt};
         use tokio::net::UnixStream;
 
         // Reject paths containing CR or LF to prevent HTTP header injection
         if path.contains('\r') || path.contains('\n') {
-            return Err(SidecarError::InvalidResponse(
+            return Err(SidecarError::InvalidInput(
                 "path contains invalid characters".into(),
             ));
         }
@@ -147,8 +194,16 @@ impl PythonSidecar {
         if let Some(tid) = trace_id
             && (tid.contains('\r') || tid.contains('\n'))
         {
-            return Err(SidecarError::InvalidResponse(
+            return Err(SidecarError::InvalidInput(
                 "trace_id contains invalid characters".into(),
+            ));
+        }
+        // Reject overlong trace_id to prevent memory exhaustion via large header
+        if let Some(tid) = trace_id
+            && tid.len() > 256
+        {
+            return Err(SidecarError::InvalidInput(
+                "trace_id exceeds maximum length (256 bytes)".into(),
             ));
         }
 
@@ -193,7 +248,7 @@ impl PythonSidecar {
             .map(|p| p + 4)
             .ok_or_else(|| SidecarError::InvalidResponse("missing HTTP header separator".into()))?;
 
-        let body = &response[body_start..];
+        let body = response[body_start..].to_vec();
 
         // Parse status code from headers
         let headers = std::str::from_utf8(&response[..body_start])
@@ -212,15 +267,7 @@ impl PythonSidecar {
             })
             .unwrap_or(200);
 
-        if status_code >= 400 {
-            let body_str = String::from_utf8_lossy(body).to_string();
-            return Err(SidecarError::HttpError {
-                status: status_code,
-                body: body_str,
-            });
-        }
-
-        serde_json::from_slice(body).map_err(|e| SidecarError::InvalidResponse(e.to_string()))
+        Ok((status_code, body))
     }
 
     /// Convenience: GET /health from the sidecar.
@@ -457,7 +504,7 @@ mod tests {
         std::fs::File::create(&path).unwrap();
         let sc = PythonSidecar::new(path, Duration::from_secs(1), 0);
         let result = sc.get("/health\r\nX-Injected: true").await;
-        assert!(matches!(result, Err(SidecarError::InvalidResponse(_))));
+        assert!(matches!(result, Err(SidecarError::InvalidInput(_))));
     }
 
     #[tokio::test]
@@ -467,7 +514,7 @@ mod tests {
         std::fs::File::create(&path).unwrap();
         let sc = PythonSidecar::new(path, Duration::from_secs(1), 0);
         let result = sc.get("/health\rX-Injected: true").await;
-        assert!(matches!(result, Err(SidecarError::InvalidResponse(_))));
+        assert!(matches!(result, Err(SidecarError::InvalidInput(_))));
     }
 
     #[tokio::test]
@@ -477,7 +524,7 @@ mod tests {
         std::fs::File::create(&path).unwrap();
         let sc = PythonSidecar::new(path, Duration::from_secs(1), 0);
         let result = sc.get("/health\nX-Injected: true").await;
-        assert!(matches!(result, Err(SidecarError::InvalidResponse(_))));
+        assert!(matches!(result, Err(SidecarError::InvalidInput(_))));
     }
 
     #[tokio::test]
@@ -487,7 +534,7 @@ mod tests {
         std::fs::File::create(&path).unwrap();
         let sc = PythonSidecar::new(path, Duration::from_secs(1), 0);
         let result = sc.get_with_trace_id("/health", "test-id\r\nInjected").await;
-        assert!(matches!(result, Err(SidecarError::InvalidResponse(_))));
+        assert!(matches!(result, Err(SidecarError::InvalidInput(_))));
     }
 
     #[tokio::test]
@@ -497,7 +544,7 @@ mod tests {
         std::fs::File::create(&path).unwrap();
         let sc = PythonSidecar::new(path, Duration::from_secs(1), 0);
         let result = sc.get_with_trace_id("/health", "test-id\rInjected").await;
-        assert!(matches!(result, Err(SidecarError::InvalidResponse(_))));
+        assert!(matches!(result, Err(SidecarError::InvalidInput(_))));
     }
 
     #[tokio::test]
@@ -507,7 +554,7 @@ mod tests {
         std::fs::File::create(&path).unwrap();
         let sc = PythonSidecar::new(path, Duration::from_secs(1), 0);
         let result = sc.get_with_trace_id("/health", "test-id\nInjected").await;
-        assert!(matches!(result, Err(SidecarError::InvalidResponse(_))));
+        assert!(matches!(result, Err(SidecarError::InvalidInput(_))));
     }
 
     // ------------------------------------------------------------------

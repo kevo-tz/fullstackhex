@@ -205,12 +205,34 @@ jobs:
       - uses: actions/checkout@v6
 
       - name: Validate dev compose config
+        env:
+          POSTGRES_PASSWORD: dummy_password_for_validation
+          RUSTFS_ACCESS_KEY: dummy_access_key
+          RUSTFS_SECRET_KEY: dummy_secret_key
         run: docker compose -f compose/dev.yml config
 
       - name: Validate prod compose config
+        env:
+          POSTGRES_PASSWORD: dummy_password_for_validation
+          POSTGRES_USER: app_user
+          POSTGRES_DB: app_database
+          DATABASE_URL: postgres://app_user:dummy@localhost:5432/app_database
+          REDIS_URL: redis://localhost:6379
+          REDIS_PASSWORD: dummy_password
+          RUSTFS_ENDPOINT: http://localhost:9000
+          RUSTFS_ACCESS_KEY: dummy_access_key
+          RUSTFS_SECRET_KEY: dummy_secret_key
+          RUSTFS_CORS_ORIGINS: "*"
+          GRAFANA_ADMIN_PASSWORD: dummy_password
         run: docker compose -f compose/prod.yml config
 
       - name: Validate monitor compose config
+        env:
+          GRAFANA_ADMIN_PASSWORD: dummy_password
+          POSTGRES_USER: app_user
+          POSTGRES_PASSWORD: dummy_password
+          POSTGRES_DB: app_database
+          REDIS_PASSWORD: dummy_password
         run: docker compose -f compose/monitor.yml config
 
       - name: Validate Grafana dashboard JSON

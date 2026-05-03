@@ -206,7 +206,10 @@ async fn health_db_ok_when_database_url_set() {
 #[tokio::test]
 #[serial]
 async fn health_python_returns_503_when_no_socket() {
-    let _guard = EnvGuard::set("PYTHON_SIDECAR_SOCKET", "/tmp/__nonexistent_503_test__.sock");
+    let _guard = EnvGuard::set(
+        "PYTHON_SIDECAR_SOCKET",
+        "/tmp/__nonexistent_503_test__.sock",
+    );
     let (app, _state) = router(test_prometheus_handle()).await;
     let response = app
         .oneshot(
@@ -261,8 +264,8 @@ async fn health_python_ok_when_socket_present() {
     // If the file exists but is not a Unix socket, connect() will fail
     // and we'll get ConnectionFailed rather than SocketNotFound.
     // NamedTempFile auto-cleans up on drop, even if the test panics.
-    let socket_file = tempfile::NamedTempFile::new()
-        .expect("should be able to create test socket file");
+    let socket_file =
+        tempfile::NamedTempFile::new().expect("should be able to create test socket file");
     let socket_path = socket_file.path().to_str().unwrap().to_string();
     let _guard = EnvGuard::set("PYTHON_SIDECAR_SOCKET", &socket_path);
 

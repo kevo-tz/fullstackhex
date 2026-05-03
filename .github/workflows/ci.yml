@@ -206,9 +206,9 @@ jobs:
 
       - name: Validate dev compose config
         env:
-          POSTGRES_PASSWORD: dummy_password_for_validation
+          POSTGRES_PASSWORD: dummy_password_for_validation  # pragma: allowlist secret
           RUSTFS_ACCESS_KEY: dummy_access_key
-          RUSTFS_SECRET_KEY: dummy_secret_key
+          RUSTFS_SECRET_KEY: dummy_secret_key  # pragma: allowlist secret
         run: docker compose -f compose/dev.yml config
 
       - name: Validate prod compose config
@@ -216,9 +216,9 @@ jobs:
           POSTGRES_PASSWORD: dummy_password_for_validation
           POSTGRES_USER: app_user
           POSTGRES_DB: app_database
-          DATABASE_URL: postgres://app_user:dummy@localhost:5432/app_database
+          DATABASE_URL: postgres://app_user:dummy@localhost:5432/app_database  # pragma: allowlist secret
           REDIS_URL: redis://localhost:6379
-          REDIS_PASSWORD: dummy_password
+          REDIS_PASSWORD: dummy_password  # pragma: allowlist secret
           RUSTFS_ENDPOINT: http://localhost:9000
           RUSTFS_ACCESS_KEY: dummy_access_key
           RUSTFS_SECRET_KEY: dummy_secret_key

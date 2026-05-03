@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.7.0.0] - 2026-05-03
+
+### Added
+- **Prometheus metrics stack**: `/metrics` endpoint on Rust backend exposes `http_requests_total` counter and `http_request_duration_seconds` histogram with bounded route labels — prevents cardinality explosion from dynamic paths
+- **Python sidecar metrics**: `/metrics` endpoint on FastAPI sidecar with `python_requests_total` counter and `python_request_duration_seconds` histogram — proxied through Rust backend at `/metrics/python`
+- **Database connection pool monitoring**: background task updates `db_pool_connections` gauge every 15 seconds with idle/active counts — abort handle ensures clean shutdown
+- **Grafana dashboards**: 5 dashboards for database, infrastructure, overview, Python sidecar, and SLO tracking — auto-provisioned from JSON files
+- **Prometheus alerting**: alert rules for service down, high latency, and database issues — commented out by default (opt-in)
+- **Docker Compose monitoring stack**: `compose/monitor.yml` with Prometheus, Grafana, Alertmanager, node-exporter, redis-exporter, and postgres-exporter — joins existing Docker network
+- **Production Docker Compose**: `compose/prod.yml` with nginx reverse proxy, TLS termination, resource limits, health checks, and all exporters
+- **CI pipeline**: GitHub Actions workflow with Rust, Python, frontend, smoke, infra, and security jobs — Docker Buildx with GHA cache for faster builds
+- **Graceful shutdown**: SIGTERM/SIGINT handling in Rust backend with connection draining and background task cleanup
+
+### Fixed
+- **Prometheus 3.x compatibility**: moved labels from `scrape_config` level into `static_configs` — Prometheus 3.x removed top-level labels
+- **Docker network isolation**: added explicit `fullstackhex-network` name so monitoring compose can join it — prevents network creation conflicts
+- **Environment variable loading**: added `dotenvy` to automatically load `.env` for `cargo run` — previously required manual export
+- **Shell variable expansion**: use literal `DATABASE_URL` values instead of shell vars that don't resolve outside Docker
+- **Metrics security**: restrict `/metrics` endpoint to Docker network (172.20.0.0/16) in nginx config — prevents external access to internal metrics
+- **Postgres exporter safety**: use individual `DATA_SOURCE_USER`/`DATA_SOURCE_PASS` vars instead of `DATA_SOURCE_NAME` string — avoids shell injection if password contains special chars
+- **Deploy script**: `chmod .env` on remote, try HTTPS then fall back to `-k` for health check
+
+### Changed
+- **Python sidecar metrics recording**: added `prometheus-client` dependency with structured metric labels
+- **CI caching**: Docker Buildx with GitHub Actions cache for Rust builds — faster CI runs
+
 ## [0.6.0.0] - 2026-05-02
 
 ### Added

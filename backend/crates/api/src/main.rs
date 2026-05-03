@@ -2,6 +2,8 @@ use std::net::SocketAddr;
 
 #[tokio::main]
 async fn main() {
+    let _ = dotenvy::dotenv();
+
     tracing_subscriber::fmt()
         .json()
         .with_env_filter(

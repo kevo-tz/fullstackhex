@@ -123,7 +123,7 @@ pub async fn register(
 
     // Check if user exists
     let existing: Option<(String,)> =
-        sqlx::query_as("SELECT id FROM users WHERE email = $1")
+        sqlx::query_as("SELECT id::text FROM users WHERE email = $1")
             .bind(&body.email)
             .fetch_optional(&state.db)
             .await
@@ -140,7 +140,7 @@ pub async fn register(
 
     // Insert user
     let user_id: (String,) = sqlx::query_as(
-        "INSERT INTO users (email, name, provider, password_hash) VALUES ($1, $2, 'local', $3) RETURNING id",
+        "INSERT INTO users (email, name, provider, password_hash) VALUES ($1, $2, 'local', $3) RETURNING id::text",
     )
     .bind(&body.email)
     .bind(&body.name)
@@ -212,7 +212,7 @@ pub async fn login(
     // Find user
     let user: Option<(String, String, Option<String>, String, Option<String>)> =
         sqlx::query_as(
-            "SELECT id, email, name, provider, password_hash FROM users WHERE email = $1",
+            "SELECT id::text, email, name, provider, password_hash FROM users WHERE email = $1",
         )
         .bind(&body.email)
         .fetch_optional(&state.db)
@@ -306,7 +306,7 @@ pub async fn refresh(
 
     // Get user info
     let user: Option<(String, String, Option<String>, String)> =
-        sqlx::query_as("SELECT id, email, name, provider FROM users WHERE id = $1")
+        sqlx::query_as("SELECT id::text, email, name, provider FROM users WHERE id = $1::uuid")
             .bind(&user_id)
             .fetch_optional(&state.db)
             .await
@@ -451,7 +451,7 @@ pub async fn oauth_callback(
 
     // Find or create user
     let user_id = match sqlx::query_as::<_, (String,)>(
-        "SELECT id FROM users WHERE email = $1",
+        "SELECT id::text FROM users WHERE email = $1",
     )
     .bind(&user_info.email)
     .fetch_optional(&state.db)

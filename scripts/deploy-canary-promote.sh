@@ -13,12 +13,9 @@ NGINX_CONF="/etc/nginx/conf.d/fullstackhex.conf"
 echo "Promoting canary to primary..."
 ssh "${USER}@${TARGET}" "cp ${NGINX_CONF} ${NGINX_CONF}.bak"
 
-# Switch all traffic to primary backend (remove canary split)
-cat > /tmp/promote-nginx.conf << NGINX
-upstream backend {
-    server backend:8001;
-}
-NGINX
+# Restore full primary nginx config from template (no suffix = primary)
+NGINX_TEMPLATE="nginx/upstream.conf.template"
+sed 's/\$upstream_suffix//g' "${NGINX_TEMPLATE}" > /tmp/promote-nginx.conf
 
 scp /tmp/promote-nginx.conf "${USER}@${TARGET}:${NGINX_CONF}"
 

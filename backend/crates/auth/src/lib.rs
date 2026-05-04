@@ -82,7 +82,9 @@ impl AuthConfig {
             github_client_id: std::env::var("GITHUB_CLIENT_ID").ok(),
             github_client_secret: std::env::var("GITHUB_CLIENT_SECRET").ok(),
             oauth_redirect_url: std::env::var("OAUTH_REDIRECT_URL").ok(),
-            sidecar_shared_secret: std::env::var("SIDECAR_SHARED_SECRET").ok(),
+            sidecar_shared_secret: std::env::var("SIDECAR_SHARED_SECRET")
+                .ok()
+                .filter(|s| !s.is_empty()),
         })
     }
 }

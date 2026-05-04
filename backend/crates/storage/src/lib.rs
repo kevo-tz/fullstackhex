@@ -87,7 +87,7 @@ impl StorageClient {
         tracing::info!("creating bucket {}", self.config.bucket);
         let url = format!("{}/{}", self.config.endpoint, self.config.bucket);
         let req = self.client.put(&url);
-        let req = sign_request(req, &self.config, "s3", "us-east-1", "", "").await;
+        let req = sign_request(req, &self.config, "PUT", &url, "", &[]).await;
         let resp = req.send().await.map_err(|e| {
             ApiError::ServiceUnavailable(format!("Failed to create bucket: {e}"))
         })?;
@@ -106,7 +106,7 @@ impl StorageClient {
     async fn bucket_exists(&self) -> Result<bool, ApiError> {
         let url = format!("{}/{}", self.config.endpoint, self.config.bucket);
         let req = self.client.head(&url);
-        let req = sign_request(req, &self.config, "s3", "us-east-1", "", "").await;
+        let req = sign_request(req, &self.config, "HEAD", &url, "", &[]).await;
         let resp = req.send().await.map_err(|e| {
             ApiError::ServiceUnavailable(format!("Storage unreachable: {e}"))
         })?;
@@ -114,16 +114,20 @@ impl StorageClient {
     }
 }
 
-/// Placeholder for SigV4 request signing.
+/// Sign a request with AWS SigV4 for internal use (e.g., bucket operations).
 async fn sign_request(
     req: reqwest::RequestBuilder,
-    _config: &StorageConfig,
-    _service: &str,
-    _region: &str,
-    _payload: &str,
-    _content_type: &str,
+    config: &StorageConfig,
+    method: &str,
+    url: &str,
+    content_type: &str,
+    body: &[u8],
 ) -> reqwest::RequestBuilder {
-    req
+    let signed = client::sign_request(config, method, url, content_type, body);
+    req.header("Host", &signed.host)
+        .header("X-Amz-Date", &signed.amz_date)
+        .header("X-Amz-Content-Sha256", &signed.payload_hash)
+        .header("Authorization", &signed.authorization)
 }
 
 #[cfg(test)]

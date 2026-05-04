@@ -1,6 +1,6 @@
 use axum::http::{HeaderMap, StatusCode, header};
 use axum::response::IntoResponse;
-use axum::{Json, Router, extract::State, http::Request, middleware, routing::get};
+use axum::{Json, Router, extract::{State, Extension, DefaultBodyLimit}, http::Request, middleware, routing::get};
 use metrics_exporter_prometheus::PrometheusHandle;
 use python_sidecar::PythonSidecar;
 #[cfg(test)]
@@ -145,8 +145,16 @@ fn build_router(state: Arc<AppState>) -> Router {
             .route("/{key}", axum::routing::delete(storage::routes::delete))
             .route("/", axum::routing::get(storage::routes::list))
             .route("/presign", axum::routing::post(storage::routes::presign))
+            .layer(DefaultBodyLimit::max(10 * 1024 * 1024)) // 10MB upload limit
             .with_state(storage_state);
         router = router.nest("/storage", storage_router);
+    }
+
+    // Add auth middleware globally when auth is configured
+    if let Some(ref auth_svc) = state.auth {
+        router = router
+            .layer(middleware::from_fn(auth::middleware::auth_middleware))
+            .layer(Extension(auth_svc.clone()));
     }
 
     router

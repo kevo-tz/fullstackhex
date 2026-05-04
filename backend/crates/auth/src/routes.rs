@@ -7,13 +7,14 @@
 use super::middleware::AuthUser;
 use super::password;
 use super::AuthService;
-use axum::extract::{Path, State};
-use axum::http::{header, StatusCode};
+use axum::extract::{Path, Query, State};
+use axum::http::{header, HeaderMap, StatusCode};
 use axum::response::IntoResponse;
 use axum::Json;
 use domain::error::ApiError;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
+use std::time::Duration;
 
 /// Shared state for auth routes.
 #[derive(Clone)]
@@ -21,6 +22,44 @@ pub struct AuthState {
     pub auth: Arc<AuthService>,
     pub db: sqlx::PgPool,
     pub redis: Arc<cache::RedisClient>,
+}
+
+/// Extract client IP from request headers (X-Forwarded-For, X-Real-IP fallback).
+fn client_ip(headers: &HeaderMap) -> String {
+    headers
+        .get("x-forwarded-for")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.split(',').next())
+        .map(|s| s.trim().to_string())
+        .or_else(|| {
+            headers
+                .get("x-real-ip")
+                .and_then(|v| v.to_str().ok())
+                .map(|s| s.trim().to_string())
+        })
+        .unwrap_or_else(|| "unknown".to_string())
+}
+
+/// Check rate limit for auth endpoints.
+async fn check_rate_limit(
+    redis: &cache::RedisClient,
+    key: &str,
+    window: Duration,
+    max_requests: u64,
+) -> Result<(), ApiError> {
+    let result = redis.rate_limit_check(key, window, max_requests).await?;
+    if !result.allowed {
+        return Err(ApiError::RateLimited(format!(
+            "Rate limit exceeded. Try again after {} seconds.",
+            (result.reset_at.saturating_sub(
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_millis() as u64
+            )) / 1000
+        )));
+    }
+    Ok(())
 }
 
 /// Register request body.
@@ -59,8 +98,19 @@ pub struct UserInfo {
 /// POST /auth/register — create user with email/password, return JWT.
 pub async fn register(
     State(state): State<AuthState>,
+    headers: HeaderMap,
     Json(body): Json<RegisterRequest>,
 ) -> Result<impl IntoResponse, ApiError> {
+    // Rate limit by IP (5 registrations per 15 minutes)
+    let ip = client_ip(&headers);
+    check_rate_limit(
+        &state.redis,
+        &format!("register:{ip}"),
+        Duration::from_secs(900),
+        5,
+    )
+    .await?;
+
     // Validate input
     if body.email.is_empty() || !body.email.contains('@') {
         return Err(ApiError::ValidationError("Invalid email".to_string()));
@@ -137,8 +187,28 @@ pub async fn register(
 /// POST /auth/login — authenticate with email/password, return JWT.
 pub async fn login(
     State(state): State<AuthState>,
+    headers: HeaderMap,
     Json(body): Json<LoginRequest>,
 ) -> Result<impl IntoResponse, ApiError> {
+    // Rate limit by email (5 attempts per 5 minutes)
+    check_rate_limit(
+        &state.redis,
+        &format!("login:email:{}", body.email),
+        Duration::from_secs(300),
+        5,
+    )
+    .await?;
+
+    // Rate limit by IP (10 attempts per 5 minutes)
+    let ip = client_ip(&headers);
+    check_rate_limit(
+        &state.redis,
+        &format!("login:ip:{ip}"),
+        Duration::from_secs(300),
+        10,
+    )
+    .await?;
+
     // Find user
     let user: Option<(String, String, Option<String>, String, Option<String>)> =
         sqlx::query_as(
@@ -315,19 +385,127 @@ pub async fn oauth_redirect(
         .clone()
         .unwrap_or_else(|| format!("http://localhost:8001/auth/oauth/{provider}/callback"));
 
-    let (url, _csrf) = oauth_service.get_redirect_url(&provider, &redirect_url)?;
+    let (url, csrf) = oauth_service.get_redirect_url(&provider, &redirect_url)?;
+
+    // Store CSRF token in Redis with 10-minute TTL for callback validation
+    state
+        .redis
+        .cache_set(
+            "oauth_csrf",
+            csrf.secret(),
+            &provider.to_string(),
+            std::time::Duration::from_secs(600),
+        )
+        .await?;
+
     Ok((
         StatusCode::FOUND,
         [(header::LOCATION, url)],
     ))
 }
 
+/// OAuth callback query parameters.
+#[derive(Debug, Deserialize)]
+pub struct OAuthCallbackQuery {
+    pub code: String,
+    pub state: String,
+}
+
 /// GET /auth/oauth/{provider}/callback — handle OAuth callback.
 pub async fn oauth_callback(
-    State(_state): State<AuthState>,
-    Path(_provider): Path<String>,
+    State(state): State<AuthState>,
+    Path(provider): Path<String>,
+    Query(query): Query<OAuthCallbackQuery>,
 ) -> Result<impl IntoResponse, ApiError> {
-    return Err::<axum::response::Response, _>(ApiError::InternalError("OAuth callback not yet implemented".to_string()));
+    let provider = parse_provider(&provider)?;
+
+    // Validate CSRF state token
+    let stored_provider: Option<String> = state
+        .redis
+        .cache_get("oauth_csrf", &query.state)
+        .await?;
+
+    let stored_provider = stored_provider.ok_or_else(|| {
+        ApiError::Unauthorized("Invalid or expired OAuth state".to_string())
+    })?;
+
+    if stored_provider != provider.to_string() {
+        return Err(ApiError::Unauthorized("OAuth provider mismatch".to_string()));
+    }
+
+    // Delete the CSRF token (one-time use)
+    state.redis.cache_delete("oauth_csrf", &query.state).await?;
+
+    // Exchange code for access token
+    let oauth_service = super::oauth::OAuthService::new(
+        state.auth.config.google_client_id.clone(),
+        state.auth.config.google_client_secret.clone(),
+        state.auth.config.github_client_id.clone(),
+        state.auth.config.github_client_secret.clone(),
+    );
+
+    let user_info = oauth_service
+        .exchange_code(&provider, &query.code)
+        .await
+        .map_err(|e| ApiError::InternalError(format!("OAuth token exchange failed: {e}")))?;
+
+    // Find or create user
+    let user_id = match sqlx::query_as::<_, (String,)>(
+        "SELECT id FROM users WHERE email = $1",
+    )
+    .bind(&user_info.email)
+    .fetch_optional(&state.db)
+    .await
+    {
+        Ok(Some((id,))) => id,
+        Ok(None) => {
+            // Create new OAuth user
+            let id = uuid::Uuid::new_v4().to_string();
+            sqlx::query(
+                "INSERT INTO users (id, email, name, provider, password_hash) VALUES ($1, $2, $3, $4, NULL)",
+            )
+            .bind(&id)
+            .bind(&user_info.email)
+            .bind(&user_info.name)
+            .bind(&provider.to_string())
+            .execute(&state.db)
+            .await
+            .map_err(|e| ApiError::InternalError(format!("DB error: {e}")))?;
+            id
+        }
+        Err(e) => return Err(ApiError::InternalError(format!("DB error: {e}"))),
+    };
+
+    // Create JWT
+    let access_token = state
+        .auth
+        .jwt
+        .create_token(&user_id, &user_info.email, user_info.name.as_deref(), &provider.to_string())?;
+
+    let refresh_token = uuid::Uuid::new_v4().to_string();
+    state
+        .redis
+        .cache_set(
+            "refresh",
+            &refresh_token,
+            &user_id,
+            std::time::Duration::from_secs(state.auth.config.refresh_expiry),
+        )
+        .await?;
+
+    let response = TokenResponse {
+        access_token,
+        token_type: "Bearer".to_string(),
+        expires_in: state.auth.config.jwt_expiry,
+        user: UserInfo {
+            id: user_id,
+            email: user_info.email,
+            name: user_info.name,
+            provider: provider.to_string(),
+        },
+    };
+
+    Ok(Json(response))
 }
 
 fn parse_provider(s: &str) -> Result<super::oauth::OAuthProvider, ApiError> {

@@ -71,21 +71,8 @@ ssh "${USER}@${TARGET}" "curl -sk --max-time 5 http://localhost:8001/health | py
 echo "Applying nginx canary routing (${CANARY_WEIGHT}%)..."
 ssh "${USER}@${TARGET}" "cp ${NGINX_CONF} ${NGINX_CONF}.bak"
 
-# Generate canary nginx config
-cat > /tmp/canary-nginx.conf << NGINX
-split_clients "\$request_uri" \$backend_upstream {
-    ${CANARY_WEIGHT}%    canary_backend;
-    *      primary_backend;
-}
-
-upstream primary_backend {
-    server backend:8001;
-}
-
-upstream canary_backend {
-    server backend-canary:8001;
-}
-NGINX
+# Generate full canary nginx config from template
+sed "s/\${CANARY_WEIGHT}/${CANARY_WEIGHT}/g" "${CANARY_CONF}" > /tmp/canary-nginx.conf
 
 scp /tmp/canary-nginx.conf "${USER}@${TARGET}:${NGINX_CONF}"
 

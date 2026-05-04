@@ -2,7 +2,11 @@
 //!
 //! PUT /storage/{key}, GET /storage/{key}, DELETE /storage/{key},
 //! GET /storage?prefix={prefix}, POST /storage/presign
+//!
+//! All routes require authentication. Object keys are prefixed with
+//! `users/{user_id}/` to enforce per-user isolation.
 
+use auth::middleware::AuthUser;
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
@@ -42,9 +46,11 @@ pub struct ListQuery {
 /// PUT /storage/{key} — upload file.
 pub async fn upload(
     State(state): State<StorageState>,
+    auth_user: AuthUser,
     Path(key): Path<String>,
     body: axum::body::Bytes,
 ) -> Result<impl IntoResponse, ApiError> {
+    let key = user_key(&auth_user.user_id, &key);
     super::client::upload(&state.client, &state.config, &key, body.to_vec(), "application/octet-stream").await?;
 
     Ok(StatusCode::CREATED)
@@ -53,8 +59,10 @@ pub async fn upload(
 /// GET /storage/{key} — download file.
 pub async fn download(
     State(state): State<StorageState>,
+    auth_user: AuthUser,
     Path(key): Path<String>,
 ) -> Result<impl IntoResponse, ApiError> {
+    let key = user_key(&auth_user.user_id, &key);
     let data = super::client::download(&state.client, &state.config, &key).await?;
 
     Ok((
@@ -67,8 +75,10 @@ pub async fn download(
 /// DELETE /storage/{key} — delete file.
 pub async fn delete(
     State(state): State<StorageState>,
+    auth_user: AuthUser,
     Path(key): Path<String>,
 ) -> Result<impl IntoResponse, ApiError> {
+    let key = user_key(&auth_user.user_id, &key);
     super::client::delete(&state.client, &state.config, &key).await?;
     Ok(StatusCode::NO_CONTENT)
 }
@@ -76,9 +86,11 @@ pub async fn delete(
 /// GET /storage — list objects with optional prefix.
 pub async fn list(
     State(state): State<StorageState>,
+    auth_user: AuthUser,
     Query(query): Query<ListQuery>,
 ) -> Result<impl IntoResponse, ApiError> {
-    let prefix = query.prefix.unwrap_or_default();
+    let prefix = query.prefix.map(|p| user_key(&auth_user.user_id, &p))
+        .unwrap_or_else(|| format!("users/{}/", auth_user.user_id));
     let objects = super::client::list(&state.client, &state.config, &prefix).await?;
     Ok(Json(objects))
 }
@@ -86,14 +98,16 @@ pub async fn list(
 /// POST /storage/presign — generate a presigned URL.
 pub async fn presign(
     State(state): State<StorageState>,
+    auth_user: AuthUser,
     Json(body): Json<PresignRequest>,
 ) -> Result<impl IntoResponse, ApiError> {
     let method = body.method.unwrap_or_else(|| "GET".to_string());
     let expiry_secs = body.expiry_secs.unwrap_or(3600);
+    let key = user_key(&auth_user.user_id, &body.key);
 
     let url = super::client::presigned_url(
         &state.config,
-        &body.key,
+        &key,
         &method,
         std::time::Duration::from_secs(expiry_secs),
     )?;
@@ -103,4 +117,9 @@ pub async fn presign(
         method,
         expires_in: expiry_secs,
     }))
+}
+
+/// Prefix a storage key with the user's namespace.
+fn user_key(user_id: &str, key: &str) -> String {
+    format!("users/{}/{}", user_id, key)
 }

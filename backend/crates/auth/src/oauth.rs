@@ -3,7 +3,8 @@
 use domain::error::ApiError;
 use oauth2::basic::BasicClient;
 use oauth2::{
-    AuthUrl, ClientId, ClientSecret, CsrfToken, RedirectUrl, TokenUrl,
+    AuthUrl, AuthorizationCode, ClientId, ClientSecret, CsrfToken, RedirectUrl, TokenResponse,
+    TokenUrl,
 };
 use serde::{Deserialize, Serialize};
 
@@ -106,6 +107,28 @@ impl OAuthService {
         }
     }
 
+    /// Exchange an authorization code for an access token and fetch user info.
+    pub async fn exchange_code(
+        &self,
+        provider: &OAuthProvider,
+        code: &str,
+    ) -> Result<OAuthUserInfo, ApiError> {
+        let client = self.get_client(provider)?;
+
+        let token = client
+            .exchange_code(AuthorizationCode::new(code.to_string()))
+            .request_async(oauth2::reqwest::async_http_client)
+            .await
+            .map_err(|e| ApiError::InternalError(format!("Token exchange failed: {e}")))?;
+
+        let access_token = token.access_token().secret();
+
+        match provider {
+            OAuthProvider::Google => fetch_google_user_info(access_token).await,
+            OAuthProvider::GitHub => fetch_github_user_info(access_token).await,
+        }
+    }
+
     fn get_client(&self, provider: &OAuthProvider) -> Result<&BasicClient, ApiError> {
         match provider {
             OAuthProvider::Google => self.google_client.as_ref().ok_or_else(|| {
@@ -116,4 +139,111 @@ impl OAuthService {
             }),
         }
     }
+}
+
+async fn fetch_google_user_info(access_token: &str) -> Result<OAuthUserInfo, ApiError> {
+    let resp = reqwest::Client::new()
+        .get("https://www.googleapis.com/oauth2/v2/userinfo")
+        .header("Authorization", format!("Bearer {access_token}"))
+        .send()
+        .await
+        .map_err(|e| ApiError::InternalError(format!("Google userinfo request failed: {e}")))?;
+
+    if !resp.status().is_success() {
+        return Err(ApiError::InternalError(format!(
+            "Google userinfo failed: HTTP {}",
+            resp.status()
+        )));
+    }
+
+    let data: GoogleUserInfo = resp
+        .json()
+        .await
+        .map_err(|e| ApiError::InternalError(format!("Google userinfo parse failed: {e}")))?;
+
+    Ok(OAuthUserInfo {
+        provider: OAuthProvider::Google,
+        provider_id: data.id,
+        email: data.email,
+        name: data.name,
+    })
+}
+
+async fn fetch_github_user_info(access_token: &str) -> Result<OAuthUserInfo, ApiError> {
+    let client = reqwest::Client::new();
+
+    let resp = client
+        .get("https://api.github.com/user")
+        .header("Authorization", format!("Bearer {access_token}"))
+        .header("User-Agent", "fullstackhex")
+        .send()
+        .await
+        .map_err(|e| ApiError::InternalError(format!("GitHub user request failed: {e}")))?;
+
+    if !resp.status().is_success() {
+        return Err(ApiError::InternalError(format!(
+            "GitHub user failed: HTTP {}",
+            resp.status()
+        )));
+    }
+
+    let user: GitHubUser = resp
+        .json()
+        .await
+        .map_err(|e| ApiError::InternalError(format!("GitHub user parse failed: {e}")))?;
+
+    // Fetch primary email if not public
+    let email = match user.email {
+        Some(e) => e,
+        None => fetch_github_primary_email(access_token).await.unwrap_or_default(),
+    };
+
+    Ok(OAuthUserInfo {
+        provider: OAuthProvider::GitHub,
+        provider_id: user.id.to_string(),
+        email,
+        name: user.name.or(Some(user.login)),
+    })
+}
+
+async fn fetch_github_primary_email(access_token: &str) -> Option<String> {
+    let client = reqwest::Client::new();
+    let resp = client
+        .get("https://api.github.com/user/emails")
+        .header("Authorization", format!("Bearer {access_token}"))
+        .header("User-Agent", "fullstackhex")
+        .send()
+        .await
+        .ok()?;
+
+    if !resp.status().is_success() {
+        return None;
+    }
+
+    let emails: Vec<GitHubEmail> = resp.json().await.ok()?;
+    emails
+        .into_iter()
+        .find(|e| e.primary)
+        .map(|e| e.email)
+}
+
+#[derive(Debug, Deserialize)]
+struct GoogleUserInfo {
+    id: String,
+    email: String,
+    name: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct GitHubUser {
+    id: i64,
+    login: String,
+    email: Option<String>,
+    name: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct GitHubEmail {
+    email: String,
+    primary: bool,
 }

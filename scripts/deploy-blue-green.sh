@@ -93,7 +93,8 @@ else
     echo "WARNING: nginx/upstream.conf.template not found — skipping nginx switch"
 fi
 
-# 6. Validate and reload nginx
+# 6. Copy new nginx config and validate/reload
+scp /tmp/nginx-new.conf "${USER}@${TARGET}:${NGINX_CONF}"
 ssh "${USER}@${TARGET}" "nginx -t && nginx -s reload" || {
     echo "ERROR: nginx config validation failed. Restoring backup."
     ssh "${USER}@${TARGET}" "cp ${NGINX_CONF}.bak ${NGINX_CONF} && nginx -s reload"

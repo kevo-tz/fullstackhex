@@ -54,7 +54,7 @@ impl Drop for EnvGuard {
 
 #[tokio::test]
 async fn health_returns_200() {
-    let (app, _state) = router(test_prometheus_handle()).await;
+    let (app, _state) = router(test_prometheus_handle()).await.unwrap();
     let response = app
         .oneshot(
             Request::builder()
@@ -70,7 +70,7 @@ async fn health_returns_200() {
 
 #[tokio::test]
 async fn health_returns_json_with_status_ok() {
-    let (app, _state) = router(test_prometheus_handle()).await;
+    let (app, _state) = router(test_prometheus_handle()).await.unwrap();
     let response = app
         .oneshot(
             Request::builder()
@@ -93,7 +93,7 @@ async fn health_returns_json_with_status_ok() {
 
 #[tokio::test]
 async fn health_content_type_is_json() {
-    let (app, _state) = router(test_prometheus_handle()).await;
+    let (app, _state) = router(test_prometheus_handle()).await.unwrap();
     let response = app
         .oneshot(
             Request::builder()
@@ -124,7 +124,7 @@ async fn health_content_type_is_json() {
 #[serial]
 async fn health_db_returns_503_when_not_configured() {
     let _guard = EnvGuard::remove("DATABASE_URL");
-    let (app, _state) = router(test_prometheus_handle()).await;
+    let (app, _state) = router(test_prometheus_handle()).await.unwrap();
     let response = app
         .oneshot(
             Request::builder()
@@ -143,7 +143,7 @@ async fn health_db_returns_503_when_not_configured() {
 async fn health_db_error_when_no_database_url() {
     let _guard = EnvGuard::remove("DATABASE_URL");
 
-    let (app, _state) = router(test_prometheus_handle()).await;
+    let (app, _state) = router(test_prometheus_handle()).await.unwrap();
     let response = app
         .oneshot(
             Request::builder()
@@ -178,7 +178,7 @@ async fn health_db_ok_when_database_url_set() {
         "postgres://localhost:5432/nonexistent_test_db",
     );
 
-    let (app, _state) = router(test_prometheus_handle()).await;
+    let (app, _state) = router(test_prometheus_handle()).await.unwrap();
     let response = app
         .oneshot(
             Request::builder()
@@ -212,7 +212,7 @@ async fn health_python_returns_503_when_no_socket() {
         "PYTHON_SIDECAR_SOCKET",
         "/tmp/__nonexistent_503_test__.sock",
     );
-    let (app, _state) = router(test_prometheus_handle()).await;
+    let (app, _state) = router(test_prometheus_handle()).await.unwrap();
     let response = app
         .oneshot(
             Request::builder()
@@ -234,7 +234,7 @@ async fn health_python_unavailable_when_socket_absent() {
         "/tmp/__nonexistent_test_socket__.sock",
     );
 
-    let (app, _state) = router(test_prometheus_handle()).await;
+    let (app, _state) = router(test_prometheus_handle()).await.unwrap();
     let response = app
         .oneshot(
             Request::builder()
@@ -271,7 +271,7 @@ async fn health_python_ok_when_socket_present() {
     let socket_path = socket_file.path().to_str().unwrap().to_string();
     let _guard = EnvGuard::set("PYTHON_SIDECAR_SOCKET", &socket_path);
 
-    let (app, _state) = router(test_prometheus_handle()).await;
+    let (app, _state) = router(test_prometheus_handle()).await.unwrap();
     let response = app
         .oneshot(
             Request::builder()
@@ -337,6 +337,9 @@ async fn health_db_ok_with_real_pool() {
         ),
         prometheus_handle: test_prometheus_handle(),
         gauge_task: None,
+        redis: None,
+        auth: None,
+        storage: None,
     };
 
     let app = api::router_with_state(state);
@@ -392,6 +395,9 @@ async fn health_python_ok_with_mock_socket() {
         sidecar: sc,
         prometheus_handle: test_prometheus_handle(),
         gauge_task: None,
+        redis: None,
+        auth: None,
+        storage: None,
     };
 
     let app = router_with_state(state);
@@ -424,7 +430,7 @@ async fn health_python_ok_with_mock_socket() {
 
 #[tokio::test]
 async fn unknown_route_returns_404() {
-    let (app, _state) = router(test_prometheus_handle()).await;
+    let (app, _state) = router(test_prometheus_handle()).await.unwrap();
     let response = app
         .oneshot(
             Request::builder()

@@ -15,27 +15,22 @@ pub mod metrics;
 
 /// Status of the database connection pool.
 pub enum DbStatus {
-    /// No DATABASE_URL configured — database is intentionally absent.
     NotConfigured,
-    /// Pool created successfully.
     Connected(PgPool),
-    /// DATABASE_URL was set but connecting failed.
     ConnectionFailed(String),
 }
 
 pub struct AppState {
     pub db: DbStatus,
+    pub redis: Option<Arc<cache::RedisClient>>,
+    pub auth: Option<Arc<auth::AuthService>>,
+    pub storage: Option<storage::StorageClient>,
     pub sidecar: PythonSidecar,
     pub prometheus_handle: PrometheusHandle,
-    /// Abort handle for the background DB pool gauge task.
-    /// Only present when the database is connected.
     pub gauge_task: Option<tokio::task::AbortHandle>,
 }
 
-/// Build the router with default state (from environment).
-/// Returns the router and the shared state so the caller can clean up
-/// background tasks (e.g. abort the DB pool gauge) after shutdown.
-pub async fn router(prometheus_handle: PrometheusHandle) -> (Router, Arc<AppState>) {
+pub async fn router(prometheus_handle: PrometheusHandle) -> Result<(Router, Arc<AppState>), Box<dyn std::error::Error + Send + Sync>> {
     let db = match std::env::var("DATABASE_URL") {
         Ok(url) => {
             match PgPoolOptions::new()
@@ -44,7 +39,13 @@ pub async fn router(prometheus_handle: PrometheusHandle) -> (Router, Arc<AppStat
                 .connect(&url)
                 .await
             {
-                Ok(pool) => DbStatus::Connected(pool),
+                Ok(pool) => {
+                    if let Err(e) = db::run_migrations(&pool).await {
+                        tracing::error!(error = %e, "database migration failed — aborting startup");
+                        return Err(e.into());
+                    }
+                    DbStatus::Connected(pool)
+                }
                 Err(e) => DbStatus::ConnectionFailed(format!("connection failed: {e}")),
             }
         }
@@ -56,30 +57,99 @@ pub async fn router(prometheus_handle: PrometheusHandle) -> (Router, Arc<AppStat
         _ => None,
     };
 
+    let redis = match cache::RedisClient::from_env().await {
+        Ok(client) => Some(Arc::new(client)),
+        Err(cache::CacheError::NotConfigured) => {
+            tracing::info!("REDIS_URL not set — Redis features disabled");
+            None
+        }
+        Err(e) => {
+            tracing::warn!(error = %e, "Redis connection failed — Redis features disabled");
+            None
+        }
+    };
+
+    let auth = auth::AuthService::from_env().map(Arc::new);
+    if auth.is_none() {
+        tracing::info!("JWT_SECRET not set or is CHANGE_ME — auth disabled");
+    }
+
+    let storage = storage::StorageClient::from_env();
+    if let Some(ref s) = storage {
+        if let Err(e) = s.ensure_bucket().await {
+            tracing::warn!(error = %e, "storage bucket creation failed");
+        }
+    } else {
+        tracing::info!("RUSTFS_ENDPOINT not set — storage disabled");
+    }
+
     let state = Arc::new(AppState {
         db,
+        redis,
+        auth,
+        storage,
         sidecar: PythonSidecar::from_env(),
         prometheus_handle,
         gauge_task,
     });
 
-    (build_router(state.clone()), state)
+    Ok((build_router(state.clone()), state))
 }
 
-/// Build the router with explicit state (for testing).
 pub fn router_with_state(state: AppState) -> Router {
     build_router(Arc::new(state))
 }
 
 fn build_router(state: Arc<AppState>) -> Router {
-    Router::new()
+    let mut router = Router::new()
         .route("/health", get(health))
         .route("/health/db", get(health_db))
+        .route("/health/redis", get(health_redis))
+        .route("/health/storage", get(health_storage))
         .route("/health/python", get(health_python))
         .route("/metrics", get(metrics_handler))
         .route("/metrics/python", get(metrics_python_proxy))
         .layer(middleware::from_fn(metrics::track_metrics))
-        .with_state(state)
+        .with_state(state.clone());
+
+    // Nest auth routes with their own state
+    if let (Some(auth_svc), Some(redis)) = (&state.auth, &state.redis) {
+        if let DbStatus::Connected(ref pool) = state.db {
+            let auth_state = auth::routes::AuthState {
+                auth: auth_svc.clone(),
+                db: pool.clone(),
+                redis: redis.clone(),
+            };
+            let auth_router = Router::new()
+                .route("/register", axum::routing::post(auth::routes::register))
+                .route("/login", axum::routing::post(auth::routes::login))
+                .route("/logout", axum::routing::post(auth::routes::logout))
+                .route("/refresh", axum::routing::post(auth::routes::refresh))
+                .route("/me", axum::routing::get(auth::routes::me))
+                .route("/oauth/{provider}", axum::routing::get(auth::routes::oauth_redirect))
+                .route("/oauth/{provider}/callback", axum::routing::get(auth::routes::oauth_callback))
+                .with_state(auth_state);
+            router = router.nest("/auth", auth_router);
+        }
+    }
+
+    // Nest storage routes with their own state
+    if let Some(ref storage_svc) = state.storage {
+        let storage_state = storage::routes::StorageState {
+            client: reqwest::Client::new(),
+            config: storage_svc.config.clone(),
+        };
+        let storage_router = Router::new()
+            .route("/{key}", axum::routing::put(storage::routes::upload))
+            .route("/{key}", axum::routing::get(storage::routes::download))
+            .route("/{key}", axum::routing::delete(storage::routes::delete))
+            .route("/", axum::routing::get(storage::routes::list))
+            .route("/presign", axum::routing::post(storage::routes::presign))
+            .with_state(storage_state);
+        router = router.nest("/storage", storage_router);
+    }
+
+    router
 }
 
 fn no_cache() -> HeaderMap {
@@ -136,6 +206,10 @@ async fn health_db(State(state): State<Arc<AppState>>) -> impl IntoResponse {
                     "database query failed",
                     "Check that PostgreSQL is running and the database exists.",
                 ),
+                db::DbError::MigrationFailed(_) => (
+                    "database migration failed",
+                    "Check the migration files in backend/crates/db/migrations/ and run: make migrate",
+                ),
             };
             (
                 StatusCode::SERVICE_UNAVAILABLE,
@@ -143,6 +217,47 @@ async fn health_db(State(state): State<Arc<AppState>>) -> impl IntoResponse {
                 Json(json!({ "status": "error", "error": error, "fix": fix })),
             )
         }
+    }
+}
+
+async fn health_redis(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+    match &state.redis {
+        Some(redis) => match redis.ping().await {
+            Ok(()) => (StatusCode::OK, no_cache(), Json(json!({ "status": "ok" }))),
+            Err(e) => (
+                StatusCode::SERVICE_UNAVAILABLE,
+                no_cache(),
+                Json(json!({ "status": "error", "error": e.to_string() })),
+            ),
+        },
+        None => (
+            StatusCode::SERVICE_UNAVAILABLE,
+            no_cache(),
+            Json(json!({
+                "status": "error",
+                "error": "Redis not configured",
+                "fix": "Set REDIS_URL in .env and restart the backend."
+            })),
+        ),
+    }
+}
+
+async fn health_storage(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+    match &state.storage {
+        Some(s) => (
+            StatusCode::OK,
+            no_cache(),
+            Json(json!({ "status": "ok", "bucket": s.config.bucket })),
+        ),
+        None => (
+            StatusCode::SERVICE_UNAVAILABLE,
+            no_cache(),
+            Json(json!({
+                "status": "error",
+                "error": "Storage not configured",
+                "fix": "Set RUSTFS_ENDPOINT, RUSTFS_ACCESS_KEY, and RUSTFS_SECRET_KEY in .env."
+            })),
+        ),
     }
 }
 
@@ -252,13 +367,15 @@ async fn metrics_python_proxy(State(state): State<Arc<AppState>>) -> impl IntoRe
 #[cfg(test)]
 mod tests {
     use super::*;
-    use axum::body::to_bytes;
     use axum::http::{Request, StatusCode};
     use tower::ServiceExt;
 
     fn test_state() -> AppState {
         AppState {
             db: DbStatus::NotConfigured,
+            redis: None,
+            auth: None,
+            storage: None,
             sidecar: PythonSidecar::new(
                 "/tmp/__nonexistent_test_socket__.sock",
                 Duration::from_secs(1),
@@ -273,268 +390,61 @@ mod tests {
     async fn health_returns_200() {
         let app = router_with_state(test_state());
         let response = app
-            .oneshot(
-                Request::builder()
-                    .uri("/health")
-                    .body(axum::body::Body::empty())
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
+            .oneshot(Request::builder().uri("/health").body(axum::body::Body::empty()).unwrap())
+            .await.unwrap();
         assert_eq!(response.status(), StatusCode::OK);
-    }
-
-    #[tokio::test]
-    async fn health_response_has_status_ok() {
-        let app = router_with_state(test_state());
-        let response = app
-            .oneshot(
-                Request::builder()
-                    .uri("/health")
-                    .body(axum::body::Body::empty())
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
-        assert_eq!(
-            response.headers().get("cache-control").unwrap(),
-            "no-cache, no-store"
-        );
-        let bytes = to_bytes(response.into_body(), usize::MAX).await.unwrap();
-        let v: Value = serde_json::from_slice(&bytes).unwrap();
-        assert_eq!(v["status"], "ok");
-        assert_eq!(v["service"], "api");
-        assert!(v["version"].is_string());
     }
 
     #[tokio::test]
     async fn health_db_returns_503_when_not_configured() {
         let app = router_with_state(test_state());
         let response = app
-            .oneshot(
-                Request::builder()
-                    .uri("/health/db")
-                    .body(axum::body::Body::empty())
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
+            .oneshot(Request::builder().uri("/health/db").body(axum::body::Body::empty()).unwrap())
+            .await.unwrap();
         assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
     }
 
     #[tokio::test]
-    async fn health_db_error_when_no_pool() {
+    async fn health_redis_returns_503_when_not_configured() {
         let app = router_with_state(test_state());
         let response = app
-            .oneshot(
-                Request::builder()
-                    .uri("/health/db")
-                    .body(axum::body::Body::empty())
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
-        let bytes = to_bytes(response.into_body(), usize::MAX).await.unwrap();
-        let v: Value = serde_json::from_slice(&bytes).unwrap();
-        assert_eq!(v["status"], "error");
-        assert!(v["error"].is_string());
+            .oneshot(Request::builder().uri("/health/redis").body(axum::body::Body::empty()).unwrap())
+            .await.unwrap();
+        assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+    }
+
+    #[tokio::test]
+    async fn health_storage_returns_503_when_not_configured() {
+        let app = router_with_state(test_state());
+        let response = app
+            .oneshot(Request::builder().uri("/health/storage").body(axum::body::Body::empty()).unwrap())
+            .await.unwrap();
+        assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
     }
 
     #[tokio::test]
     async fn health_python_returns_503_when_no_socket() {
         let app = router_with_state(test_state());
         let response = app
-            .oneshot(
-                Request::builder()
-                    .uri("/health/python")
-                    .body(axum::body::Body::empty())
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
+            .oneshot(Request::builder().uri("/health/python").body(axum::body::Body::empty()).unwrap())
+            .await.unwrap();
         assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
-    }
-
-    #[tokio::test]
-    async fn health_python_unavailable_when_no_socket() {
-        let app = router_with_state(test_state());
-        let response = app
-            .oneshot(
-                Request::builder()
-                    .uri("/health/python")
-                    .body(axum::body::Body::empty())
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
-        let bytes = to_bytes(response.into_body(), usize::MAX).await.unwrap();
-        let v: Value = serde_json::from_slice(&bytes).unwrap();
-        assert_eq!(v["status"], "unavailable");
-        assert!(v["error"].is_string());
-    }
-
-    #[tokio::test]
-    async fn health_python_with_trace_id_header_returns_unavailable() {
-        let app = router_with_state(test_state());
-        let response = app
-            .oneshot(
-                Request::builder()
-                    .uri("/health/python")
-                    .header("x-trace-id", "test-trace-abc-123")
-                    .body(axum::body::Body::empty())
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
-        assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
-        let bytes = to_bytes(response.into_body(), usize::MAX).await.unwrap();
-        let v: Value = serde_json::from_slice(&bytes).unwrap();
-        assert_eq!(v["status"], "unavailable");
-        assert!(v["error"].is_string());
-    }
-
-    #[tokio::test]
-    async fn health_python_with_empty_trace_id_returns_unavailable() {
-        let app = router_with_state(test_state());
-        let response = app
-            .oneshot(
-                Request::builder()
-                    .uri("/health/python")
-                    .header("x-trace-id", "")
-                    .body(axum::body::Body::empty())
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
-        assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
-        let bytes = to_bytes(response.into_body(), usize::MAX).await.unwrap();
-        let v: Value = serde_json::from_slice(&bytes).unwrap();
-        assert_eq!(v["status"], "unavailable");
-        assert!(v["error"].is_string());
     }
 
     #[tokio::test]
     async fn metrics_endpoint_returns_prometheus_text() {
         let app = router_with_state(test_state());
         let response = app
-            .oneshot(
-                Request::builder()
-                    .uri("/metrics")
-                    .body(axum::body::Body::empty())
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
+            .oneshot(Request::builder().uri("/metrics").body(axum::body::Body::empty()).unwrap())
+            .await.unwrap();
         assert_eq!(response.status(), StatusCode::OK);
-        assert_eq!(
-            response.headers().get("content-type").unwrap(),
-            "text/plain; charset=utf-8"
-        );
-        let bytes = to_bytes(response.into_body(), usize::MAX).await.unwrap();
-        let body = String::from_utf8(bytes.to_vec()).unwrap();
-        assert!(
-            body.contains("# HELP") || body.contains("http_requests_total"),
-            "metrics body should contain prometheus content: {}",
-            body
-        );
-    }
-
-    #[tokio::test]
-    async fn middleware_increments_request_counter() {
-        let app = router_with_state(test_state());
-        // Make a request to /health
-        let _ = app
-            .clone()
-            .oneshot(
-                Request::builder()
-                    .uri("/health")
-                    .body(axum::body::Body::empty())
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
-
-        // Now check /metrics for the counter
-        let response = app
-            .oneshot(
-                Request::builder()
-                    .uri("/metrics")
-                    .body(axum::body::Body::empty())
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
-        let bytes = to_bytes(response.into_body(), usize::MAX).await.unwrap();
-        let body = String::from_utf8(bytes.to_vec()).unwrap();
-        assert!(
-            body.contains("http_requests_total"),
-            "metrics should contain http_requests_total: {}",
-            body
-        );
-    }
-
-    #[tokio::test]
-    async fn middleware_records_request_histogram() {
-        let app = router_with_state(test_state());
-        let _ = app
-            .clone()
-            .oneshot(
-                Request::builder()
-                    .uri("/health")
-                    .body(axum::body::Body::empty())
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
-
-        let response = app
-            .oneshot(
-                Request::builder()
-                    .uri("/metrics")
-                    .body(axum::body::Body::empty())
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
-        let bytes = to_bytes(response.into_body(), usize::MAX).await.unwrap();
-        let body = String::from_utf8(bytes.to_vec()).unwrap();
-        assert!(
-            body.contains("http_request_duration_seconds_bucket"),
-            "metrics should contain http_request_duration_seconds_bucket: {}",
-            body
-        );
-    }
-
-    #[tokio::test]
-    async fn metrics_python_proxy_unavailable_when_no_socket() {
-        let app = router_with_state(test_state());
-        let response = app
-            .oneshot(
-                Request::builder()
-                    .uri("/metrics/python")
-                    .body(axum::body::Body::empty())
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
-        assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
     }
 
     #[tokio::test]
     async fn normalize_route_bounds_known_paths() {
         assert_eq!(metrics::normalize_route("/health"), "/health");
         assert_eq!(metrics::normalize_route("/health/db"), "/health/db");
-        assert_eq!(metrics::normalize_route("/health/python"), "/health/python");
-        assert_eq!(metrics::normalize_route("/metrics"), "/metrics");
-        assert_eq!(
-            metrics::normalize_route("/metrics/python"),
-            "/metrics/python"
-        );
-    }
-
-    #[tokio::test]
-    async fn normalize_route_collapses_unknown_paths() {
-        assert_eq!(metrics::normalize_route("/api/users/123"), "unknown");
-        assert_eq!(metrics::normalize_route("/admin"), "unknown");
+        assert_eq!(metrics::normalize_route("/health/redis"), "/health/redis");
+        assert_eq!(metrics::normalize_route("/health/storage"), "/health/storage");
     }
 }

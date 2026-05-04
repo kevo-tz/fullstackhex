@@ -17,7 +17,10 @@ async fn main() {
         .init();
 
     let prometheus_handle = api::metrics::init_metrics_recorder();
-    let (app, state) = api::router(prometheus_handle).await;
+    let (app, state) = api::router(prometheus_handle).await.unwrap_or_else(|e| {
+        tracing::error!(error = %e, "failed to initialize application");
+        std::process::exit(1);
+    });
 
     let addr: SocketAddr = "0.0.0.0:8001".parse().unwrap();
     tracing::info!(%addr, "listening");

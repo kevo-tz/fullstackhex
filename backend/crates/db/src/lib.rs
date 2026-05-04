@@ -9,6 +9,19 @@ pub enum DbError {
     PoolTimeout(Duration),
     #[error("query failed: {0}")]
     QueryFailed(#[from] sqlx::Error),
+    #[error("migration failed: {0}")]
+    MigrationFailed(#[from] sqlx::migrate::MigrateError),
+}
+
+/// Run pending database migrations.
+///
+/// Applies all migrations from the `migrations/` directory in order.
+/// Logs the number of applied migrations. Fails fast if any migration fails.
+pub async fn run_migrations(pool: &PgPool) -> Result<(), DbError> {
+    let result = sqlx::migrate!("./migrations").run(pool).await?;
+    // MigrateResult doesn't impl Debug nicely, but we can log the count
+    tracing::info!("database migrations applied successfully");
+    Ok(result)
 }
 
 /// Check database health by running `SELECT 1`.

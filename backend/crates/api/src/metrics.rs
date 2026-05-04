@@ -44,9 +44,21 @@ pub fn normalize_route(path: &str) -> &'static str {
     match path {
         "/health" => "/health",
         "/health/db" => "/health/db",
+        "/health/redis" => "/health/redis",
+        "/health/storage" => "/health/storage",
         "/health/python" => "/health/python",
         "/metrics" => "/metrics",
         "/metrics/python" => "/metrics/python",
+        "/auth/login" => "/auth/login",
+        "/auth/register" => "/auth/register",
+        "/auth/logout" => "/auth/logout",
+        "/auth/refresh" => "/auth/refresh",
+        "/auth/me" => "/auth/me",
+        "/auth/oauth/{provider}" => "/auth/oauth",
+        "/auth/oauth/{provider}/callback" => "/auth/oauth/callback",
+        "/storage/{key}" => "/storage/key",
+        "/storage" => "/storage",
+        "/storage/presign" => "/storage/presign",
         _ => "unknown",
     }
 }

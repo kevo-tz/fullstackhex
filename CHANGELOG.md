@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.8.0.0] - 2026-05-05
+
+### Added
+- **Authentication system** (`crates/auth/`): JWT access tokens with 15-minute expiry, refresh token rotation, OAuth2 login via Google and GitHub, Argon2 password hashing, CSRF token generation, and bearer/cookie dual-mode auth middleware
+- **Redis application layer** (`crates/cache/`): connection pooling with `fred`, get/set cache with TTL, pattern invalidation, sliding-window rate limiting via Lua script, pub/sub helpers, and Redis-backed session store
+- **S3-compatible object storage** (`crates/storage/`): streaming upload/download (SigV4 signed), presigned URL generation, multipart upload support, list/delete operations — backed by RustFS or any S3-compatible endpoint
+- **Deploy safety scripts**: rollback (`make rollback`), blue-green (`make blue-green`), canary (`make canary` with 10% traffic split), canary promote/rollback, and deploy-verify health polling — all with `flock`-based deploy lock
+- **Shared error type** (`crates/domain/`): unified `ApiError` enum with consistent HTTP status mapping (401/403/404/429/503) used across auth, cache, storage, and API crates
+- **Database migration system**: `sqlx` migrations with `make migrate` / `make migrate-revert` / `make migrate-status` targets, auto-run on API startup
+- **Auth health endpoints**: `/health/redis` and `/health/storage` added to the existing health fan-out
+- **Python sidecar HMAC verification**: middleware validates `X-Auth-Signature` header on every request using `SIDECAR_SHARED_SECRET` — rejects requests with missing or invalid signatures
+- **Nginx configs**: `nginx/upstream.conf.template` for blue-green upstream switching and `nginx/canary.conf` for `split_clients` traffic routing
+
+### Fixed
+- **Storage URL safety**: object keys and prefixes are now URL-encoded via `url::Url` — prevents panics from invalid characters and query-parameter injection in list operations
+- **Auth error handling**: database errors no longer leak internal details to clients; user enumeration via distinct error messages eliminated
+- **Storage download safety**: added 100 MB size limit to prevent OOM from unbounded S3 object downloads
+- **Makefile targets**: `make dev` and `make down-dev` now work correctly after signal-handling fixes
+- **Auth SQL compatibility**: UUID columns cast to text in queries to avoid type mismatch errors
+
+### Changed
+- **Frontend health aggregation**: updated to include Redis and Storage service cards in the dashboard
+- **API test suite**: expanded from ~80 to ~140 tests across auth, cache, storage, domain, and Python sidecar crates
+- **Project structure**: `crates/core/` renamed to `crates/domain/` to avoid Rust built-in namespace conflict
+
+---
+
 ## [0.7.0.0] - 2026-05-03
 
 ### Added

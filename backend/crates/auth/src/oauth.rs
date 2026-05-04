@@ -247,3 +247,32 @@ struct GitHubEmail {
     email: String,
     primary: bool,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn provider_display_google() {
+        assert_eq!(OAuthProvider::Google.to_string(), "google");
+    }
+
+    #[test]
+    fn provider_display_github() {
+        assert_eq!(OAuthProvider::GitHub.to_string(), "github");
+    }
+
+    #[test]
+    fn oauth_service_unconfigured() {
+        let svc = OAuthService::new(None, None, None, None);
+        assert!(!svc.is_configured(&OAuthProvider::Google));
+        assert!(!svc.is_configured(&OAuthProvider::GitHub));
+    }
+
+    #[test]
+    fn oauth_service_google_configured() {
+        let svc = OAuthService::new(Some("id".to_string()), Some("secret".to_string()), None, None);
+        assert!(svc.is_configured(&OAuthProvider::Google));
+        assert!(!svc.is_configured(&OAuthProvider::GitHub));
+    }
+}

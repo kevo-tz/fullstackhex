@@ -77,3 +77,57 @@ impl RedisClient {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn session_serializes_to_json() {
+        let session = Session {
+            user_id: "user-123".to_string(),
+            email: "test@example.com".to_string(),
+            name: Some("Test User".to_string()),
+            provider: "local".to_string(),
+            created_at: 1_700_000_000,
+        };
+
+        let json = serde_json::to_string(&session).unwrap();
+        assert!(json.contains("user-123"));
+        assert!(json.contains("test@example.com"));
+        assert!(json.contains("Test User"));
+        assert!(json.contains("local"));
+    }
+
+    #[test]
+    fn session_deserializes_from_json() {
+        let json = r#"{"user_id":"user-456","email":"anon@example.com","name":null,"provider":"google","created_at":1700000001}"#;
+        let session: Session = serde_json::from_str(json).unwrap();
+
+        assert_eq!(session.user_id, "user-456");
+        assert_eq!(session.email, "anon@example.com");
+        assert_eq!(session.name, None);
+        assert_eq!(session.provider, "google");
+        assert_eq!(session.created_at, 1_700_000_001);
+    }
+
+    #[test]
+    fn session_roundtrip_json() {
+        let original = Session {
+            user_id: "user-789".to_string(),
+            email: "round@example.com".to_string(),
+            name: None,
+            provider: "github".to_string(),
+            created_at: 1_700_000_002,
+        };
+
+        let json = serde_json::to_string(&original).unwrap();
+        let deserialized: Session = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(original.user_id, deserialized.user_id);
+        assert_eq!(original.email, deserialized.email);
+        assert_eq!(original.name, deserialized.name);
+        assert_eq!(original.provider, deserialized.provider);
+        assert_eq!(original.created_at, deserialized.created_at);
+    }
+}

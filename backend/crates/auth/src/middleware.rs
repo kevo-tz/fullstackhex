@@ -177,6 +177,24 @@ pub fn verify_auth_signature(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::AuthConfig;
+
+    fn test_auth_service(mode: AuthMode) -> AuthService {
+        let config = AuthConfig {
+            jwt_secret: "test-secret-key-for-testing".to_string(),
+            jwt_issuer: "test-issuer".to_string(),
+            jwt_expiry: 900,
+            refresh_expiry: 604800,
+            auth_mode: mode,
+            google_client_id: None,
+            google_client_secret: None,
+            github_client_id: None,
+            github_client_secret: None,
+            oauth_redirect_url: None,
+            sidecar_shared_secret: None,
+        };
+        AuthService::new(config)
+    }
 
     #[test]
     fn hmac_roundtrip() {
@@ -201,5 +219,50 @@ mod tests {
     fn hmac_empty_secret_fails() {
         let result = compute_auth_signature("", "user-123", "a@b.com", "T");
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn extract_bearer_missing_header() {
+        let req = axum::http::Request::builder().uri("/").body(axum::body::Body::empty()).unwrap();
+        let auth = test_auth_service(AuthMode::Bearer);
+        assert!(extract_bearer(&req, &auth).is_none());
+    }
+
+    #[test]
+    fn extract_bearer_invalid_token() {
+        let req = axum::http::Request::builder()
+            .uri("/")
+            .header("authorization", "Bearer invalid-token")
+            .body(axum::body::Body::empty())
+            .unwrap();
+        let auth = test_auth_service(AuthMode::Bearer);
+        assert!(extract_bearer(&req, &auth).is_none());
+    }
+
+    #[test]
+    fn extract_bearer_valid_token() {
+        let auth = test_auth_service(AuthMode::Bearer);
+        let token = auth.jwt.create_token("u1", "a@b.com", None, "local").unwrap();
+        let req = axum::http::Request::builder()
+            .uri("/")
+            .header("authorization", format!("Bearer {}", token))
+            .body(axum::body::Body::empty())
+            .unwrap();
+        let user = extract_bearer(&req, &auth).unwrap();
+        assert_eq!(user.user_id, "u1");
+        assert_eq!(user.email, "a@b.com");
+    }
+
+    #[test]
+    fn extract_auth_user_both_prefers_bearer() {
+        let auth = test_auth_service(AuthMode::Both);
+        let token = auth.jwt.create_token("u1", "a@b.com", None, "local").unwrap();
+        let req = axum::http::Request::builder()
+            .uri("/")
+            .header("authorization", format!("Bearer {}", token))
+            .body(axum::body::Body::empty())
+            .unwrap();
+        let user = extract_auth_user(&req, &auth).unwrap();
+        assert_eq!(user.user_id, "u1");
     }
 }

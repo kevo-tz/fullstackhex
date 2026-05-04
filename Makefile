@@ -20,18 +20,18 @@ PYTHON_SOCK ?= /tmp/fullstackhex-python.sock
 # Shared startup sequence used by dev and watch targets
 START_DEPS = \
 	$(COMPOSE_DEV) up -d; \
-	@echo "Waiting for PostgreSQL (up to $$(( $(POSTGRES_RETRIES) * $(POSTGRES_POLL_INTERVAL) ))s)..."; \
-	@for i in $$(seq 1 $(POSTGRES_RETRIES)); do \
+	echo "Waiting for PostgreSQL (up to $$(( $(POSTGRES_RETRIES) * $(POSTGRES_POLL_INTERVAL) ))s)..."; \
+	for i in $$(seq 1 $(POSTGRES_RETRIES)); do \
 	  docker compose -f compose/dev.yml exec -T postgres pg_isready -U app_user 2>/dev/null && break; \
 	  sleep $(POSTGRES_POLL_INTERVAL); \
 	done; \
-	@echo "PostgreSQL ready (or timeout — Rust will retry connections)"; \
-	@echo "Starting Python sidecar..."; \
+	echo "PostgreSQL ready (or timeout — Rust will retry connections)"; \
+	echo "Starting Python sidecar..."; \
 	cd python-sidecar && set -a && . ../.env && set +a && uv run uvicorn app.main:app --uds $(PYTHON_SOCK) & \
 	echo $$! >> $(PID_FILE); \
-	@echo "Starting frontend..."; \
+	echo "Starting frontend..."; \
 	cd frontend && bun run dev & \
-	echo $$! >> $(PID_FILE);
+	echo $$! >> $(PID_FILE)
 
 # Help
 help:
@@ -280,10 +280,9 @@ down-dev:
 	  done < $(PID_FILE); \
 	  rm -f $(PID_FILE); \
 	fi
-	@pkill -f "uvicorn app.main:app" 2>/dev/null || true
-	@pkill -f "cargo run -p api" 2>/dev/null || true
-	@pkill -f "cargo watch" 2>/dev/null || true
-	@pkill -f "bun run dev" 2>/dev/null || true
+	@pkill -x uvicorn 2>/dev/null || true
+	@pkill -x api 2>/dev/null || true
+	@pkill -x bun 2>/dev/null || true
 	$(COMPOSE_DEV) down
 	@echo "All services stopped."
 

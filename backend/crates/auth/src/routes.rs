@@ -127,11 +127,11 @@ pub async fn register(
             .bind(&body.email)
             .fetch_optional(&state.db)
             .await
-            .map_err(|e| ApiError::InternalError(format!("DB error: {e}")))?;
+            .map_err(|_e| ApiError::InternalError("Internal server error".to_string()))?;
 
     if existing.is_some() {
         return Err(ApiError::ValidationError(
-            "Email already registered".to_string(),
+            "Invalid credentials".to_string(),
         ));
     }
 
@@ -147,7 +147,7 @@ pub async fn register(
     .bind(&password_hash)
     .fetch_one(&state.db)
     .await
-    .map_err(|e| ApiError::InternalError(format!("DB error: {e}")))?;
+    .map_err(|_e| ApiError::InternalError("Internal server error".to_string()))?;
 
     // Create JWT
     let access_token = state.auth.jwt.create_token(
@@ -217,14 +217,14 @@ pub async fn login(
         .bind(&body.email)
         .fetch_optional(&state.db)
         .await
-        .map_err(|e| ApiError::InternalError(format!("DB error: {e}")))?;
+        .map_err(|_e| ApiError::InternalError("Internal server error".to_string()))?;
 
     let (user_id, email, name, provider, password_hash) =
         user.ok_or_else(|| ApiError::Unauthorized("Invalid credentials".to_string()))?;
 
     // Verify password
     let hash = password_hash.ok_or_else(|| {
-        ApiError::Unauthorized("Account uses OAuth login".to_string())
+        ApiError::Unauthorized("Invalid credentials".to_string())
     })?;
 
     if !password::verify_password(&body.password, &hash)? {
@@ -310,10 +310,10 @@ pub async fn refresh(
             .bind(&user_id)
             .fetch_optional(&state.db)
             .await
-            .map_err(|e| ApiError::InternalError(format!("DB error: {e}")))?;
+            .map_err(|_e| ApiError::InternalError("Internal server error".to_string()))?;
 
     let (user_id, email, name, provider) =
-        user.ok_or_else(|| ApiError::Unauthorized("User not found".to_string()))?;
+        user.ok_or_else(|| ApiError::Unauthorized("Invalid credentials".to_string()))?;
 
     // Create new access token
     let access_token =
@@ -447,7 +447,7 @@ pub async fn oauth_callback(
     let user_info = oauth_service
         .exchange_code(&provider, &query.code)
         .await
-        .map_err(|e| ApiError::InternalError(format!("OAuth token exchange failed: {e}")))?;
+        .map_err(|_e| ApiError::Unauthorized("OAuth authentication failed".to_string()))?;
 
     // Find or create user
     let user_id = match sqlx::query_as::<_, (String,)>(
@@ -470,10 +470,10 @@ pub async fn oauth_callback(
             .bind(&provider.to_string())
             .execute(&state.db)
             .await
-            .map_err(|e| ApiError::InternalError(format!("DB error: {e}")))?;
+            .map_err(|_e| ApiError::InternalError("Internal server error".to_string()))?;
             id
         }
-        Err(e) => return Err(ApiError::InternalError(format!("DB error: {e}"))),
+        Err(_e) => return Err(ApiError::InternalError("Internal server error".to_string())),
     };
 
     // Create JWT
@@ -515,5 +515,83 @@ fn parse_provider(s: &str) -> Result<super::oauth::OAuthProvider, ApiError> {
         _ => Err(ApiError::ValidationError(format!(
             "Unknown OAuth provider: {s}"
         ))),
+    }
+}
+
+#[cfg(test)]
+mod route_tests {
+    use super::*;
+
+    #[test]
+    fn client_ip_from_x_forwarded_for() {
+        let mut headers = HeaderMap::new();
+        headers.insert("x-forwarded-for", "192.168.1.1, 10.0.0.1".parse().unwrap());
+        assert_eq!(client_ip(&headers), "192.168.1.1");
+    }
+
+    #[test]
+    fn client_ip_from_x_real_ip() {
+        let mut headers = HeaderMap::new();
+        headers.insert("x-real-ip", "10.0.0.2".parse().unwrap());
+        assert_eq!(client_ip(&headers), "10.0.0.2");
+    }
+
+    #[test]
+    fn client_ip_defaults_to_unknown() {
+        let headers = HeaderMap::new();
+        assert_eq!(client_ip(&headers), "unknown");
+    }
+
+    #[test]
+    fn parse_provider_google() {
+        assert!(matches!(parse_provider("google"), Ok(super::super::oauth::OAuthProvider::Google)));
+    }
+
+    #[test]
+    fn parse_provider_github() {
+        assert!(matches!(parse_provider("github"), Ok(super::super::oauth::OAuthProvider::GitHub)));
+    }
+
+    #[test]
+    fn parse_provider_invalid() {
+        assert!(parse_provider("invalid").is_err());
+    }
+
+    #[tokio::test]
+    async fn me_handler_returns_user_info() {
+        let auth_user = AuthUser {
+            user_id: "user-123".to_string(),
+            email: "test@example.com".to_string(),
+            name: Some("Test User".to_string()),
+            provider: "local".to_string(),
+        };
+        let response = me(auth_user).await.into_response();
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["user_id"], "user-123");
+        assert_eq!(json["email"], "test@example.com");
+        assert_eq!(json["name"], "Test User");
+        assert_eq!(json["provider"], "local");
+    }
+
+    #[tokio::test]
+    async fn me_handler_returns_user_info_without_name() {
+        let auth_user = AuthUser {
+            user_id: "user-456".to_string(),
+            email: "anon@example.com".to_string(),
+            name: None,
+            provider: "google".to_string(),
+        };
+        let response = me(auth_user).await.into_response();
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["user_id"], "user-456");
+        assert_eq!(json["email"], "anon@example.com");
+        assert!(json["name"].is_null());
+        assert_eq!(json["provider"], "google");
     }
 }

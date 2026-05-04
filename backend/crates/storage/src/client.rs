@@ -10,6 +10,17 @@ use std::time::Duration;
 
 use hmac::{Hmac, Mac};
 
+/// Build a safe object URL from endpoint, bucket, and key.
+fn build_object_url(endpoint: &str, bucket: &str, key: &str) -> Result<url::Url, url::ParseError> {
+    let base = url::Url::parse(endpoint)?;
+    let path = if key.is_empty() {
+        format!("/{}/", bucket)
+    } else {
+        format!("/{}/{}", bucket, key)
+    };
+    base.join(&path)
+}
+
 /// Information about an object in the bucket.
 #[derive(Debug, Clone, Serialize)]
 pub struct ObjectInfo {
@@ -26,10 +37,12 @@ pub async fn upload(
     body: Vec<u8>,
     content_type: &str,
 ) -> Result<(), ApiError> {
-    let url = format!("{}/{}/{}", config.endpoint, config.bucket, key);
-    let signed = sign_request(config, "PUT", &url, content_type, &body);
+    let url = build_object_url(&config.endpoint, &config.bucket, key)
+        .map_err(|e| ApiError::InternalError(format!("Invalid URL: {e}")))?;
+    let url_str = url.to_string();
+    let signed = sign_request(config, "PUT", &url_str, content_type, &body)?;
     let req = client
-        .put(&url)
+        .put(url.as_str())
         .body(body)
         .header("Content-Type", content_type)
         .header("Host", &signed.host)
@@ -54,10 +67,12 @@ pub async fn download(
     config: &super::StorageConfig,
     key: &str,
 ) -> Result<Vec<u8>, ApiError> {
-    let url = format!("{}/{}/{}", config.endpoint, config.bucket, key);
-    let signed = sign_request(config, "GET", &url, "", &[]);
+    let url = build_object_url(&config.endpoint, &config.bucket, key)
+        .map_err(|e| ApiError::InternalError(format!("Invalid URL: {e}")))?;
+    let url_str = url.to_string();
+    let signed = sign_request(config, "GET", &url_str, "", &[])?;
     let req = client
-        .get(&url)
+        .get(url.as_str())
         .header("Host", &signed.host)
         .header("X-Amz-Date", &signed.amz_date)
         .header("X-Amz-Content-Sha256", &signed.payload_hash)
@@ -68,9 +83,17 @@ pub async fn download(
     if !resp.status().is_success() {
         return Err(ApiError::NotFound(format!("Object not found: {key}")));
     }
-    resp.bytes().await.map(|b| b.to_vec()).map_err(|e| {
+    // Guard against unbounded download sizes (100 MB limit)
+    const MAX_DOWNLOAD_SIZE: usize = 100 * 1024 * 1024;
+    let bytes = resp.bytes().await.map_err(|e| {
         ApiError::InternalError(format!("Failed to read response: {e}"))
-    })
+    })?;
+    if bytes.len() > MAX_DOWNLOAD_SIZE {
+        return Err(ApiError::InternalError(
+            "Download exceeds maximum size (100 MB)".to_string(),
+        ));
+    }
+    Ok(bytes.to_vec())
 }
 
 /// Delete a file from the storage bucket.
@@ -79,10 +102,12 @@ pub async fn delete(
     config: &super::StorageConfig,
     key: &str,
 ) -> Result<(), ApiError> {
-    let url = format!("{}/{}/{}", config.endpoint, config.bucket, key);
-    let signed = sign_request(config, "DELETE", &url, "", &[]);
+    let url = build_object_url(&config.endpoint, &config.bucket, key)
+        .map_err(|e| ApiError::InternalError(format!("Invalid URL: {e}")))?;
+    let url_str = url.to_string();
+    let signed = sign_request(config, "DELETE", &url_str, "", &[])?;
     let req = client
-        .delete(&url)
+        .delete(url.as_str())
         .header("Host", &signed.host)
         .header("X-Amz-Date", &signed.amz_date)
         .header("X-Amz-Content-Sha256", &signed.payload_hash)
@@ -105,13 +130,16 @@ pub async fn list(
     config: &super::StorageConfig,
     prefix: &str,
 ) -> Result<Vec<ObjectInfo>, ApiError> {
-    let url = format!(
-        "{}/{}?list-type=2&prefix={}",
-        config.endpoint, config.bucket, prefix
-    );
-    let signed = sign_request(config, "GET", &url, "", &[]);
+    let base = build_object_url(&config.endpoint, &config.bucket, "")
+        .map_err(|e| ApiError::InternalError(format!("Invalid URL: {e}")))?;
+    let mut url = base;
+    url.query_pairs_mut()
+        .append_pair("list-type", "2")
+        .append_pair("prefix", prefix);
+    let url_str = url.to_string();
+    let signed = sign_request(config, "GET", &url_str, "", &[])?;
     let req = client
-        .get(&url)
+        .get(&url_str)
         .header("Host", &signed.host)
         .header("X-Amz-Date", &signed.amz_date)
         .header("X-Amz-Content-Sha256", &signed.payload_hash)
@@ -145,7 +173,9 @@ pub fn presigned_url(
     _expiry: Duration,
 ) -> Result<String, ApiError> {
     // For presigned URLs, use the public endpoint
-    Ok(format!("{}/{}/{}", config.public_endpoint, config.bucket, key))
+    let url = build_object_url(&config.public_endpoint, &config.bucket, key)
+        .map_err(|e| ApiError::InternalError(format!("Invalid URL: {e}")))?;
+    Ok(url.to_string())
 }
 
 /// Signed request components.
@@ -163,12 +193,13 @@ pub fn sign_request(
     url: &str,
     content_type: &str,
     body: &[u8],
-) -> SignedRequest {
+) -> Result<SignedRequest, ApiError> {
     let amz_date = chrono::Utc::now().format("%Y%m%dT%H%M%SZ").to_string();
     let date_stamp = amz_date[..8].to_string();
     let payload_hash = sha256_hex(body);
 
-    let parsed = url::Url::parse(url).unwrap();
+    let parsed = url::Url::parse(url)
+        .map_err(|e| ApiError::InternalError(format!("Invalid URL: {e}")))?;
     let host = parsed.host_str().unwrap_or("localhost").to_string();
     let uri = parsed.path();
     let query = parsed.query().unwrap_or("");
@@ -232,12 +263,12 @@ pub fn sign_request(
         algorithm, config.access_key, credential_scope, signed_headers, signature
     );
 
-    SignedRequest {
+    Ok(SignedRequest {
         host,
         amz_date,
         payload_hash,
         authorization,
-    }
+    })
 }
 
 /// Compute SHA256 hash of a byte slice, returned as hex.
@@ -280,5 +311,91 @@ mod tests {
     #[test]
     fn hex_encodes_bytes() {
         assert_eq!(hex(&[0xab, 0xcd]), "abcd");
+    }
+
+    #[test]
+    fn sign_request_includes_required_fields() {
+        let config = crate::StorageConfig {
+            endpoint: "http://localhost:9000".to_string(),
+            public_endpoint: "http://pub.local:9000".to_string(),
+            access_key: "test-key".to_string(),
+            secret_key: "test-secret".to_string(),
+            bucket: "test-bucket".to_string(),
+            region: "us-east-1".to_string(),
+            auto_create_bucket: false,
+        };
+        let signed = sign_request(&config, "GET", "http://localhost:9000/test-bucket/file.txt", "", &[]).unwrap();
+        assert!(!signed.authorization.is_empty());
+        assert!(!signed.amz_date.is_empty());
+        assert!(!signed.payload_hash.is_empty());
+        assert_eq!(signed.host, "localhost");
+    }
+
+    #[test]
+    fn presigned_url_uses_public_endpoint() {
+        let config = crate::StorageConfig {
+            endpoint: "http://localhost:9000".to_string(),
+            public_endpoint: "http://pub.local:9000".to_string(),
+            access_key: "test-key".to_string(),
+            secret_key: "test-secret".to_string(),
+            bucket: "test-bucket".to_string(),
+            region: "us-east-1".to_string(),
+            auto_create_bucket: false,
+        };
+        let url = presigned_url(&config, "file.txt", "GET", std::time::Duration::from_secs(3600)).unwrap();
+        assert_eq!(url, "http://pub.local:9000/test-bucket/file.txt");
+    }
+
+    #[test]
+    fn sign_request_with_content_type_includes_header() {
+        let config = crate::StorageConfig {
+            endpoint: "http://localhost:9000".to_string(),
+            public_endpoint: "http://pub.local:9000".to_string(),
+            access_key: "test-key".to_string(),
+            secret_key: "test-secret".to_string(),
+            bucket: "test-bucket".to_string(),
+            region: "us-east-1".to_string(),
+            auto_create_bucket: false,
+        };
+        let signed = sign_request(&config, "PUT", "http://localhost:9000/test-bucket/file.txt", "application/json", b"{}").unwrap();
+        assert!(signed.authorization.contains("AWS4-HMAC-SHA256"));
+        assert!(signed.authorization.contains("test-key"));
+        assert_eq!(signed.host, "localhost");
+        assert!(!signed.payload_hash.is_empty());
+    }
+
+    #[test]
+    fn sign_request_empty_body_produces_valid_hash() {
+        let config = crate::StorageConfig {
+            endpoint: "http://localhost:9000".to_string(),
+            public_endpoint: "http://pub.local:9000".to_string(),
+            access_key: "test-key".to_string(),
+            secret_key: "test-secret".to_string(),
+            bucket: "test-bucket".to_string(),
+            region: "us-east-1".to_string(),
+            auto_create_bucket: false,
+        };
+        let signed = sign_request(&config, "GET", "http://localhost:9000/test-bucket/file.txt", "", &[]).unwrap();
+        // SHA-256 of empty body
+        assert_eq!(signed.payload_hash, "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855");
+    }
+
+    #[test]
+    fn sha256_empty_body() {
+        assert_eq!(
+            sha256_hex(b""),
+            "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        );
+    }
+
+    #[test]
+    fn hmac_sha256_with_empty_data() {
+        let result = hmac_sha256(b"secret", "");
+        assert_eq!(result.len(), 32);
+    }
+
+    #[test]
+    fn hex_zero_bytes() {
+        assert_eq!(hex(&[0x00, 0x01, 0xff]), "0001ff");
     }
 }

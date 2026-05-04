@@ -87,7 +87,7 @@ impl StorageClient {
         tracing::info!("creating bucket {}", self.config.bucket);
         let url = format!("{}/{}", self.config.endpoint, self.config.bucket);
         let req = self.client.put(&url);
-        let req = sign_request(req, &self.config, "PUT", &url, "", &[]).await;
+        let req = sign_request(req, &self.config, "PUT", &url, "", &[]).await?;
         let resp = req.send().await.map_err(|e| {
             ApiError::ServiceUnavailable(format!("Failed to create bucket: {e}"))
         })?;
@@ -106,7 +106,7 @@ impl StorageClient {
     async fn bucket_exists(&self) -> Result<bool, ApiError> {
         let url = format!("{}/{}", self.config.endpoint, self.config.bucket);
         let req = self.client.head(&url);
-        let req = sign_request(req, &self.config, "HEAD", &url, "", &[]).await;
+        let req = sign_request(req, &self.config, "HEAD", &url, "", &[]).await?;
         let resp = req.send().await.map_err(|e| {
             ApiError::ServiceUnavailable(format!("Storage unreachable: {e}"))
         })?;
@@ -122,22 +122,79 @@ async fn sign_request(
     url: &str,
     content_type: &str,
     body: &[u8],
-) -> reqwest::RequestBuilder {
-    let signed = client::sign_request(config, method, url, content_type, body);
-    req.header("Host", &signed.host)
+) -> Result<reqwest::RequestBuilder, ApiError> {
+    let signed = client::sign_request(config, method, url, content_type, body)?;
+    Ok(req
+        .header("Host", &signed.host)
         .header("X-Amz-Date", &signed.amz_date)
         .header("X-Amz-Content-Sha256", &signed.payload_hash)
-        .header("Authorization", &signed.authorization)
+        .header("Authorization", &signed.authorization))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serial_test::serial;
 
     #[test]
     fn config_from_env_missing_returns_none() {
         // SAFETY: test-only, single-threaded context
         unsafe { std::env::remove_var("RUSTFS_ENDPOINT"); }
         assert!(StorageConfig::from_env().is_none());
+    }
+
+    #[test]
+    #[serial]
+    fn config_from_env_with_change_me_returns_none() {
+        // SAFETY: test-only, serialised with #[serial]
+        unsafe {
+            std::env::set_var("RUSTFS_ENDPOINT", "http://localhost:9000");
+            std::env::set_var("RUSTFS_ACCESS_KEY", "CHANGE_ME");
+            std::env::set_var("RUSTFS_SECRET_KEY", "secret");
+        }
+        assert!(StorageConfig::from_env().is_none());
+        unsafe {
+            std::env::remove_var("RUSTFS_ENDPOINT");
+            std::env::remove_var("RUSTFS_ACCESS_KEY");
+            std::env::remove_var("RUSTFS_SECRET_KEY");
+        }
+    }
+
+    #[test]
+    #[serial]
+    fn config_from_env_with_valid_values() {
+        // SAFETY: test-only, serialised with #[serial]
+        unsafe {
+            std::env::set_var("RUSTFS_ENDPOINT", "http://localhost:9000");
+            std::env::set_var("RUSTFS_ACCESS_KEY", "valid-key");
+            std::env::set_var("RUSTFS_SECRET_KEY", "valid-secret");
+        }
+        let config = StorageConfig::from_env().unwrap();
+        assert_eq!(config.endpoint, "http://localhost:9000");
+        assert_eq!(config.access_key, "valid-key");
+        assert_eq!(config.secret_key, "valid-secret");
+        assert_eq!(config.bucket, "fullstackhex");
+        assert_eq!(config.region, "us-east-1");
+        unsafe {
+            std::env::remove_var("RUSTFS_ENDPOINT");
+            std::env::remove_var("RUSTFS_ACCESS_KEY");
+            std::env::remove_var("RUSTFS_SECRET_KEY");
+        }
+    }
+
+    #[test]
+    fn storage_client_new_creates_client() {
+        let config = StorageConfig {
+            endpoint: "http://localhost:9000".to_string(),
+            public_endpoint: "http://pub.local:9000".to_string(),
+            access_key: "test-key".to_string(),
+            secret_key: "test-secret".to_string(),
+            bucket: "test-bucket".to_string(),
+            region: "us-east-1".to_string(),
+            auto_create_bucket: false,
+        };
+        let client = StorageClient::new(config);
+        assert_eq!(client.config.bucket, "test-bucket");
+        assert_eq!(client.config.region, "us-east-1");
     }
 }

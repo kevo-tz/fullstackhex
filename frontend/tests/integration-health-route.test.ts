@@ -231,10 +231,12 @@ describe("/api/health aggregation route", () => {
 
       await runHandler(fetchMock as unknown as typeof fetch);
 
-      expect(fetchCalls).toHaveLength(3);
+      expect(fetchCalls).toHaveLength(5);
       expect(fetchCalls[0]).toEndWith("/health");
       expect(fetchCalls[1]).toEndWith("/health/db");
-      expect(fetchCalls[2]).toEndWith("/health/python");
+      expect(fetchCalls[2]).toEndWith("/health/redis");
+      expect(fetchCalls[3]).toEndWith("/health/storage");
+      expect(fetchCalls[4]).toEndWith("/health/python");
     });
   });
 

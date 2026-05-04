@@ -123,3 +123,99 @@ pub async fn presign(
 fn user_key(user_id: &str, key: &str) -> String {
     format!("users/{}/{}", user_id, key)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn user_key_prefixes_with_user_id() {
+        assert_eq!(user_key("user-123", "file.txt"), "users/user-123/file.txt");
+    }
+
+    #[test]
+    fn user_key_handles_nested_paths() {
+        assert_eq!(user_key("user-123", "a/b/c.png"), "users/user-123/a/b/c.png");
+    }
+
+    #[tokio::test]
+    async fn presign_handler_returns_url() {
+        let state = StorageState {
+            client: reqwest::Client::new(),
+            config: crate::StorageConfig {
+                endpoint: "http://localhost:9000".to_string(),
+                public_endpoint: "http://pub.local:9000".to_string(),
+                access_key: "test-key".to_string(),
+                secret_key: "test-secret".to_string(),
+                bucket: "test-bucket".to_string(),
+                region: "us-east-1".to_string(),
+                auto_create_bucket: false,
+            },
+        };
+
+        let auth_user = auth::middleware::AuthUser {
+            user_id: "user-123".to_string(),
+            email: "test@example.com".to_string(),
+            name: None,
+            provider: "local".to_string(),
+        };
+
+        let body = PresignRequest {
+            key: "file.txt".to_string(),
+            method: Some("GET".to_string()),
+            expiry_secs: Some(3600),
+        };
+
+        let response = presign(State(state), auth_user, Json(body)).await;
+        assert!(response.is_ok());
+
+        let resp = response.unwrap().into_response();
+        assert_eq!(resp.status(), axum::http::StatusCode::OK);
+
+        let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let v: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(v["url"], "http://pub.local:9000/test-bucket/users/user-123/file.txt");
+        assert_eq!(v["method"], "GET");
+        assert_eq!(v["expires_in"], 3600);
+    }
+
+    #[tokio::test]
+    async fn presign_handler_uses_defaults() {
+        let state = StorageState {
+            client: reqwest::Client::new(),
+            config: crate::StorageConfig {
+                endpoint: "http://localhost:9000".to_string(),
+                public_endpoint: "http://pub.local:9000".to_string(),
+                access_key: "test-key".to_string(),
+                secret_key: "test-secret".to_string(),
+                bucket: "test-bucket".to_string(),
+                region: "us-east-1".to_string(),
+                auto_create_bucket: false,
+            },
+        };
+
+        let auth_user = auth::middleware::AuthUser {
+            user_id: "user-456".to_string(),
+            email: "test@example.com".to_string(),
+            name: None,
+            provider: "local".to_string(),
+        };
+
+        let body = PresignRequest {
+            key: "file.txt".to_string(),
+            method: None,
+            expiry_secs: None,
+        };
+
+        let response = presign(State(state), auth_user, Json(body)).await;
+        assert!(response.is_ok());
+
+        let resp = response.unwrap().into_response();
+        assert_eq!(resp.status(), axum::http::StatusCode::OK);
+
+        let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let v: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(v["method"], "GET");
+        assert_eq!(v["expires_in"], 3600);
+    }
+}

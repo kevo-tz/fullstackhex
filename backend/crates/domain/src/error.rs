@@ -108,4 +108,25 @@ mod tests {
         let resp = err.into_response();
         assert_eq!(resp.status(), StatusCode::SERVICE_UNAVAILABLE);
     }
+
+    #[tokio::test]
+    async fn not_found_returns_404() {
+        let err = ApiError::NotFound("missing".to_string());
+        let resp = err.into_response();
+        assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn forbidden_returns_403() {
+        let err = ApiError::Forbidden("denied".to_string());
+        let resp = err.into_response();
+        assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+    }
+
+    #[tokio::test]
+    async fn internal_error_returns_500() {
+        let err = ApiError::InternalError("oops".to_string());
+        let resp = err.into_response();
+        assert_eq!(resp.status(), StatusCode::INTERNAL_SERVER_ERROR);
+    }
 }

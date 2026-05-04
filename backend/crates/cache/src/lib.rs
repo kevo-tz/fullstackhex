@@ -114,3 +114,53 @@ impl RedisClient {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn cache_error_display_variants() {
+        assert_eq!(CacheError::NotConfigured.to_string(), "redis not configured");
+        assert!(CacheError::ConnectionFailed("err".to_string()).to_string().contains("err"));
+        assert!(CacheError::SerializationFailed("bad".to_string()).to_string().contains("bad"));
+        assert_eq!(CacheError::SessionNotFound.to_string(), "session not found");
+        assert_eq!(CacheError::RateLimitExceeded.to_string(), "rate limit exceeded");
+    }
+
+    #[test]
+    fn cache_error_command_failed_from_fred_error() {
+        let fred_err = fred::error::Error::new(fred::error::ErrorKind::IO, "test io error");
+        let cache_err: CacheError = fred_err.into();
+        assert!(matches!(cache_err, CacheError::CommandFailed(_)));
+        assert!(cache_err.to_string().contains("test io error"));
+    }
+
+    #[test]
+    fn cache_error_not_configured_display() {
+        let err = CacheError::NotConfigured;
+        assert_eq!(err.to_string(), "redis not configured");
+    }
+
+    #[test]
+    fn cache_error_rate_limit_exceeded_display() {
+        let err = CacheError::RateLimitExceeded;
+        assert_eq!(err.to_string(), "rate limit exceeded");
+    }
+
+    #[tokio::test]
+    async fn redis_client_new_invalid_url_fails() {
+        let result = RedisClient::new("not-a-valid-url", "test").await;
+        assert!(result.is_err());
+        if let Err(err) = result {
+            assert!(matches!(err, CacheError::ConnectionFailed(_)));
+        }
+    }
+
+    #[tokio::test]
+    async fn redis_client_new_unreachable_url_fails() {
+        // Valid-looking URL but unreachable host should fail at init stage
+        let result = RedisClient::new("redis://invalid-host-test:1234/0", "test").await;
+        assert!(result.is_err());
+    }
+}

@@ -371,7 +371,7 @@ async fn health_python_ok_with_mock_socket() {
     use api::DbStatus;
     use api::router_with_state;
     use std::time::Duration;
-    use tokio::io::AsyncWriteExt;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
     use tokio::net::UnixListener;
 
     let dir = tempfile::tempdir().unwrap();
@@ -379,16 +379,20 @@ async fn health_python_ok_with_mock_socket() {
     let listener = UnixListener::bind(&sock_path).unwrap();
     let sc = python_sidecar::PythonSidecar::new(sock_path.clone(), Duration::from_secs(2), 0);
 
-    // Spawn a mock sidecar that responds with valid JSON.
-    // Mirroring the pattern from python-sidecar/src/lib.rs ignored tests.
+    // Spawn a mock sidecar that reads the request then responds with valid JSON.
+    // Reading first ensures the client finishes writing before we close.
     tokio::spawn(async move {
         let (mut stream, _) = listener.accept().await.unwrap();
+        let mut buf = [0u8; 512];
+        let _ = stream.read(&mut buf).await;
         let response = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n{\"status\":\"ok\",\"service\":\"python-sidecar\",\"version\":\"0.1.0\"}";
         stream.write_all(response.as_bytes()).await.unwrap();
+        stream.shutdown().await.ok();
+        tokio::time::sleep(Duration::from_millis(200)).await;
     });
 
     // Brief yield so the spawned task can enter accept().
-    tokio::time::sleep(Duration::from_millis(50)).await;
+    tokio::time::sleep(Duration::from_millis(100)).await;
 
     let state = AppState {
         db: DbStatus::NotConfigured,

@@ -292,6 +292,7 @@ impl PythonSidecar {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tokio::io::AsyncWriteExt;
 
     #[test]
     fn new_sets_fields() {
@@ -408,9 +409,11 @@ mod tests {
             let response =
                 "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n{\"status\":\"ok\"}";
             stream.write_all(response.as_bytes()).await.unwrap();
+            stream.shutdown().await.ok();
+            tokio::time::sleep(Duration::from_millis(200)).await;
         });
 
-        tokio::time::sleep(Duration::from_millis(10)).await;
+        tokio::time::sleep(Duration::from_millis(50)).await;
         let result = sc.get("/health").await;
         assert!(result.is_ok(), "expected Ok, got {:?}", result);
         assert_eq!(result.unwrap()["status"], "ok");
@@ -432,9 +435,11 @@ mod tests {
             let (mut stream, _) = listener.accept().await.unwrap();
             let response = "HTTP/1.1 500 Internal Server Error\r\n\r\nbang";
             stream.write_all(response.as_bytes()).await.unwrap();
+            stream.shutdown().await.ok();
+            tokio::time::sleep(Duration::from_millis(200)).await;
         });
 
-        tokio::time::sleep(Duration::from_millis(10)).await;
+        tokio::time::sleep(Duration::from_millis(50)).await;
         let result = sc.get("/health").await;
         assert!(
             matches!(result, Err(SidecarError::HttpError { status: 500, .. })),
@@ -459,9 +464,11 @@ mod tests {
             let (mut stream, _) = listener.accept().await.unwrap();
             let response = "HTTP/1.1 200 OK\r\n\r\nnot-json";
             stream.write_all(response.as_bytes()).await.unwrap();
+            stream.shutdown().await.ok();
+            tokio::time::sleep(Duration::from_millis(200)).await;
         });
 
-        tokio::time::sleep(Duration::from_millis(10)).await;
+        tokio::time::sleep(Duration::from_millis(50)).await;
         let result = sc.get("/health").await;
         assert!(
             matches!(result, Err(SidecarError::InvalidResponse(_))),
@@ -480,18 +487,22 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let sock_path = dir.path().join("retry.sock");
         // Don't create a listener yet — first connect attempt will fail.
-        // Create the file so is_available() passes.
+        // Create the file so is_available() passes, then remove it so bind works.
         std::fs::File::create(&sock_path).unwrap();
         let sc = PythonSidecar::new(sock_path.clone(), Duration::from_millis(500), 2);
 
         // After a short delay, bring up the listener so the second attempt succeeds
+        let _ = std::fs::remove_file(&sock_path);
         let listener = UnixListener::bind(&sock_path).unwrap();
         tokio::spawn(async move {
             let (mut stream, _) = listener.accept().await.unwrap();
             let response = "HTTP/1.1 200 OK\r\n\r\n{\"retry\":\"worked\"}";
             stream.write_all(response.as_bytes()).await.unwrap();
+            stream.shutdown().await.ok();
+            tokio::time::sleep(Duration::from_millis(200)).await;
         });
 
+        tokio::time::sleep(Duration::from_millis(50)).await;
         let result = sc.get("/health").await;
         assert!(result.is_ok(), "expected Ok after retry, got {:?}", result);
         assert_eq!(result.unwrap()["retry"], "worked");
@@ -578,11 +589,13 @@ mod tests {
 
         // Accept but never write — client should time out
         tokio::spawn(async move {
-            let _ = listener.accept().await;
+            let (mut stream, _) = listener.accept().await.unwrap();
+            // Hold connection open without writing
             tokio::time::sleep(Duration::from_secs(5)).await;
+            let _ = stream.shutdown().await;
         });
 
-        tokio::time::sleep(Duration::from_millis(10)).await;
+        tokio::time::sleep(Duration::from_millis(50)).await;
         let result = sc.get("/health").await;
         assert!(
             matches!(result, Err(SidecarError::Timeout(_))),
@@ -607,9 +620,11 @@ mod tests {
             let (mut stream, _) = listener.accept().await.unwrap();
             let response = "HTTP/1.1 200 OK\r\n\r\n{\"foo\":\"bar\"}";
             stream.write_all(response.as_bytes()).await.unwrap();
+            stream.shutdown().await.ok();
+            tokio::time::sleep(Duration::from_millis(200)).await;
         });
 
-        tokio::time::sleep(Duration::from_millis(10)).await;
+        tokio::time::sleep(Duration::from_millis(50)).await;
         let result = sc.get("/health").await;
         // Parses successfully — missing fields are fine, JSON is valid
         assert!(result.is_ok(), "expected Ok, got {:?}", result);
@@ -635,9 +650,11 @@ mod tests {
             let (mut stream, _) = listener.accept().await.unwrap();
             let response = "HTTP/1.1 200 OK\r\n\r\n";
             stream.write_all(response.as_bytes()).await.unwrap();
+            stream.shutdown().await.ok();
+            tokio::time::sleep(Duration::from_millis(200)).await;
         });
 
-        tokio::time::sleep(Duration::from_millis(10)).await;
+        tokio::time::sleep(Duration::from_millis(50)).await;
         let result = sc.get("/health").await;
         assert!(
             matches!(result, Err(SidecarError::InvalidResponse(_))),
@@ -669,9 +686,11 @@ mod tests {
                 received
             );
             stream.write_all(response.as_bytes()).await.unwrap();
+            stream.shutdown().await.ok();
+            tokio::time::sleep(Duration::from_millis(200)).await;
         });
 
-        tokio::time::sleep(Duration::from_millis(10)).await;
+        tokio::time::sleep(Duration::from_millis(50)).await;
         let result = sc.get_with_trace_id("/health", "qa-propagate-123").await;
         assert!(result.is_ok(), "expected Ok, got {:?}", result);
         let v = result.unwrap();

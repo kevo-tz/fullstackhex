@@ -231,7 +231,7 @@ describe("/api/health aggregation route", () => {
 
       await runHandler(fetchMock as unknown as typeof fetch);
 
-      expect(fetchCalls).toHaveLength(5);
+      expect(fetchCalls).toHaveLength(6);
       expect(fetchCalls[0]).toEndWith("/health");
       expect(fetchCalls[1]).toEndWith("/health/db");
       expect(fetchCalls[2]).toEndWith("/health/redis");

@@ -113,6 +113,7 @@ fn build_router(state: Arc<AppState>) -> Router {
         .route("/health/redis", get(health_redis))
         .route("/health/storage", get(health_storage))
         .route("/health/python", get(health_python))
+    .route("/health/auth", get(health_auth))
         .route("/metrics", get(metrics_handler))
         .route("/metrics/python", get(metrics_python_proxy))
         .layer(middleware::from_fn(metrics::track_metrics))
@@ -191,6 +192,21 @@ async fn health() -> impl IntoResponse {
             "version": env!("CARGO_PKG_VERSION")
         })),
     )
+}
+
+async fn health_auth(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+    if state.auth.is_some() {
+        (StatusCode::OK, no_cache(), Json(json!({ "status": "ok" })))
+    } else {
+        (
+            StatusCode::OK,
+            no_cache(),
+            Json(json!({
+                "status": "disabled",
+                "fix": "JWT_SECRET not set or is CHANGE_ME — auth disabled. Set a secure JWT_SECRET in .env and restart."
+            })),
+        )
+    }
 }
 
 async fn health_db(State(state): State<Arc<AppState>>) -> impl IntoResponse {

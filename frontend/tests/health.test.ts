@@ -79,7 +79,7 @@ describe("aggregateHealth", () => {
 
     await aggregateHealth(fetchImpl as unknown as typeof fetch);
 
-    expect(capturedHeaders.length).toBe(5);
+    expect(capturedHeaders.length).toBe(6);
     for (const headers of capturedHeaders) {
       expect(headers["x-trace-id"]).toBeString();
       expect(headers["x-trace-id"]!.length).toBeGreaterThan(0);

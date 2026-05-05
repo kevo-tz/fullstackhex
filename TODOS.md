@@ -7,16 +7,6 @@
 **Fix:** Wire `csrf::generate()` and `csrf::validate()` into cookie auth path. Set CSRF token in separate cookie, validate `X-CSRF-Token` header.
 **Files:** `backend/crates/auth/src/middleware.rs`, `backend/crates/auth/src/routes.rs`
 
-### A5. Make `make dev` background processes survive terminal detachment [P1] [M]
-**What:** `make dev` runs `cargo run -p api &` inside shell script. When terminal closes, Rust backend gets SIGTERM and shuts down.
-**Fix:** Use `nohup` or write PID files to `/tmp/fullstackhex-dev/`. Add `make status` to show which services are alive.
-**Files:** `Makefile`, `scripts/dev-run.sh`
-
-### A7. Add auth status to health dashboard [P1] [S]
-**What:** Frontend dashboard shows 5 service cards but no indication whether auth is enabled. When `JWT_SECRET` missing, auth routes return 404 — user sees "all green" but cannot register/login.
-**Fix:** Add Auth card to dashboard showing "enabled"/"disabled" based on `/health`. When disabled, show fix instruction.
-**Files:** `frontend/src/pages/index.astro`, `frontend/src/lib/health.ts`
-
 ### A9. Add contract tests for frontend health aggregation [P1] [M]
 **What:** Frontend tests mock `fetch` and assert on response shape. When backend adds new health endpoints, tests break because they expect exact fetch count.
 **Fix:** Generate JSON schema from backend `health()` return types and validate frontend mocks against it. Or add `make test-contract` that spins up backend and runs frontend tests against real `/api/health`.

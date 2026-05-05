@@ -53,12 +53,13 @@ export async function aggregateHealth(
     trace_id: traceId,
   });
 
-  const [rustResult, dbResult, redisResult, storageResult, pythonResult] = await Promise.all([
+  const [rustResult, dbResult, redisResult, storageResult, pythonResult, authResult] = await Promise.all([
     handleService(fetchImpl, `${apiBase}/health`, "rust", "api", "error", traceId),
     handleService(fetchImpl, `${apiBase}/health/db`, "db", "db", "error", traceId),
     handleService(fetchImpl, `${apiBase}/health/redis`, "redis", "redis", "unavailable", traceId),
     handleService(fetchImpl, `${apiBase}/health/storage`, "storage", "storage", "unavailable", traceId),
     handleService(fetchImpl, `${apiBase}/health/python`, "python", "python", "unavailable", traceId),
+    handleService(fetchImpl, `${apiBase}/health/auth`, "auth", "auth", "disabled", traceId),
   ]);
 
   const durationMs = Math.round(performance.now() - start);
@@ -77,5 +78,6 @@ export async function aggregateHealth(
     redis: redisResult,
     storage: storageResult,
     python: pythonResult,
+    auth: authResult,
   };
 }

@@ -179,6 +179,15 @@
           </div>
           <div class="detail" id="detail-python"></div>
         </div>
+
+        <div class="card" id="card-auth">
+          <div class="card-label">Auth</div>
+          <div class="status-row">
+            <div class="dot loading" id="dot-auth"></div>
+            <span class="status-text" id="text-auth">checking…</span>
+          </div>
+          <div class="detail" id="detail-auth"></div>
+        </div>
       </div>
 
       <div class="raw-block">
@@ -214,6 +223,7 @@
         setStatus("redis",   "loading", "checking…");
         setStatus("storage", "loading", "checking…");
         setStatus("python",  "loading", "checking…");
+        setStatus("auth",    "loading", "checking…");
         const rawJson = document.getElementById("raw-json");
         if (rawJson) rawJson.textContent = "fetching…";
 
@@ -264,12 +274,24 @@
             setDetail("python", "");
           }
 
+          // Auth
+          const auth = data.auth || {};
+          if (auth.status === "ok") {
+            setStatus("auth", "ok", "enabled");
+            setDetail("auth", "");
+          } else {
+            setStatus("auth", "degraded", "disabled");
+            setDetail("auth", auth.fix || "JWT_SECRET not set — auth disabled");
+          }
+
         } catch (err) {
+          setStatus("rust",    "error", "unreachable");
           setStatus("rust",    "error", "unreachable");
           setStatus("db",      "error", "—");
           setStatus("redis",   "error", "—");
           setStatus("storage", "error", "—");
           setStatus("python",  "error", "—");
+          setStatus("auth",    "error", "—");
           const msg = err instanceof Error ? err.message : String(err);
           if (rawJson) rawJson.textContent =
             "Error: could not reach /api/health\n\n" + msg;

@@ -11,7 +11,7 @@ COMPOSE_PROD = docker compose -f compose/prod.yml --env-file .env
 COMPOSE_MON = docker compose -f compose/monitor.yml --env-file .env -p fullstackhex-monitor
 
 PYTHON_TEST_SOCK ?= /tmp/fullstackhex-test.sock
-PID_FILE = /tmp/fullstackhex-dev.pids
+PID_DIR = /tmp/fullstackhex-dev
 POST_START_DELAY ?= 2
 
 # PostgreSQL readiness tuning
@@ -30,10 +30,10 @@ START_DEPS = \
 	echo "PostgreSQL ready (or timeout — Rust will retry connections)"; \
 	echo "Starting Python sidecar..."; \
 	cd python-sidecar && set -a && . ../.env && set +a && uv run uvicorn app.main:app --uds $(PYTHON_SOCK) & \
-	echo $$! >> $(PID_FILE); \
+	echo $$! > $(PID_DIR)/python.pid; \
 	echo "Starting frontend..."; \
 	cd frontend && bun run dev & \
-	echo $$! >> $(PID_FILE)
+	echo $$! > $(PID_DIR)/frontend.pid
 
 # Help
 help:
@@ -244,12 +244,13 @@ verify-health:
 # run-dev: shared startup sequence used by dev and watch targets.
 # Set BACKEND_CMD before invoking (dev uses cargo run, watch uses cargo watch).
 run-dev: check-env check-prereqs preflight
-	@rm -f $(PID_FILE); \
+	@mkdir -p $(PID_DIR); \
+	rm -f $(PID_DIR)/*.pid; \
 	trap '$(MAKE) down-dev' INT TERM; \
 	$(START_DEPS); \
-	echo "Starting Rust backend..."; \
-	cd backend && set -a && . ../.env && set +a && $(BACKEND_CMD) & \
-	echo $$! >> $(PID_FILE); \
+	echo "Starting Rust backend (nohup — survives terminal close)..."; \
+	cd backend && set -a && . ../.env && set +a && nohup $(BACKEND_CMD) > $(PID_DIR)/backend.log 2>&1 & \
+	echo $$! > $(PID_DIR)/backend.pid; \
 	sleep $(POST_START_DELAY); \
 	$(MAKE) verify-health; \
 	echo ""; \
@@ -257,7 +258,8 @@ run-dev: check-env check-prereqs preflight
 	echo "  All services healthy. Dashboard:"; \
 	echo "  → http://localhost:4321"; \
 	echo "=============================================="; \
-	echo "Press Ctrl+C to stop everything."; \
+	echo "Press Ctrl+C to stop Docker services (frontend + sidecar keep running)."; \
+	echo "Backend logs: $(PID_DIR)/backend.log"; \
 	wait
 
 dev: BACKEND_CMD = cargo run -p api
@@ -270,17 +272,18 @@ check-cargo-watch:
 	@command -v cargo-watch >/dev/null 2>&1 || { echo "ERROR: cargo-watch not found. Install: cargo install cargo-watch"; exit 1; }
 
 down-dev:
-	@if [ -f $(PID_FILE) ]; then \
-	  while read pid; do \
+	@for pidfile in $(PID_DIR)/*.pid; do \
+	  if [ -f "$$pidfile" ]; then \
+	    read pid < "$$pidfile" 2>/dev/null || true; \
 	    kill $$pid 2>/dev/null || true; \
-	  done < $(PID_FILE); \
-	  rm -f $(PID_FILE); \
-	fi
+	    rm -f "$$pidfile"; \
+	  fi; \
+	done
 	@pkill -x uvicorn 2>/dev/null || true
 	@pkill -x api 2>/dev/null || true
 	@pkill -x bun 2>/dev/null || true
-	# pkill above is a safety net for orphaned processes where PID_FILE was lost
-	# (e.g., after a crash). Primary cleanup is via PID_FILE loop above.
+	# pkill above is a safety net for orphaned processes where PID files were lost
+	# (e.g., after a crash). Primary cleanup is via PID file loop above.
 	$(COMPOSE_DEV) down
 	@echo "All services stopped."
 

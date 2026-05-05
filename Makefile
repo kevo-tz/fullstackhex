@@ -1,4 +1,4 @@
-.PHONY: up down restart logs-backend logs-frontend test bench clean check-env sync-env setup setup-env help
+.PHONY: up down restart logs-backend logs-frontend test bench clean check-env sync-env setup setup-env help test-contract
 .PHONY: verify-health check-prereqs preflight down-dev dev watch test-socket-ci
 .PHONY: migrate migrate-revert migrate-status
 .PHONY: rollback blue-green canary canary-promote canary-rollback
@@ -75,6 +75,7 @@ help:
 	@echo "  test-python     - Run Python tests only"
 	@echo "  test-frontend   - Run frontend tests only"
 	@echo "  test-socket-ci  - Run socket integration tests (CI mode)"
+	@echo "  test-contract   - Validate frontend health shape against running backend"
 	@echo ""
 	@echo "  Example: make test  # runs cargo test + pytest + bun test"
 	@echo ""
@@ -136,6 +137,17 @@ sync-env:
 
 sync-env-apply:
 	@./scripts/sync-env.sh --apply
+
+# sqlx-prepare: generate sqlx offline query metadata for compile-time checking.
+# Requires a running PostgreSQL with DATABASE_URL set in .env.
+# CI runs sqlx-prepare-check to verify .sqlx/ is up to date.
+sqlx-prepare:
+	@echo "Generating sqlx offline query metadata..."
+	@cd backend && set -a && . ../.env && set +a && cargo sqlx prepare
+	@echo "sqlx metadata generated. Commit the changes to .sqlx/ if any."
+
+sqlx-prepare-check:
+	@cd backend && set -a && . ../.env && set +a && cargo sqlx prepare --check
 
 # check-prereqs: detect required dev tools and print install instructions
 check-prereqs:
@@ -356,6 +368,9 @@ test-socket-ci:
 	kill $$PID 2>/dev/null || true; \
 	rm -f $(PYTHON_TEST_SOCK); \
 	exit $$R
+
+test-contract:
+	@./scripts/contract-test.sh
 
 # Performance
 bench:

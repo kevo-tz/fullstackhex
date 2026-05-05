@@ -183,6 +183,12 @@ jobs:
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
 
+      - name: Check sqlx offline metadata
+        working-directory: backend
+        run: |
+          cargo install sqlx-cli --no-default-features --features postgres
+          cargo sqlx prepare --check -- --all-features
+
       - name: Rust smoke
         working-directory: backend
         run: cargo test --workspace

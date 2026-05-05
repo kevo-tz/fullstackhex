@@ -1,17 +1,5 @@
 # TODOS
 
-## Next (this milestone)
-
-### A9. Add contract tests for frontend health aggregation [P1] [M]
-**What:** Frontend tests mock `fetch` and assert on response shape. When backend adds new health endpoints, tests break because they expect exact fetch count.
-**Fix:** Generate JSON schema from backend `health()` return types and validate frontend mocks against it. Or add `make test-contract` that spins up backend and runs frontend tests against real `/api/health`.
-**Files:** `frontend/tests/integration-health-route.test.ts`, `backend/crates/api/src/lib.rs`
-
-### A12. Add sqlx `query!` compile-time checking [P1] [M]
-**What:** UUID-to-String type mismatch in auth routes was caught at runtime (HTTP 500). sqlx `query!` with `offline` feature would have caught it at compile time.
-**Fix:** Enable `sqlx/offline` in auth crate. Pre-generate `.sqlx/` query metadata with `cargo sqlx prepare`. Update CI to fail if `.sqlx/` is out of date.
-**Files:** `backend/crates/auth/Cargo.toml`, `backend/Cargo.toml`, `.github/workflows/*.yml`
-
 ## Later
 
 ### A8. Add `make test-e2e` [P1] [L]

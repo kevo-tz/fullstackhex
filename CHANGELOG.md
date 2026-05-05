@@ -31,6 +31,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Frontend health aggregation**: updated to include Redis and Storage service cards in the dashboard
 - **API test suite**: expanded from ~80 to ~140 tests across auth, cache, storage, domain, and Python sidecar crates
 - **Project structure**: `crates/core/` renamed to `crates/domain/` to avoid Rust built-in namespace conflict
+- **Environment validation**: `scripts/validate-env.sh` validates `.env` against `.env.example` for missing keys, `CHANGE_ME` placeholders, and shell syntax errors — wired into `make dev`, `make up`, `make watch` (v0.9)
+- **Makefile DRY**: extracted shared `run-dev` target from near-duplicate `dev`/`watch` targets; replaced `python3` JSON parsing with `grep`/`sed`; added missing `.PHONY` declarations (v0.9)
+- **`.env.example` quoting**: `REDIS_SAVE="900 1 300 10 60 10000"` quoted to prevent shell parse errors on `source` (v0.9)
 
 ---
 

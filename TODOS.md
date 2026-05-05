@@ -1,224 +1,153 @@
 # TODOS
 
-## Completed
+## Now (this branch / next PR)
 
-- Wire PythonSidecar IPC + real DB health checks (v0.3.1.0)
-- Parallelize frontend health fetches (v0.5.0.0)
-- Add `make watch` target (v0.5.0.0)
-- Document log locations per service (v0.5.0.0)
-- Fix outdated Python sidecar docs in SERVICES.md (v0.5.0.0)
-- Add `make logs-python` target (v0.5.0.0)
-- Replace `check-env` placeholder-only validation with required-variable schema (A2, v0.9) — `scripts/validate-env.sh` validates .env against .env.example for missing keys, CHANGE_ME placeholders, and shell syntax errors. Wired into `make dev`, `make up`, `make watch` via `check-env`.
-- Quote `REDIS_SAVE` in `.env.example` (A4, v0.9) — `REDIS_SAVE="900 1 300 10 60 10000"` prevents shell parse errors on source.
-- Makefile DRY: extract shared `run-dev` target from near-duplicate `dev`/`watch` targets; replace `python3` JSON parsing with `grep`/`sed`; add missing `.PHONY` declarations; document `pkill` fallback (v0.9)
-
-## Active (from /qa v0.8 review)
-
-### A1. Fix migration 001 format — sqlx runs entire file as up-migration
-**What:** `backend/crates/db/migrations/001_create_users.sql` contains both `CREATE TABLE` and `DROP TABLE` in the same file with golang-migrate style comments (`-- +migrate Up/Down`). sqlx ignores these comments and runs the entire file as an up-migration, causing the table to be created then immediately dropped.
-**Fix:** Split into `001_create_users.up.sql` / `001_create_users.down.sql` (sqlx standard). Remove the `-- +migrate` comments. Verify by running `make migrate` on a fresh database.
+### A1. Fix migration 001 format [P0] [S]
+**What:** `backend/crates/db/migrations/001_create_users.sql` has `CREATE TABLE` and `DROP TABLE` in one file with golang-migrate comments (`-- +migrate Up/Down`). sqlx runs entire file as up-migration — table created then immediately dropped.
+**Fix:** Split into `001_create_users.up.sql` / `001_create_users.down.sql`. Remove `-- +migrate` comments. Verify with `make migrate` on fresh database.
 **Files:** `backend/crates/db/migrations/001_create_users.sql`
-**Severity:** Critical — breaks auth on fresh installs.
-**Found by:** /qa on 2026-05-04.
 
-### A3. Add `.env` sync command — `make sync-env`
-**What:** `.env` is gitignored. When `.env.example` changes (e.g., v0.8 adds auth vars), developers must manually diff and merge. There is no automated way to detect drift.
-**Fix:** Add `make sync-env` that compares `.env` against `.env.example` and prints missing keys with their example values. Optionally support `make sync-env --apply` to append missing keys.
-**Files:** `Makefile`, new `scripts/sync-env.sh`
-**Severity:** Medium — friction on every env change.
-**Depends on:** — (A2 done, A3 now unblocked).
-
-### A5. Make `make dev` background processes survive terminal detachment
-**What:** The `make dev` target runs `cargo run -p api &` inside a shell script. When the shell receives signals or the terminal session ends, the Rust backend process gets `SIGTERM` and shuts down (`"received shutdown signal, draining connections"`). Developers lose the backend unexpectedly.
-**Fix:** Use `nohup` or `systemd-run --user` (or `s6`, `supervisord`) for each service process. Write PID files to a well-known location (`/tmp/fullstackhex-dev/`) and add `make status` to show which services are alive.
-**Files:** `Makefile`, `scripts/dev-run.sh`
-**Severity:** Medium — process management is the first thing a new dev hits.
-**Found by:** /qa on 2026-05-04.
-
-### A6. Add `make status` — show which services are running and on which ports
-**What:** After `make dev`, there is no way to verify which services are actually alive without manually `curl`ing health endpoints or `ps`-grepping.
-**Fix:** Add `make status` that prints a table: Service | PID | Port | Health | Uptime. Read from PID files started by `make dev`.
-**Example output:**
-```
-Service          PID     Port    Health    Uptime
-Rust API         12345   8001    ok        2m
-Frontend         12346   4321    ok        2m
-Python Sidecar   12347   (sock)  ok        2m
-PostgreSQL       12348   5432    ok        2m
-Redis            12349   6379    ok        2m
-```
-**Files:** `Makefile`, `scripts/status.sh`
-**Severity:** Low — quality of life.
-**Depends on:** A5.
-
-### A7. Add auth status to the health dashboard
-**What:** The frontend dashboard at `/` shows 5 service cards but gives zero indication of whether auth is enabled. When `JWT_SECRET` is missing, auth routes return 404 — the user sees "all green" but cannot register or log in.
-**Fix:** Add an `Auth` card to the dashboard (or an inline banner) that shows "enabled" / "disabled" based on `/health` or a dedicated `/auth/status` endpoint. When disabled, show a one-line fix: `JWT_SECRET not set — auth disabled. Add to .env and restart.`
-**Files:** `frontend/src/pages/index.astro`, `frontend/src/lib/health.ts`
-**Severity:** Medium — silent feature disable is confusing.
-**Found by:** /qa on 2026-05-04.
-
-### A8. Add `make test-e2e` — full stack smoke test
-**What:** The existing test suites (Rust unit, frontend unit, Python unit) run in isolation. None verify that the backend + frontend + database actually work together. `/qa` found the auth 500 bug only by manually curling endpoints.
-**Fix:** Add a Playwright or Bun-based e2e test that:
-1. Starts `make dev` (or uses existing running services)
-2. Opens `http://localhost:4321`
-3. Registers a test user via `/auth/register`
-4. Logs in via `/auth/login`
-5. Hits `/auth/me` with the token
-6. Verifies dashboard shows all 5 services as "ok"
-Run in CI on every PR.
-**Files:** `e2e/`, `.github/workflows/e2e.yml`, `package.json`
-**Severity:** High — prevents regressions like the UUID type mismatch from reaching main.
-**Depends on:** A5 (reliable process startup).
-
-### A9. Add contract tests for frontend health aggregation
-**What:** `frontend/tests/integration-health-route.test.ts` mocks `fetch` and asserts on the response shape. When the backend adds new health endpoints (redis, storage), the tests break because they expect exactly 3 fetches. There is no automated check that frontend expectations match backend reality.
-**Fix:** Generate a JSON schema from the backend `health()` return types (or an OpenAPI spec) and validate frontend mocks against it in CI. Alternatively, add a `make test-contract` that spins up the backend and runs the frontend tests against the real `/api/health` endpoint.
-**Files:** `frontend/tests/integration-health-route.test.ts`, `backend/crates/api/src/lib.rs`
-**Severity:** Medium — test brittleness slows refactors.
-**Found by:** /qa on 2026-05-04.
-
-### A10. Add auth login/register UI to the frontend
-**What:** v0.8 ships auth backend but the frontend has no auth UI. Developers must use `curl` to test registration and login. This is fine for an API-first project but not for a "full stack" template.
-**Fix:** Add a `/login` Astro page with email/password form and OAuth buttons (Google, GitHub). On success, store the JWT in `localStorage` and show a user menu. On the dashboard, gate storage actions behind auth.
-**Files:** `frontend/src/pages/login.astro`, `frontend/src/components/AuthForm.astro`
-**Severity:** Low — nice to have for a template.
-**Depends on:** — (A2 done, root cause fixed; A7 still useful as visible indicator).
-
-### A11. Document the `make dev` signal handling quirk
-**What:** `make dev` traps INT/TERM to run `make down-dev`, but the `wait` at the end means Ctrl+C kills everything including the background `cargo run`. Developers who expect `make dev` to run like `docker compose up` are surprised when the backend dies.
-**Fix:** Add a 3-line note to the README and Makefile help:
-```
-make dev runs services in the foreground. Press Ctrl+C to stop all.
-If you need services to survive terminal closure, start them individually:
-  make up          # docker services only
-  cd backend && cargo run -p api  # backend
-  cd frontend && bun run dev      # frontend
-```
-**Files:** `README.md`, `Makefile`
-**Severity:** Low — documentation gap.
-**Found by:** /qa on 2026-05-04.
-
-### A12. Add sqlx `query!` compile-time checking for auth routes
-**What:** The UUID-to-String type mismatch in `backend/crates/auth/src/routes.rs` was caught at runtime (HTTP 500). sqlx's `query!` macro with the `offline` feature would have caught this at compile time.
-**Fix:** Enable `sqlx/offline` in `backend/crates/auth/Cargo.toml`. Pre-generate `.sqlx/` query metadata with `cargo sqlx prepare`. Update CI to fail if `.sqlx/` is out of date.
-**Files:** `backend/crates/auth/Cargo.toml`, `backend/Cargo.toml`, `.github/workflows/*.yml`
-**Severity:** Medium — prevents data-type regressions.
-**Found by:** /qa on 2026-05-04.
-
-## Active (from v0.8 plan audit)
-
-### S1. Wire HMAC-signed auth headers to Python sidecar
-**What:** The Rust backend never computes or sends `X-User-Id`, `X-User-Email`, `X-User-Name`, or `X-Auth-Signature` headers when forwarding requests to the Python sidecar over the Unix socket. The sidecar's HMAC middleware is therefore bypassed for all routes.
-**Fix:** In `python-sidecar/src/lib.rs`, compute `HMAC-SHA256(SIDECAR_SHARED_SECRET, "{user_id}|{email}|{name}")` and include it plus user headers on every socket request. Add a `compute_auth_signature` helper in the Rust backend.
+### S1. Wire HMAC-signed auth headers to Python sidecar [P0] [M]
+**What:** Rust backend never sends `X-User-Id`, `X-User-Email`, `X-User-Name`, or `X-Auth-Signature` headers to Python sidecar over Unix socket. Sidecar's HMAC middleware bypassed for all routes.
+**Fix:** Compute `HMAC-SHA256(SIDECAR_SHARED_SECRET, "{user_id}|{email}|{name}")` and include user headers on every socket request in `python-sidecar/src/lib.rs`.
 **Files:** `backend/crates/python-sidecar/src/lib.rs`, `backend/crates/api/src/lib.rs`
-**Priority:** P0 — security gap.
 
-### S2. Logout must invalidate session + blacklist token JTI
-**What:** `POST /auth/logout` is a stub (TODO comment). It does not destroy the Redis session, blacklist the access token JTI, or delete the refresh token. Users can continue using revoked tokens until expiry.
-**Fix:** Implement full logout: delete session key from Redis, set `blacklist:{jti}` with 15min TTL, delete `refresh:{token}`, clear session cookie.
+### S2. Logout must invalidate session + blacklist token JTI [P0] [S]
+**What:** `POST /auth/logout` is a stub — two TODO comments, returns 204 without destroying session or blacklisting token.
+**Fix:** Delete session key from Redis, set `blacklist:{jti}` with 15min TTL, delete `refresh:{token}`, clear session cookie.
 **Files:** `backend/crates/auth/src/routes.rs`
-**Priority:** P0 — security gap.
 
-### S3. Atomic token refresh via Lua script
-**What:** `POST /auth/refresh` does get→delete→set as three separate Redis commands. Concurrent refresh requests can corrupt token state (token family leak).
-**Fix:** Replace with a single Lua script that: checks if old refresh token exists, deletes it, sets new token, returns user_id. Script returns error if old token is missing.
+### A11. Document `make dev` signal handling [P2] [S]
+**What:** `make dev` traps INT/TERM to run `make down-dev`, but `wait` at end means Ctrl+C kills everything. Developers expect it to behave like `docker compose up`.
+**Fix:** Add 3-line note to README and Makefile help explaining Ctrl+C behavior and alternative per-service startup commands.
+**Files:** `README.md`, `Makefile`
+
+## Next (this milestone)
+
+### S3. Atomic token refresh via Lua script [P1] [M]
+**What:** `POST /auth/refresh` does get→delete→set as three separate Redis commands. Concurrent refresh requests can corrupt token state.
+**Fix:** Replace with single Lua script that checks old token exists, deletes it, sets new token, returns user_id atomically.
 **Files:** `backend/crates/auth/src/routes.rs`, `backend/crates/cache/src/session.rs`
-**Priority:** P1 — correctness under concurrency.
 
-### S4. Progressive brute-force backoff
-**What:** Rate limiting uses a fixed window. The plan specified progressive backoff: 5 failures → 60s block, 10 failures → 5min, 20 failures → 30min.
-**Fix:** Track failure count in Redis key `backoff:{ip}:{endpoint}`. On each failed login, increment count and set TTL based on thresholds. Check backoff before rate limit.
+### S4. Progressive brute-force backoff [P1] [M]
+**What:** Rate limiting uses fixed window. Spec specified progressive backoff: 5 failures → 60s, 10 → 5min, 20 → 30min.
+**Fix:** Track failure count in Redis key `backoff:{ip}:{endpoint}`. Increment on each failed login, set TTL based on threshold.
 **Files:** `backend/crates/auth/src/routes.rs`, `backend/crates/cache/src/rate_limit.rs`
-**Priority:** P1 — security hardening.
 
-### S5. Enable CSRF protection in cookie auth mode
-**What:** `csrf.rs` exists and is tested, but cookie auth mode in `auth/src/middleware.rs` is stubbed with a TODO. State-changing endpoints have no CSRF protection when `AUTH_MODE=cookie`.
-**Fix:** Wire `csrf::generate()` and `csrf::validate()` into the cookie auth path. Set CSRF token in a separate cookie, validate `X-CSRF-Token` header against it.
+### S5. Enable CSRF protection in cookie auth mode [P1] [M]
+**What:** `csrf.rs` exists and is tested, but cookie auth mode in `auth/src/middleware.rs` is stubbed with TODO. State-changing endpoints have no CSRF protection when `AUTH_MODE=cookie`.
+**Fix:** Wire `csrf::generate()` and `csrf::validate()` into cookie auth path. Set CSRF token in separate cookie, validate `X-CSRF-Token` header.
 **Files:** `backend/crates/auth/src/middleware.rs`, `backend/crates/auth/src/routes.rs`
-**Priority:** P1 — security feature.
 
-### S6. Streaming S3 upload/download
-**What:** `storage/src/routes.rs` buffers the entire request body into `Vec<u8>` before uploading. `storage/src/client.rs::download` returns `Vec<u8>`. Large files cause OOM.
-**Fix:** Change upload to stream `BodyStream` directly to S3. Change download to return `Stream` or `impl Body` instead of `Vec<u8>`.
+### A3. Add `make sync-env` [P1] [S]
+**What:** `.env` is gitignored. When `.env.example` changes, developers must manually diff and merge. No automated drift detection.
+**Fix:** Add `make sync-env` that compares `.env` against `.env.example` and prints missing keys with example values. Optionally support `make sync-env --apply`.
+**Files:** `Makefile`, `scripts/sync-env.sh`
+
+### A5. Make `make dev` background processes survive terminal detachment [P1] [M]
+**What:** `make dev` runs `cargo run -p api &` inside shell script. When terminal closes, Rust backend gets SIGTERM and shuts down.
+**Fix:** Use `nohup` or write PID files to `/tmp/fullstackhex-dev/`. Add `make status` to show which services are alive.
+**Files:** `Makefile`, `scripts/dev-run.sh`
+
+### A7. Add auth status to health dashboard [P1] [S]
+**What:** Frontend dashboard shows 5 service cards but no indication whether auth is enabled. When `JWT_SECRET` missing, auth routes return 404 — user sees "all green" but cannot register/login.
+**Fix:** Add Auth card to dashboard showing "enabled"/"disabled" based on `/health`. When disabled, show fix instruction.
+**Files:** `frontend/src/pages/index.astro`, `frontend/src/lib/health.ts`
+
+### A9. Add contract tests for frontend health aggregation [P1] [M]
+**What:** Frontend tests mock `fetch` and assert on response shape. When backend adds new health endpoints, tests break because they expect exact fetch count.
+**Fix:** Generate JSON schema from backend `health()` return types and validate frontend mocks against it. Or add `make test-contract` that spins up backend and runs frontend tests against real `/api/health`.
+**Files:** `frontend/tests/integration-health-route.test.ts`, `backend/crates/api/src/lib.rs`
+
+### A12. Add sqlx `query!` compile-time checking [P1] [M]
+**What:** UUID-to-String type mismatch in auth routes was caught at runtime (HTTP 500). sqlx `query!` with `offline` feature would have caught it at compile time.
+**Fix:** Enable `sqlx/offline` in auth crate. Pre-generate `.sqlx/` query metadata with `cargo sqlx prepare`. Update CI to fail if `.sqlx/` is out of date.
+**Files:** `backend/crates/auth/Cargo.toml`, `backend/Cargo.toml`, `.github/workflows/*.yml`
+
+## Later
+
+### A6. Add `make status` [P2] [S]
+**What:** After `make dev`, no way to verify which services are alive without manually curling health endpoints.
+**Fix:** Add `make status` printing table: Service | PID | Port | Health | Uptime. Read from PID files started by `make dev`.
+**Files:** `Makefile`, `scripts/status.sh`
+**Depends on:** A5
+
+### A8. Add `make test-e2e` [P1] [L]
+**What:** Test suites run in isolation. No verification that backend + frontend + database work together. /qa found auth 500 only by manual curl.
+**Fix:** Add Playwright or Bun-based e2e test: start services, register user, login, hit `/auth/me`, verify dashboard. Run in CI on every PR.
+**Files:** `e2e/`, `.github/workflows/e2e.yml`, `package.json`
+**Depends on:** A5
+
+### A10. Add auth login/register UI [P2] [L]
+**What:** v0.8 ships auth backend but frontend has no auth UI. Developers must use curl to test registration/login.
+**Fix:** Add `/login` Astro page with email/password form and OAuth buttons. Store JWT in localStorage, show user menu. Gate storage actions behind auth.
+**Files:** `frontend/src/pages/login.astro`, `frontend/src/components/AuthForm.astro`
+
+### S6. Streaming S3 upload/download [P1] [L]
+**What:** `storage/src/routes.rs` buffers entire request body into `Vec<u8>` before uploading. `storage/src/client.rs::download` returns `Vec<u8>`. Large files cause OOM.
+**Fix:** Stream `BodyStream` directly to S3 on upload. Return `Stream` or `impl Body` on download.
 **Files:** `backend/crates/storage/src/routes.rs`, `backend/crates/storage/src/client.rs`
-**Priority:** P1 — performance/correctness.
 
-### S7. Multipart upload for files > 5MB
-**What:** No multipart upload implementation exists. The plan specified multipart for files larger than 5MB.
+### S7. Multipart upload for files > 5MB [P2] [L]
+**What:** No multipart upload implementation exists. Spec specified multipart for files larger than 5MB.
 **Fix:** Implement S3 multipart: initiate upload, stream parts, complete upload. Add `POST /storage/multipart` route.
 **Files:** `backend/crates/storage/src/client.rs`, `backend/crates/storage/src/routes.rs`
-**Priority:** P2 — feature gap.
 
-### S8. New crate test coverage >80%
-**What:** Auth routes, cache Redis operations, OAuth HTTP flows, and storage I/O lack integration tests. Current coverage is ~50%.
-**Fix:** Add `TestClient` integration tests for auth handlers. Add `wiremock` or `mockito` for S3 client. Add `redis-test` or mock `fred::Client` for cache. Add `httptest` for OAuth provider simulation.
+### S8. New crate test coverage >80% [P1] [L]
+**What:** Auth, cache, OAuth, and storage lack integration tests. Current coverage ~50%.
+**Fix:** Add `TestClient` integration tests for auth handlers. Use wiremock/mockito for S3, redis-test or mock for cache, httptest for OAuth.
 **Files:** `backend/crates/*/tests/`, `backend/crates/*/Cargo.toml`
-**Priority:** P1 — test coverage debt.
 
-### S9. bats-core tests for deploy scripts
-**What:** Deploy safety scripts (rollback, blue-green, canary) are shell scripts with no automated tests.
-**Fix:** Add `tests/deploy/` directory with bats-core tests. Mock `docker compose`, `nginx`, `scp`, and `.deploy-state` file. Test happy path and error handling for each script.
-**Files:** `tests/deploy/`, `scripts/deploy-*.sh`
-**Priority:** P2 — test coverage debt.
-
-### S10. End-to-end shell test
-**What:** No automated end-to-end test covers the full user journey.
-**Fix:** Add `tests/e2e.sh` that: starts stack, registers user, logs in, accesses protected route, uploads file, runs deploy, verifies health, runs rollback.
+### S10. End-to-end shell test [P2] [L]
+**What:** No automated e2e test covers full user journey.
+**Fix:** Add `tests/e2e.sh`: start stack, register user, login, access protected route, upload file, run deploy, verify health, run rollback.
 **Files:** `tests/e2e.sh`
-**Priority:** P2 — regression prevention.
 
-### S11. Auth Grafana dashboard
-**What:** The plan specified an auth dashboard (`monitoring/grafana/dashboards/auth.json`) with login rates, active sessions, OAuth callback success/fail, token refresh rate, and brute-force blocked attempts.
-**Fix:** Create dashboard JSON with Prometheus queries for `auth_login_total`, `auth_sessions_active`, `auth_oauth_callback_duration_seconds`, `rate_limit_checks_total`.
+### S11. Auth Grafana dashboard [P2] [M]
+**What:** Spec specified auth dashboard with login rates, active sessions, OAuth callback success/fail, token refresh rate, brute-force blocked attempts.
+**Fix:** Create `monitoring/grafana/dashboards/auth.json` with Prometheus queries for auth metrics.
 **Files:** `monitoring/grafana/dashboards/auth.json`
-**Priority:** P2 — observability.
 
-### S12. docs/AUTH.md
+### S12. docs/AUTH.md [P2] [S]
 **What:** No auth documentation exists.
-**Fix:** Write setup guide covering JWT config, OAuth provider setup, session config, brute-force protection, CSRF notes, and Python sidecar HMAC trust.
+**Fix:** Write setup guide: JWT config, OAuth provider setup, session config, brute-force protection, CSRF notes, Python sidecar HMAC trust.
 **Files:** `docs/AUTH.md`
-**Priority:** P2 — documentation.
 
-### S13. docs/REDIS.md
+### S13. docs/REDIS.md [P2] [S]
 **What:** No Redis documentation exists.
-**Fix:** Document caching patterns, session usage, pub/sub, rate limiting, and connection pool tuning.
+**Fix:** Document caching patterns, session usage, pub/sub, rate limiting, connection pool tuning.
 **Files:** `docs/REDIS.md`
-**Priority:** P2 — documentation.
 
-### S14. docs/STORAGE.md
+### S14. docs/STORAGE.md [P2] [S]
 **What:** No storage documentation exists.
-**Fix:** Document S3/RustFS setup, bucket config, presigned URLs, multipart upload, and streaming.
+**Fix:** Document S3/RustFS setup, bucket config, presigned URLs, multipart upload, streaming.
 **Files:** `docs/STORAGE.md`
-**Priority:** P2 — documentation.
 
-### S15. docs/DEPLOY.md
+### S15. docs/DEPLOY.md [P2] [S]
 **What:** No deploy safety documentation exists.
-**Fix:** Document canary, blue-green, rollback commands, deploy lock, nginx config templates, and verify script.
+**Fix:** Document canary, blue-green, rollback commands, deploy lock, nginx config templates, verify script.
 **Files:** `docs/DEPLOY.md`
-**Priority:** P2 — documentation.
 
-## Deferred
+## Icebox
 
-### Run ignored socket tests in CI
-**What:** Start a test FastAPI instance as a CI background step so the 5 `#[ignore]` socket integration tests run automatically.
-**Why:** Socket tests never run — they require `--ignored` flag. CI has Python setup but doesn't start a sidecar.
-**Pros:** Catches socket regressions automatically. Closes the test coverage gap on the polyglot claim.
-**Cons:** Adds ~30s to CI runs. Socket tests are timing-sensitive and may be flaky in CI.
-**Context:** Tests in `python-sidecar/src/lib.rs` (4 ignored) and `integration_health_route.rs` (1 ignored). All use mock UnixListener. They pass on native Linux but fail on WSL2 due to Unix socket quirks.
-**Depends on:** CI Python setup (already exists).
+### S9. bats-core tests for deploy scripts [P2] [M]
+**What:** Deploy safety scripts are shell scripts with no automated tests.
+**Fix:** Add `tests/deploy/` with bats-core tests. Mock docker compose, nginx, scp, `.deploy-state` file.
+**Files:** `tests/deploy/`, `scripts/deploy-*.sh`
+**Trigger:** CI starts running deploy scripts
 
-### Add inline Rust doc examples
-**What:** `///` comments on `PythonSidecar::get()`, `PythonSidecar::health()`, and `db::health_check`.
-**Why:** rust-analyzer hover shows usage examples directly in the editor. Learn by doing without docs.
-**Pros:** Zero friction — developer sees example at the point of use. Updates with code changes.
-**Cons:** Doc examples can rot if not compiled (use `#[doc = include_str!("...")]` or keep them simple).
-**Depends on:** —
+### Run ignored socket tests in CI [P2] [M]
+**What:** Start test FastAPI instance as CI background step so `#[ignore]` socket integration tests run automatically.
+**Why not now:** Socket tests pass on native Linux but fail on WSL2 due to Unix socket quirks. May be flaky in CI.
+**Files:** `python-sidecar/src/lib.rs`, `integration_health_route.rs`
+**Trigger:** WSL2 CI support or native Linux CI runner
 
-### Add concrete examples to docs
-**What:** New `docs/EXAMPLES.md` or section in `docs/SERVICES.md` with copy-paste code blocks.
-**Why:** No examples showing how to extend the template (add route, add sidecar endpoint, add page).
-**Pros:** Reduces time to first custom feature. Shows the full extension pattern end-to-end.
-**Cons:** Examples must be maintained as API evolves.
-**Depends on:** —
+### Add inline Rust doc examples [P2] [S]
+**What:** `///` doc comments on `PythonSidecar::get()`, `PythonSidecar::health()`, and `db::health_check` with usage examples.
+**Why not now:** Doc examples can rot if not compiled. Low priority for solo dev.
+**Trigger:** First external contributor or user request
+
+### Add concrete examples to docs [P2] [S]
+**What:** New `docs/EXAMPLES.md` with copy-paste code blocks showing how to extend the template.
+**Why not now:** Examples must be maintained as API evolves. Templates change quickly in v0.x.
+**Trigger:** First external contributor or stable v1.0 API

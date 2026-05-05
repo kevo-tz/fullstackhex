@@ -2,11 +2,6 @@
 
 ## Next (this milestone)
 
-### S5. Enable CSRF protection in cookie auth mode [P1] [M]
-**What:** `csrf.rs` exists and is tested, but cookie auth mode in `auth/src/middleware.rs` is stubbed with TODO. State-changing endpoints have no CSRF protection when `AUTH_MODE=cookie`.
-**Fix:** Wire `csrf::generate()` and `csrf::validate()` into cookie auth path. Set CSRF token in separate cookie, validate `X-CSRF-Token` header.
-**Files:** `backend/crates/auth/src/middleware.rs`, `backend/crates/auth/src/routes.rs`
-
 ### A9. Add contract tests for frontend health aggregation [P1] [M]
 **What:** Frontend tests mock `fetch` and assert on response shape. When backend adds new health endpoints, tests break because they expect exact fetch count.
 **Fix:** Generate JSON schema from backend `health()` return types and validate frontend mocks against it. Or add `make test-contract` that spins up backend and runs frontend tests against real `/api/health`.
@@ -18,11 +13,6 @@
 **Files:** `backend/crates/auth/Cargo.toml`, `backend/Cargo.toml`, `.github/workflows/*.yml`
 
 ## Later
-
-### A6. Add `make status` [P2] [S]
-**What:** After `make dev`, no way to verify which services are alive without manually curling health endpoints.
-**Fix:** Add `make status` printing table: Service | PID | Port | Health | Uptime. Read from PID files started by `make dev`.
-**Files:** `Makefile`, `scripts/status.sh`
 
 ### A8. Add `make test-e2e` [P1] [L]
 **What:** Test suites run in isolation. No verification that backend + frontend + database work together. /qa found auth 500 only by manual curl.

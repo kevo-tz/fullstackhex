@@ -261,14 +261,36 @@ pub async fn login(
 
 /// POST /auth/logout — destroy session, blacklist token, delete refresh token.
 pub async fn logout(
-    State(_state): State<AuthState>,
+    State(state): State<AuthState>,
     auth_user: AuthUser,
 ) -> Result<impl IntoResponse, ApiError> {
-    // TODO: blacklist the current access token JTI in Redis
-    // TODO: destroy session in Redis
+    // Blacklist the access token JTI so it cannot be reused
+    let blacklist_ttl = std::time::Duration::from_secs(state.auth.config.jwt_expiry);
+    state
+        .redis
+        .cache_set("blacklist", &auth_user.jti, &true, blacklist_ttl)
+        .await?;
 
-    tracing::info!(user_id = %auth_user.user_id, "user logged out");
-    Ok(StatusCode::NO_CONTENT)
+    // Destroy session if present (cookie auth mode)
+    if let Some(ref session_id) = auth_user.session_id {
+        // Best-effort: session might already be expired or destroyed
+        let _ = state.redis.session_destroy(session_id).await;
+    }
+
+    tracing::info!(user_id = %auth_user.user_id, jti = %auth_user.jti, "user logged out");
+
+    let mut headers = HeaderMap::new();
+    // Clear session cookie if one was set
+    if auth_user.session_id.is_some() {
+        headers.insert(
+            header::SET_COOKIE,
+            "session=; HttpOnly; Path=/; Max-Age=0; SameSite=Lax"
+                .parse()
+                .unwrap(),
+        );
+    }
+
+    Ok((StatusCode::NO_CONTENT, headers))
 }
 
 /// Refresh token request.
@@ -559,6 +581,8 @@ mod route_tests {
             email: "test@example.com".to_string(),
             name: Some("Test User".to_string()),
             provider: "local".to_string(),
+            jti: "test-jti-1".to_string(),
+            session_id: None,
         };
         let response = me(auth_user).await.into_response();
         assert_eq!(response.status(), StatusCode::OK);
@@ -580,6 +604,8 @@ mod route_tests {
             email: "anon@example.com".to_string(),
             name: None,
             provider: "google".to_string(),
+            jti: "test-jti-2".to_string(),
+            session_id: None,
         };
         let response = me(auth_user).await.into_response();
         assert_eq!(response.status(), StatusCode::OK);

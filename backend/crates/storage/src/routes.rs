@@ -170,6 +170,8 @@ mod tests {
             email: "test@example.com".to_string(),
             name: None,
             provider: "local".to_string(),
+            jti: "test-jti-1".to_string(),
+            session_id: None,
         };
 
         let body = PresignRequest {
@@ -216,6 +218,8 @@ mod tests {
             email: "test@example.com".to_string(),
             name: None,
             provider: "local".to_string(),
+            jti: "test-jti-2".to_string(),
+            session_id: None,
         };
 
         let body = PresignRequest {

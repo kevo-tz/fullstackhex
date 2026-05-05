@@ -19,6 +19,10 @@ pub struct AuthUser {
     pub email: String,
     pub name: Option<String>,
     pub provider: String,
+    /// JWT ID from the access token claims — used for logout blacklisting.
+    pub jti: String,
+    /// Session ID from the session cookie — None in bearer-only mode.
+    pub session_id: Option<String>,
 }
 
 impl<S: Send + Sync> FromRequestParts<S> for AuthUser {
@@ -113,6 +117,8 @@ fn extract_bearer(
         email: claims.email,
         name: claims.name,
         provider: claims.provider,
+        jti: claims.jti,
+        session_id: None, // bearer auth has no session
     })
 }
 
@@ -263,6 +269,8 @@ mod tests {
         let user = extract_bearer(&req, &auth).unwrap();
         assert_eq!(user.user_id, "u1");
         assert_eq!(user.email, "a@b.com");
+        assert!(!user.jti.is_empty(), "jti should be populated");
+        assert!(user.session_id.is_none(), "bearer auth has no session");
     }
 
     #[test]
@@ -279,5 +287,6 @@ mod tests {
             .unwrap();
         let user = extract_auth_user(&req, &auth).unwrap();
         assert_eq!(user.user_id, "u1");
+        assert!(!user.jti.is_empty(), "jti should be populated");
     }
 }

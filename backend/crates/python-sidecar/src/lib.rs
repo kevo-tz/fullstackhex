@@ -24,6 +24,23 @@ pub struct PythonSidecar {
     max_retries: u32,
 }
 
+/// Validate a header value: reject CR, LF, and overlong values.
+fn validate_header_value(name: &str, value: &str) -> Result<(), SidecarError> {
+    if value.contains('\r') || value.contains('\n') {
+        return Err(SidecarError::InvalidInput(format!(
+            "{} contains invalid characters",
+            name
+        )));
+    }
+    if value.len() > 256 {
+        return Err(SidecarError::InvalidInput(format!(
+            "{} exceeds maximum length (256 bytes)",
+            name
+        )));
+    }
+    Ok(())
+}
+
 impl PythonSidecar {
     /// Create a new handle with explicit configuration.
     pub fn new(socket_path: impl Into<PathBuf>, timeout: Duration, max_retries: u32) -> Self {
@@ -75,7 +92,18 @@ impl PythonSidecar {
     /// Retries connection failures up to `max_retries` with backoff.
     /// Generates a UUIDv4 trace_id and sends it as an x-trace-id header.
     pub async fn get(&self, path: &str) -> Result<serde_json::Value, SidecarError> {
-        self.get_with_trace_id(path, &uuid::Uuid::new_v4().to_string())
+        self.get_with_trace_id(path, &uuid::Uuid::new_v4().to_string(), None)
+            .await
+    }
+
+    /// GET a path with auth headers forwarded to the Python sidecar.
+    /// `auth_headers` is `(user_id, email, name, signature)` — all pre-computed.
+    pub async fn get_with_auth(
+        &self,
+        path: &str,
+        auth_headers: (&str, &str, &str, &str),
+    ) -> Result<serde_json::Value, SidecarError> {
+        self.get_with_trace_id(path, &uuid::Uuid::new_v4().to_string(), Some(auth_headers))
             .await
     }
 
@@ -85,13 +113,14 @@ impl PythonSidecar {
         &self,
         path: &str,
         trace_id: &str,
+        auth_headers: Option<(&str, &str, &str, &str)>,
     ) -> Result<serde_json::Value, SidecarError> {
-        self.do_get(path, Some(trace_id)).await
+        self.do_get(path, Some(trace_id), auth_headers).await
     }
 
     /// GET raw bytes from a path. Returns the response body without JSON parsing.
     pub async fn get_raw(&self, path: &str) -> Result<Vec<u8>, SidecarError> {
-        self.get_raw_with_trace_id(path, &uuid::Uuid::new_v4().to_string())
+        self.get_raw_with_trace_id(path, &uuid::Uuid::new_v4().to_string(), None)
             .await
     }
 
@@ -100,16 +129,18 @@ impl PythonSidecar {
         &self,
         path: &str,
         trace_id: &str,
+        auth_headers: Option<(&str, &str, &str, &str)>,
     ) -> Result<Vec<u8>, SidecarError> {
-        self.do_get_raw(path, Some(trace_id)).await
+        self.do_get_raw(path, Some(trace_id), auth_headers).await
     }
 
     async fn do_get(
         &self,
         path: &str,
         trace_id: Option<&str>,
+        auth_headers: Option<(&str, &str, &str, &str)>,
     ) -> Result<serde_json::Value, SidecarError> {
-        let body = self.do_request_inner(path, trace_id).await?;
+        let body = self.do_request_inner(path, trace_id, auth_headers).await?;
         serde_json::from_slice(&body).map_err(|e| SidecarError::InvalidResponse(e.to_string()))
     }
 
@@ -117,8 +148,9 @@ impl PythonSidecar {
         &self,
         path: &str,
         trace_id: Option<&str>,
+        auth_headers: Option<(&str, &str, &str, &str)>,
     ) -> Result<Vec<u8>, SidecarError> {
-        self.do_request_inner(path, trace_id).await
+        self.do_request_inner(path, trace_id, auth_headers).await
     }
 
     /// Shared retry-with-backoff loop. Calls perform_request and handles
@@ -127,6 +159,7 @@ impl PythonSidecar {
         &self,
         path: &str,
         trace_id: Option<&str>,
+        auth_headers: Option<(&str, &str, &str, &str)>,
     ) -> Result<Vec<u8>, SidecarError> {
         if !self.is_available() {
             return Err(SidecarError::SocketNotFound(self.socket_path.clone()));
@@ -144,7 +177,12 @@ impl PythonSidecar {
                 tokio::time::sleep(backoff).await;
             }
 
-            match tokio::time::timeout(self.timeout, self.perform_request(path, trace_id)).await {
+            match tokio::time::timeout(
+                self.timeout,
+                self.perform_request(path, trace_id, auth_headers),
+            )
+            .await
+            {
                 Ok(Ok((status_code, body))) => {
                     if status_code >= 400 {
                         let body_str = String::from_utf8_lossy(&body).to_string();
@@ -180,48 +218,52 @@ impl PythonSidecar {
         &self,
         path: &str,
         trace_id: Option<&str>,
+        auth_headers: Option<(&str, &str, &str, &str)>,
     ) -> Result<(u16, Vec<u8>), SidecarError> {
         use tokio::io::{AsyncReadExt, AsyncWriteExt};
         use tokio::net::UnixStream;
 
-        // Reject paths containing CR or LF to prevent HTTP header injection
-        if path.contains('\r') || path.contains('\n') {
-            return Err(SidecarError::InvalidInput(
-                "path contains invalid characters".into(),
-            ));
+        // Validate path to prevent HTTP header injection
+        validate_header_value("path", path)?;
+
+        // Validate trace_id
+        if let Some(tid) = trace_id {
+            validate_header_value("trace_id", tid)?;
         }
-        // Reject trace_id containing CR or LF to prevent HTTP header injection
-        if let Some(tid) = trace_id
-            && (tid.contains('\r') || tid.contains('\n'))
-        {
-            return Err(SidecarError::InvalidInput(
-                "trace_id contains invalid characters".into(),
-            ));
-        }
-        // Reject overlong trace_id to prevent memory exhaustion via large header
-        if let Some(tid) = trace_id
-            && tid.len() > 256
-        {
-            return Err(SidecarError::InvalidInput(
-                "trace_id exceeds maximum length (256 bytes)".into(),
-            ));
+
+        // Validate auth headers
+        if let Some((user_id, email, name, signature)) = auth_headers {
+            validate_header_value("X-User-Id", user_id)?;
+            validate_header_value("X-User-Email", email)?;
+            validate_header_value("X-User-Name", name)?;
+            validate_header_value("X-Auth-Signature", signature)?;
         }
 
         let mut stream = UnixStream::connect(&self.socket_path)
             .await
             .map_err(|e| SidecarError::ConnectionFailed(e.to_string()))?;
 
-        let request = if let Some(tid) = trace_id {
+        let mut request = if let Some(tid) = trace_id {
             format!(
-                "GET {} HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\nx-trace-id: {}\r\n\r\n",
+                "GET {} HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\nx-trace-id: {}\r\n",
                 path, tid
             )
         } else {
             format!(
-                "GET {} HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n",
+                "GET {} HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n",
                 path
             )
         };
+
+        if let Some((user_id, email, name, signature)) = auth_headers {
+            request.push_str(&format!(
+                "X-User-Id: {}\r\nX-User-Email: {}\r\nX-User-Name: {}\r\nX-Auth-Signature: {}\r\n",
+                user_id, email, name, signature,
+            ));
+        }
+
+        request.push_str("\r\n");
+
         stream
             .write_all(request.as_bytes())
             .await
@@ -275,7 +317,9 @@ impl PythonSidecar {
         let trace_id = uuid::Uuid::new_v4().to_string();
         tracing::info!(%trace_id, target = "python_sidecar", "health check");
         let start = std::time::Instant::now();
-        let result = self.get_with_trace_id("/health", &trace_id).await;
+        let result = self
+            .get_with_trace_id("/health", &trace_id, None)
+            .await;
         let duration_ms = start.elapsed().as_millis() as u64;
         match &result {
             Ok(_) => {
@@ -293,6 +337,28 @@ impl PythonSidecar {
 mod tests {
     use super::*;
     use tokio::io::AsyncWriteExt;
+
+    #[test]
+    fn validate_header_value_rejects_cr() {
+        assert!(validate_header_value("X-Test", "val\r\nInjected").is_err());
+    }
+
+    #[test]
+    fn validate_header_value_rejects_lf() {
+        assert!(validate_header_value("X-Test", "val\nInjected").is_err());
+    }
+
+    #[test]
+    fn validate_header_value_rejects_overlong() {
+        let long = "a".repeat(257);
+        assert!(validate_header_value("X-Test", &long).is_err());
+    }
+
+    #[test]
+    fn validate_header_value_accepts_valid() {
+        assert!(validate_header_value("X-Test", "normal-value").is_ok());
+        assert!(validate_header_value("X-Test", "").is_ok());
+    }
 
     #[test]
     fn new_sets_fields() {
@@ -383,6 +449,19 @@ mod tests {
         );
         let result = sc.get("/health").await;
         assert!(matches!(result, Err(SidecarError::SocketNotFound(_))));
+    }
+
+    #[tokio::test]
+    async fn get_with_auth_validates_headers() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("auth-val.sock");
+        std::fs::File::create(&path).unwrap();
+        let sc = PythonSidecar::new(path, Duration::from_secs(1), 0);
+        // CR in name should be rejected
+        let result = sc
+            .get_with_auth("/health", ("user-1", "a@b.com", "bad\nname", "abc123"))
+            .await;
+        assert!(matches!(result, Err(SidecarError::InvalidInput(_))));
     }
 
     // ------------------------------------------------------------------
@@ -544,7 +623,7 @@ mod tests {
         let path = dir.path().join("trace-crlf.sock");
         std::fs::File::create(&path).unwrap();
         let sc = PythonSidecar::new(path, Duration::from_secs(1), 0);
-        let result = sc.get_with_trace_id("/health", "test-id\r\nInjected").await;
+        let result = sc.get_with_trace_id("/health", "test-id\r\nInjected", None).await;
         assert!(matches!(result, Err(SidecarError::InvalidInput(_))));
     }
 
@@ -554,7 +633,7 @@ mod tests {
         let path = dir.path().join("trace-cr.sock");
         std::fs::File::create(&path).unwrap();
         let sc = PythonSidecar::new(path, Duration::from_secs(1), 0);
-        let result = sc.get_with_trace_id("/health", "test-id\rInjected").await;
+        let result = sc.get_with_trace_id("/health", "test-id\rInjected", None).await;
         assert!(matches!(result, Err(SidecarError::InvalidInput(_))));
     }
 
@@ -564,7 +643,7 @@ mod tests {
         let path = dir.path().join("trace-lf.sock");
         std::fs::File::create(&path).unwrap();
         let sc = PythonSidecar::new(path, Duration::from_secs(1), 0);
-        let result = sc.get_with_trace_id("/health", "test-id\nInjected").await;
+        let result = sc.get_with_trace_id("/health", "test-id\nInjected", None).await;
         assert!(matches!(result, Err(SidecarError::InvalidInput(_))));
     }
 
@@ -691,7 +770,7 @@ mod tests {
         });
 
         tokio::time::sleep(Duration::from_millis(50)).await;
-        let result = sc.get_with_trace_id("/health", "qa-propagate-123").await;
+        let result = sc.get_with_trace_id("/health", "qa-propagate-123", None).await;
         assert!(result.is_ok(), "expected Ok, got {:?}", result);
         let v = result.unwrap();
         assert_eq!(v["status"], "ok");

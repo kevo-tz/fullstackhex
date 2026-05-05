@@ -298,7 +298,7 @@ async fn health_python(
     let result = if trace_id.is_empty() {
         state.sidecar.health().await
     } else {
-        state.sidecar.get_with_trace_id("/health", trace_id).await
+        state.sidecar.get_with_trace_id("/health", trace_id, None).await
     };
 
     match result {

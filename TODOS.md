@@ -8,6 +8,9 @@
 - Document log locations per service (v0.5.0.0)
 - Fix outdated Python sidecar docs in SERVICES.md (v0.5.0.0)
 - Add `make logs-python` target (v0.5.0.0)
+- Replace `check-env` placeholder-only validation with required-variable schema (A2, v0.9) — `scripts/validate-env.sh` validates .env against .env.example for missing keys, CHANGE_ME placeholders, and shell syntax errors. Wired into `make dev`, `make up`, `make watch` via `check-env`.
+- Quote `REDIS_SAVE` in `.env.example` (A4, v0.9) — `REDIS_SAVE="900 1 300 10 60 10000"` prevents shell parse errors on source.
+- Makefile DRY: extract shared `run-dev` target from near-duplicate `dev`/`watch` targets; replace `python3` JSON parsing with `grep`/`sed`; add missing `.PHONY` declarations; document `pkill` fallback (v0.9)
 
 ## Active (from /qa v0.8 review)
 
@@ -18,26 +21,12 @@
 **Severity:** Critical — breaks auth on fresh installs.
 **Found by:** /qa on 2026-05-04.
 
-### A2. Replace `check-env` placeholder-only validation with required-variable schema
-**What:** `Makefile:127` `check-env` only checks for `CHANGE_ME` strings. It does NOT verify that required variables like `JWT_SECRET`, `DATABASE_URL`, or `REDIS_URL` actually exist. Auth was silently disabled because `JWT_SECRET` was present in `.env.example` but missing from the local `.env` — `check-env` passed, backend started, but `/auth/*` returned 404.
-**Fix:** Add a `scripts/validate-env.py` (or shell) script that reads `.env.example` for required keys and ensures each exists in `.env` with a non-empty value. Run it in `make dev` and `make up` before starting services.
-**Files:** `Makefile`, `.env.example`
-**Severity:** High — silent feature disable is worse than a crash.
-**Found by:** /qa on 2026-05-04.
-
 ### A3. Add `.env` sync command — `make sync-env`
 **What:** `.env` is gitignored. When `.env.example` changes (e.g., v0.8 adds auth vars), developers must manually diff and merge. There is no automated way to detect drift.
 **Fix:** Add `make sync-env` that compares `.env` against `.env.example` and prints missing keys with their example values. Optionally support `make sync-env --apply` to append missing keys.
 **Files:** `Makefile`, new `scripts/sync-env.sh`
 **Severity:** Medium — friction on every env change.
-**Depends on:** A2.
-
-### A4. Quote `REDIS_SAVE` in `.env.example` and validate shell-safe values
-**What:** `.env:18` `REDIS_SAVE=900 1 300 10 60 10000` contains unquoted spaces. When `.env` is sourced via `. ../.env`, the shell parses the spaces as separate commands, producing `../.env: line 18: 1: command not found`. This noise obscures real startup errors.
-**Fix:** Quote the value in `.env.example`: `REDIS_SAVE="900 1 300 10 60 10000"`. Add a `make check-env` step that sources `.env` with `set -e` to fail fast on syntax errors.
-**Files:** `.env.example`, `Makefile`
-**Severity:** Medium — startup noise erodes trust in logs.
-**Found by:** /qa on 2026-05-04.
+**Depends on:** — (A2 done, A3 now unblocked).
 
 ### A5. Make `make dev` background processes survive terminal detachment
 **What:** The `make dev` target runs `cargo run -p api &` inside a shell script. When the shell receives signals or the terminal session ends, the Rust backend process gets `SIGTERM` and shuts down (`"received shutdown signal, draining connections"`). Developers lose the backend unexpectedly.
@@ -95,7 +84,7 @@ Run in CI on every PR.
 **Fix:** Add a `/login` Astro page with email/password form and OAuth buttons (Google, GitHub). On success, store the JWT in `localStorage` and show a user menu. On the dashboard, gate storage actions behind auth.
 **Files:** `frontend/src/pages/login.astro`, `frontend/src/components/AuthForm.astro`
 **Severity:** Low — nice to have for a template.
-**Depends on:** A2, A7.
+**Depends on:** — (A2 done, root cause fixed; A7 still useful as visible indicator).
 
 ### A11. Document the `make dev` signal handling quirk
 **What:** `make dev` traps INT/TERM to run `make down-dev`, but the `wait` at the end means Ctrl+C kills everything including the background `cargo run`. Developers who expect `make dev` to run like `docker compose up` are surprised when the backend dies.

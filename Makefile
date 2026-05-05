@@ -2,6 +2,8 @@
 .PHONY: verify-health check-prereqs preflight down-dev dev watch test-socket-ci
 .PHONY: migrate migrate-revert migrate-status
 .PHONY: rollback blue-green canary canary-promote canary-rollback
+.PHONY: logs-db logs-redis deploy-check prod-restart prod-up prod-down
+.PHONY: status run-dev check-cargo-watch
 
 # Default values (override with: make up POSTGRES_PASSWORD=mypassword)
 COMPOSE_DEV = docker compose -f compose/dev.yml --env-file .env
@@ -78,7 +80,7 @@ help:
 	@echo "  bench           - Run performance benchmarks"
 	@echo "  health          - Check all services health"
 	@echo "  verify-health   - Poll health endpoints until all OK or timeout"
-	@echo "  check-env       - Validate .env has no CHANGE_ME placeholders"
+	@echo "  check-env       - Validate .env has all required keys and no CHANGE_ME placeholders"
 	@echo "  check-prereqs   - Check required dev tools are installed"
 	@echo ""
 	@echo "Cleanup:"
@@ -118,19 +120,10 @@ migrate-status: ## Show database migration status
 
 # Services
 
-# check-env: validates .env exists and has no CHANGE_ME placeholders
+# check-env: validates .env exists, has no CHANGE_ME placeholders,
+# all required keys from .env.example are present, and no shell syntax errors.
 check-env:
-	@if [ ! -f .env ]; then \
-	  echo "ERROR: .env not found. Run: cp .env.example .env"; \
-	  exit 1; \
-	fi
-	@if grep -q "CHANGE_ME" .env 2>/dev/null; then \
-	  echo "ERROR: .env still contains CHANGE_ME placeholder values."; \
-	  echo "       Edit .env and replace all CHANGE_ME entries before continuing."; \
-	  grep -n "CHANGE_ME" .env; \
-	  exit 1; \
-	fi
-	@echo ".env looks good."
+	@./scripts/validate-env.sh
 
 # check-prereqs: detect required dev tools and print install instructions
 check-prereqs:
@@ -222,11 +215,11 @@ verify-health:
 	  RUST_OK=0; \
 	  DB_OK=0; \
 	  PY_OK=0; \
-	  RUST_STATUS=$$(curl -sk --max-time 5 http://localhost:8001/health 2>/dev/null | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('status',''))" 2>/dev/null); \
+	  RUST_STATUS=$$(curl -sk --max-time 5 http://localhost:8001/health 2>/dev/null | grep -o '"status":"[^"]*"' | head -1 | sed 's/"status":"//;s/"//' 2>/dev/null); \
 	  if [ "$$RUST_STATUS" = "ok" ]; then RUST_OK=1; fi; \
-	  DB_STATUS=$$(curl -sk --max-time 5 http://localhost:8001/health/db 2>/dev/null | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('status',''))" 2>/dev/null); \
+	  DB_STATUS=$$(curl -sk --max-time 5 http://localhost:8001/health/db 2>/dev/null | grep -o '"status":"[^"]*"' | head -1 | sed 's/"status":"//;s/"//' 2>/dev/null); \
 	  if [ "$$DB_STATUS" = "ok" ]; then DB_OK=1; fi; \
-	  PY_STATUS=$$(curl -sk --max-time 5 http://localhost:8001/health/python 2>/dev/null | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('status',''))" 2>/dev/null); \
+	  PY_STATUS=$$(curl -sk --max-time 5 http://localhost:8001/health/python 2>/dev/null | grep -o '"status":"[^"]*"' | head -1 | sed 's/"status":"//;s/"//' 2>/dev/null); \
 	  if [ "$$PY_STATUS" = "ok" ]; then PY_OK=1; fi; \
 	  printf "."; \
 	  if [ $$RUST_OK -eq 1 ] && [ $$DB_OK -eq 1 ] && [ $$PY_OK -eq 1 ]; then \
@@ -237,13 +230,14 @@ verify-health:
 	  sleep 1; \
 	done
 
-# dev: full stack with prerequisite checks, preflight, and health verification
-dev: check-env check-prereqs preflight
+# run-dev: shared startup sequence used by dev and watch targets.
+# Set BACKEND_CMD before invoking (dev uses cargo run, watch uses cargo watch).
+run-dev: check-env check-prereqs preflight
 	@rm -f $(PID_FILE); \
 	trap '$(MAKE) down-dev' INT TERM; \
 	$(START_DEPS); \
 	echo "Starting Rust backend..."; \
-	cd backend && set -a && . ../.env && set +a && cargo run -p api & \
+	cd backend && set -a && . ../.env && set +a && $(BACKEND_CMD) & \
 	echo $$! >> $(PID_FILE); \
 	sleep $(POST_START_DELAY); \
 	$(MAKE) verify-health; \
@@ -255,23 +249,14 @@ dev: check-env check-prereqs preflight
 	echo "Press Ctrl+C to stop everything."; \
 	wait
 
-watch: check-env check-prereqs preflight
-	@command -v cargo-watch >/dev/null 2>&1 || { echo "ERROR: cargo-watch not found. Install: cargo install cargo-watch"; exit 1; }; \
-	rm -f $(PID_FILE); \
-	trap '$(MAKE) down-dev' INT TERM; \
-	$(START_DEPS); \
-	echo "Starting Rust backend (watch mode)..."; \
-	cd backend && set -a && . ../.env && set +a && cargo watch -x 'run -p api' & \
-	echo $$! >> $(PID_FILE); \
-	sleep $(POST_START_DELAY); \
-	$(MAKE) verify-health; \
-	echo ""; \
-	echo "=============================================="; \
-	echo "  All services healthy. Dashboard:"; \
-	echo "  → http://localhost:4321"; \
-	echo "=============================================="; \
-	echo "Press Ctrl+C to stop everything."; \
-	wait
+dev: BACKEND_CMD = cargo run -p api
+dev: run-dev
+
+watch: BACKEND_CMD = cargo watch -x 'run -p api'
+watch: check-cargo-watch run-dev
+
+check-cargo-watch:
+	@command -v cargo-watch >/dev/null 2>&1 || { echo "ERROR: cargo-watch not found. Install: cargo install cargo-watch"; exit 1; }
 
 down-dev:
 	@if [ -f $(PID_FILE) ]; then \
@@ -283,6 +268,8 @@ down-dev:
 	@pkill -x uvicorn 2>/dev/null || true
 	@pkill -x api 2>/dev/null || true
 	@pkill -x bun 2>/dev/null || true
+	# pkill above is a safety net for orphaned processes where PID_FILE was lost
+	# (e.g., after a crash). Primary cleanup is via PID_FILE loop above.
 	$(COMPOSE_DEV) down
 	@echo "All services stopped."
 
@@ -404,7 +391,7 @@ deploy-check:
 	  if [ -z "$$RESP" ]; then \
 	    RESP=$$(curl -sk $$CURL_FLAGS "https://$(DEPLOY_HOST)/health" 2>/dev/null); \
 	  fi; \
-	  STATUS=$$(echo "$$RESP" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('status',''))" 2>/dev/null); \
+	  STATUS=$$(echo "$$RESP" | grep -o '"status":"[^"]*"' | head -1 | sed 's/"status":"//;s/"//' 2>/dev/null); \
 	  if [ "$$STATUS" = "ok" ]; then \
 	    echo ""; \
 	    echo "Remote health OK ($$ELAPSED s)"; \

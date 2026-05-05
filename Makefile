@@ -3,7 +3,7 @@
 .PHONY: migrate migrate-revert migrate-status
 .PHONY: rollback blue-green canary canary-promote canary-rollback
 .PHONY: logs-db logs-redis deploy-check prod-restart prod-up prod-down
-.PHONY: status run-dev check-cargo-watch
+.PHONY: status run-dev check-cargo-watch status-sh
 
 # Default values (override with: make up POSTGRES_PASSWORD=mypassword)
 COMPOSE_DEV = docker compose -f compose/dev.yml --env-file .env
@@ -56,6 +56,7 @@ help:
 	@echo "  watch       - Start full stack with Rust hot reload (cargo watch)"
 	@echo "              Ctrl+C stops all. For persistent per-service startup, see README."
 	@echo "  down        - Stop all services"
+	@echo "  status      - Show which services are running (PID, port, health)"
 	@echo "  down-dev    - Stop full stack and infrastructure"
 	@echo "  restart     - Restart all services"
 	@echo ""
@@ -286,6 +287,9 @@ down-dev:
 	# (e.g., after a crash). Primary cleanup is via PID file loop above.
 	$(COMPOSE_DEV) down
 	@echo "All services stopped."
+
+status:
+	@./scripts/status.sh
 
 up: check-env
 	$(COMPOSE_DEV) up -d

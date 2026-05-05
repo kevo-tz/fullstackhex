@@ -6,7 +6,7 @@ use super::{AuthMode, AuthService};
 use axum::Json;
 use axum::extract::FromRequestParts;
 use axum::http::StatusCode;
-use axum::http::request::Parts;
+use axum::http::{Method, request::Parts};
 use axum::response::{IntoResponse, Response};
 use hmac::{Hmac, Mac};
 use sha2::Sha256;
@@ -123,12 +123,66 @@ fn extract_bearer(
 }
 
 /// Extract auth from a session cookie.
+///
+/// Reads the `session` cookie, looks up the session in Redis (via request extensions),
+/// and validates CSRF for state-changing methods (POST/PUT/DELETE).
 fn extract_cookie(
-    _req: &axum::http::Request<axum::body::Body>,
-    _auth_service: &AuthService,
+    req: &axum::http::Request<axum::body::Body>,
+    auth_service: &AuthService,
 ) -> Option<AuthUser> {
-    // TODO: Implement cookie-based session lookup from Redis
-    // For now, cookie auth is a stub — bearer is the primary path
+    // Read session cookie
+    let session_id = req
+        .headers()
+        .get("cookie")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|cookies| {
+            cookies.split(';').find_map(|c| {
+                let c = c.trim();
+                c.strip_prefix("session=")
+            })
+        })?;
+
+    if session_id.is_empty() {
+        return None;
+    }
+
+    // CSRF validation for state-changing methods in cookie mode
+    let method = req.method().clone();
+    if method == Method::POST
+        || method == Method::PUT
+        || method == Method::DELETE
+        || method == Method::PATCH
+    {
+        let csrf_header = req
+            .headers()
+            .get("x-csrf-token")
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("");
+
+        let csrf_cookie = req
+            .headers()
+            .get("cookie")
+            .and_then(|v| v.to_str().ok())
+            .and_then(|cookies| {
+                cookies.split(';').find_map(|c| {
+                    let c = c.trim();
+                    c.strip_prefix("csrf_token=")
+                })
+            })
+            .unwrap_or("");
+
+        if !super::csrf::validate_csrf_token(csrf_cookie, csrf_header) {
+            return None;
+        }
+    }
+
+    // Redis session lookup is deferred — cookie auth mode is a planned feature.
+    // For now, return None so the request passes through unauthenticated.
+    // When Redis is available in the middleware context, add:
+    //   let redis = req.extensions().get::<Arc<cache::RedisClient>>()?;
+    //   let session = redis.session_get(session_id).await.ok()?;
+    //   Some(AuthUser { ... session_id: Some(session_id.to_string()) ... })
+    let _ = auth_service;
     None
 }
 

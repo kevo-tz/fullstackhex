@@ -23,7 +23,6 @@
 **What:** After `make dev`, no way to verify which services are alive without manually curling health endpoints.
 **Fix:** Add `make status` printing table: Service | PID | Port | Health | Uptime. Read from PID files started by `make dev`.
 **Files:** `Makefile`, `scripts/status.sh`
-**Depends on:** A5
 
 ### A8. Add `make test-e2e` [P1] [L]
 **What:** Test suites run in isolation. No verification that backend + frontend + database work together. /qa found auth 500 only by manual curl.

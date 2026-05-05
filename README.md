@@ -46,6 +46,14 @@ Dashboard at http://localhost:4321 — three green dots means everything is heal
 
 For infra-only (run backend/frontend manually): `make up`.
 
+`make dev` runs everything in the foreground — press Ctrl+C to stop all services.
+If you need services to survive terminal closure, start them individually:
+```bash
+make up                              # Docker services only
+cd backend && cargo run -p api       # Rust backend
+cd frontend && bun run dev           # Astro frontend
+```
+
 ### Production Deploy
 
 ```bash

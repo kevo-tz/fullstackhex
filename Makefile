@@ -54,6 +54,7 @@ help:
 	@echo "  up          - Start all development services (infra only)"
 	@echo "  dev         - Start full stack (infra + python + rust + frontend)"
 	@echo "  watch       - Start full stack with Rust hot reload (cargo watch)"
+	@echo "              Ctrl+C stops all. For persistent per-service startup, see README."
 	@echo "  down        - Stop all services"
 	@echo "  down-dev    - Stop full stack and infrastructure"
 	@echo "  restart     - Restart all services"

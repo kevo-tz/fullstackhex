@@ -1,27 +1,5 @@
 # TODOS
 
-## Now (this branch / next PR)
-
-### A1. Fix migration 001 format [P0] [S]
-**What:** `backend/crates/db/migrations/001_create_users.sql` has `CREATE TABLE` and `DROP TABLE` in one file with golang-migrate comments (`-- +migrate Up/Down`). sqlx runs entire file as up-migration — table created then immediately dropped.
-**Fix:** Split into `001_create_users.up.sql` / `001_create_users.down.sql`. Remove `-- +migrate` comments. Verify with `make migrate` on fresh database.
-**Files:** `backend/crates/db/migrations/001_create_users.sql`
-
-### S1. Wire HMAC-signed auth headers to Python sidecar [P0] [M]
-**What:** Rust backend never sends `X-User-Id`, `X-User-Email`, `X-User-Name`, or `X-Auth-Signature` headers to Python sidecar over Unix socket. Sidecar's HMAC middleware bypassed for all routes.
-**Fix:** Compute `HMAC-SHA256(SIDECAR_SHARED_SECRET, "{user_id}|{email}|{name}")` and include user headers on every socket request in `python-sidecar/src/lib.rs`.
-**Files:** `backend/crates/python-sidecar/src/lib.rs`, `backend/crates/api/src/lib.rs`
-
-### S2. Logout must invalidate session + blacklist token JTI [P0] [S]
-**What:** `POST /auth/logout` is a stub — two TODO comments, returns 204 without destroying session or blacklisting token.
-**Fix:** Delete session key from Redis, set `blacklist:{jti}` with 15min TTL, delete `refresh:{token}`, clear session cookie.
-**Files:** `backend/crates/auth/src/routes.rs`
-
-### A11. Document `make dev` signal handling [P2] [S]
-**What:** `make dev` traps INT/TERM to run `make down-dev`, but `wait` at end means Ctrl+C kills everything. Developers expect it to behave like `docker compose up`.
-**Fix:** Add 3-line note to README and Makefile help explaining Ctrl+C behavior and alternative per-service startup commands.
-**Files:** `README.md`, `Makefile`
-
 ## Next (this milestone)
 
 ### S3. Atomic token refresh via Lua script [P1] [M]

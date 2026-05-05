@@ -95,7 +95,9 @@ async def hmac_auth_middleware(request: Request, call_next):
     if not shared_secret:
         # Fail closed — never trust auth headers if shared secret is missing
         return Response(
-            content=json.dumps({"error": "SIDECAR_SHARED_SECRET not configured — rejecting all requests"}),
+            content=json.dumps(
+                {"error": "SIDECAR_SHARED_SECRET not configured — rejecting all requests"}
+            ),
             status_code=401,
             media_type="application/json",
         )

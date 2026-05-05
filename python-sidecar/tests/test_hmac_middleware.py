@@ -3,6 +3,7 @@
 Tests the middleware directly via async function calls to avoid adding
 temporary routes to the shared app instance.
 """
+
 import asyncio
 import hashlib
 import hmac

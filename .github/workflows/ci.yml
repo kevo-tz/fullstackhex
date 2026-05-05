@@ -245,7 +245,7 @@ jobs:
         uses: docker/setup-buildx-action@v4
 
       - name: Verify Dockerfile.rust builds
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           file: compose/Dockerfile.rust
           context: .

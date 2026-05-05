@@ -126,7 +126,7 @@ jobs:
       - uses: actions/checkout@v6
 
       - name: Setup Node.js 22
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: "22"
 
@@ -176,7 +176,7 @@ jobs:
         uses: astral-sh/setup-uv@v8.1.0
 
       - name: Setup Node.js 22
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: "22"
 
@@ -242,10 +242,10 @@ jobs:
           done
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       - name: Verify Dockerfile.rust builds
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           file: compose/Dockerfile.rust
           context: .

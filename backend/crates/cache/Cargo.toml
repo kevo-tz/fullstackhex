@@ -1,0 +1,19 @@
+[package]
+name = "cache"
+version = "0.1.0"
+edition = "2024"
+description.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+fred = { version = "10", features = ["subscriber-client", "i-scripts"] }
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+uuid = { workspace = true }
+metrics = { workspace = true }
+thiserror = "2"
+futures = "0.3"

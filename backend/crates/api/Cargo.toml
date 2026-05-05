@@ -20,6 +20,11 @@ metrics-exporter-prometheus = { workspace = true }
 dotenvy = "0.15"
 db = { path = "../db" }
 python-sidecar = { path = "../python-sidecar" }
+cache = { path = "../cache" }
+auth = { path = "../auth" }
+storage = { path = "../storage" }
+domain = { path = "../domain" }
+reqwest = { version = "0.11", features = ["stream"] }
 
 [dev-dependencies]
 serial_test = { workspace = true }

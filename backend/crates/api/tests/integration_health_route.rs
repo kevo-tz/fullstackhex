@@ -54,7 +54,7 @@ impl Drop for EnvGuard {
 
 #[tokio::test]
 async fn health_returns_200() {
-    let (app, _state) = router(test_prometheus_handle()).await;
+    let (app, _state) = router(test_prometheus_handle()).await.unwrap();
     let response = app
         .oneshot(
             Request::builder()
@@ -70,7 +70,7 @@ async fn health_returns_200() {
 
 #[tokio::test]
 async fn health_returns_json_with_status_ok() {
-    let (app, _state) = router(test_prometheus_handle()).await;
+    let (app, _state) = router(test_prometheus_handle()).await.unwrap();
     let response = app
         .oneshot(
             Request::builder()
@@ -93,7 +93,7 @@ async fn health_returns_json_with_status_ok() {
 
 #[tokio::test]
 async fn health_content_type_is_json() {
-    let (app, _state) = router(test_prometheus_handle()).await;
+    let (app, _state) = router(test_prometheus_handle()).await.unwrap();
     let response = app
         .oneshot(
             Request::builder()
@@ -124,7 +124,7 @@ async fn health_content_type_is_json() {
 #[serial]
 async fn health_db_returns_503_when_not_configured() {
     let _guard = EnvGuard::remove("DATABASE_URL");
-    let (app, _state) = router(test_prometheus_handle()).await;
+    let (app, _state) = router(test_prometheus_handle()).await.unwrap();
     let response = app
         .oneshot(
             Request::builder()
@@ -143,7 +143,7 @@ async fn health_db_returns_503_when_not_configured() {
 async fn health_db_error_when_no_database_url() {
     let _guard = EnvGuard::remove("DATABASE_URL");
 
-    let (app, _state) = router(test_prometheus_handle()).await;
+    let (app, _state) = router(test_prometheus_handle()).await.unwrap();
     let response = app
         .oneshot(
             Request::builder()
@@ -178,7 +178,7 @@ async fn health_db_ok_when_database_url_set() {
         "postgres://localhost:5432/nonexistent_test_db",
     );
 
-    let (app, _state) = router(test_prometheus_handle()).await;
+    let (app, _state) = router(test_prometheus_handle()).await.unwrap();
     let response = app
         .oneshot(
             Request::builder()
@@ -212,7 +212,7 @@ async fn health_python_returns_503_when_no_socket() {
         "PYTHON_SIDECAR_SOCKET",
         "/tmp/__nonexistent_503_test__.sock",
     );
-    let (app, _state) = router(test_prometheus_handle()).await;
+    let (app, _state) = router(test_prometheus_handle()).await.unwrap();
     let response = app
         .oneshot(
             Request::builder()
@@ -234,7 +234,7 @@ async fn health_python_unavailable_when_socket_absent() {
         "/tmp/__nonexistent_test_socket__.sock",
     );
 
-    let (app, _state) = router(test_prometheus_handle()).await;
+    let (app, _state) = router(test_prometheus_handle()).await.unwrap();
     let response = app
         .oneshot(
             Request::builder()
@@ -271,7 +271,7 @@ async fn health_python_ok_when_socket_present() {
     let socket_path = socket_file.path().to_str().unwrap().to_string();
     let _guard = EnvGuard::set("PYTHON_SIDECAR_SOCKET", &socket_path);
 
-    let (app, _state) = router(test_prometheus_handle()).await;
+    let (app, _state) = router(test_prometheus_handle()).await.unwrap();
     let response = app
         .oneshot(
             Request::builder()
@@ -337,6 +337,9 @@ async fn health_db_ok_with_real_pool() {
         ),
         prometheus_handle: test_prometheus_handle(),
         gauge_task: None,
+        redis: None,
+        auth: None,
+        storage: None,
     };
 
     let app = api::router_with_state(state);
@@ -368,7 +371,7 @@ async fn health_python_ok_with_mock_socket() {
     use api::DbStatus;
     use api::router_with_state;
     use std::time::Duration;
-    use tokio::io::AsyncWriteExt;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
     use tokio::net::UnixListener;
 
     let dir = tempfile::tempdir().unwrap();
@@ -376,22 +379,29 @@ async fn health_python_ok_with_mock_socket() {
     let listener = UnixListener::bind(&sock_path).unwrap();
     let sc = python_sidecar::PythonSidecar::new(sock_path.clone(), Duration::from_secs(2), 0);
 
-    // Spawn a mock sidecar that responds with valid JSON.
-    // Mirroring the pattern from python-sidecar/src/lib.rs ignored tests.
+    // Spawn a mock sidecar that reads the request then responds with valid JSON.
+    // Reading first ensures the client finishes writing before we close.
     tokio::spawn(async move {
         let (mut stream, _) = listener.accept().await.unwrap();
+        let mut buf = [0u8; 512];
+        let _ = stream.read(&mut buf).await;
         let response = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n{\"status\":\"ok\",\"service\":\"python-sidecar\",\"version\":\"0.1.0\"}";
         stream.write_all(response.as_bytes()).await.unwrap();
+        stream.shutdown().await.ok();
+        tokio::time::sleep(Duration::from_millis(200)).await;
     });
 
     // Brief yield so the spawned task can enter accept().
-    tokio::time::sleep(Duration::from_millis(50)).await;
+    tokio::time::sleep(Duration::from_millis(100)).await;
 
     let state = AppState {
         db: DbStatus::NotConfigured,
         sidecar: sc,
         prometheus_handle: test_prometheus_handle(),
         gauge_task: None,
+        redis: None,
+        auth: None,
+        storage: None,
     };
 
     let app = router_with_state(state);
@@ -424,7 +434,7 @@ async fn health_python_ok_with_mock_socket() {
 
 #[tokio::test]
 async fn unknown_route_returns_404() {
-    let (app, _state) = router(test_prometheus_handle()).await;
+    let (app, _state) = router(test_prometheus_handle()).await.unwrap();
     let response = app
         .oneshot(
             Request::builder()

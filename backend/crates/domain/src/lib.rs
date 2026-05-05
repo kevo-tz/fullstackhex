@@ -2,8 +2,8 @@
 //!
 //! This crate is the domain layer — models, services, and use cases
 //! that are independent of the web framework, database, or transport.
-//!
-//! Currently a placeholder. Add your domain types and business rules here.
+
+pub mod error;
 
 /// Placeholder: remove when real domain types are added.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

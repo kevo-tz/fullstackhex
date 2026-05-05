@@ -155,6 +155,22 @@
           </div>
         </div>
 
+        <div class="card" id="card-redis">
+          <div class="card-label">Redis</div>
+          <div class="status-row">
+            <div class="dot loading" id="dot-redis"></div>
+            <span class="status-text" id="text-redis">checking…</span>
+          </div>
+        </div>
+
+        <div class="card" id="card-storage">
+          <div class="card-label">RustFS Storage</div>
+          <div class="status-row">
+            <div class="dot loading" id="dot-storage"></div>
+            <span class="status-text" id="text-storage">checking…</span>
+          </div>
+        </div>
+
         <div class="card" id="card-python">
           <div class="card-label">Python sidecar</div>
           <div class="status-row">
@@ -193,9 +209,11 @@
       }
 
       async function fetchHealth() {
-        setStatus("rust",   "loading", "checking…");
-        setStatus("db",     "loading", "checking…");
-        setStatus("python", "loading", "checking…");
+        setStatus("rust",    "loading", "checking…");
+        setStatus("db",      "loading", "checking…");
+        setStatus("redis",   "loading", "checking…");
+        setStatus("storage", "loading", "checking…");
+        setStatus("python",  "loading", "checking…");
         const rawJson = document.getElementById("raw-json");
         if (rawJson) rawJson.textContent = "fetching…";
 
@@ -214,6 +232,18 @@
             data.db?.status === "ok" ? "ok" :
             data.db?.status === "error" ? "error" : "degraded",
             data.db?.error ? "error: " + data.db.error : data.db?.status || "unknown");
+
+          // Redis
+          setStatus("redis",
+            data.redis?.status === "ok" ? "ok" :
+            data.redis?.status === "error" ? "error" : "degraded",
+            data.redis?.status || "unknown");
+
+          // Storage
+          setStatus("storage",
+            data.storage?.status === "ok" ? "ok" :
+            data.storage?.status === "error" ? "error" : "degraded",
+            data.storage?.error ? "error: " + data.storage.error : data.storage?.status || "unknown");
 
           // Python
           const py = data.python || {};
@@ -235,9 +265,11 @@
           }
 
         } catch (err) {
-          setStatus("rust",   "error", "unreachable");
-          setStatus("db",     "error", "—");
-          setStatus("python", "error", "—");
+          setStatus("rust",    "error", "unreachable");
+          setStatus("db",      "error", "—");
+          setStatus("redis",   "error", "—");
+          setStatus("storage", "error", "—");
+          setStatus("python",  "error", "—");
           const msg = err instanceof Error ? err.message : String(err);
           if (rawJson) rawJson.textContent =
             "Error: could not reach /api/health\n\n" + msg;

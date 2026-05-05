@@ -53,9 +53,11 @@ export async function aggregateHealth(
     trace_id: traceId,
   });
 
-  const [rustResult, dbResult, pythonResult] = await Promise.all([
+  const [rustResult, dbResult, redisResult, storageResult, pythonResult] = await Promise.all([
     handleService(fetchImpl, `${apiBase}/health`, "rust", "api", "error", traceId),
     handleService(fetchImpl, `${apiBase}/health/db`, "db", "db", "error", traceId),
+    handleService(fetchImpl, `${apiBase}/health/redis`, "redis", "redis", "unavailable", traceId),
+    handleService(fetchImpl, `${apiBase}/health/storage`, "storage", "storage", "unavailable", traceId),
     handleService(fetchImpl, `${apiBase}/health/python`, "python", "python", "unavailable", traceId),
   ]);
 
@@ -72,6 +74,8 @@ export async function aggregateHealth(
   return {
     rust: rustResult,
     db: dbResult,
+    redis: redisResult,
+    storage: storageResult,
     python: pythonResult,
   };
 }

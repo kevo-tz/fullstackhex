@@ -1,7 +1,10 @@
 from datetime import datetime, timezone
 from fastapi import FastAPI, Request, Response
+import hmac
+import hashlib
 import logging
 import json
+import os
 import sys
 import time
 
@@ -79,6 +82,54 @@ async def trace_id_middleware(request: Request, call_next):
     PYTHON_REQUESTS_TOTAL.labels(method=request.method, endpoint=endpoint, status=status).inc()
     PYTHON_REQUEST_DURATION.labels(method=request.method, endpoint=endpoint).observe(duration)
     return response
+
+
+@app.middleware("http")
+async def hmac_auth_middleware(request: Request, call_next):
+    path = request.url.path
+    # Skip HMAC for public routes
+    if path in ("/health", "/metrics"):
+        return await call_next(request)
+
+    shared_secret = os.environ.get("SIDECAR_SHARED_SECRET", "")
+    if not shared_secret:
+        # Fail closed — never trust auth headers if shared secret is missing
+        return Response(
+            content=json.dumps(
+                {"error": "SIDECAR_SHARED_SECRET not configured — rejecting all requests"}
+            ),
+            status_code=401,
+            media_type="application/json",
+        )
+
+    user_id = request.headers.get("X-User-Id", "")
+    email = request.headers.get("X-User-Email", "")
+    name = request.headers.get("X-User-Name", "")
+    signature = request.headers.get("X-Auth-Signature", "")
+
+    if not all([user_id, email, signature]):
+        return Response(
+            content=json.dumps({"error": "Missing auth headers"}),
+            status_code=401,
+            media_type="application/json",
+        )
+
+    # Compute expected signature: HMAC-SHA256(secret, "user_id|email|name")
+    payload = f"{user_id}|{email}|{name}"
+    expected = hmac.new(
+        shared_secret.encode("utf-8"),
+        payload.encode("utf-8"),
+        hashlib.sha256,
+    ).hexdigest()
+
+    if not hmac.compare_digest(expected, signature):
+        return Response(
+            content=json.dumps({"error": "Invalid auth signature"}),
+            status_code=401,
+            media_type="application/json",
+        )
+
+    return await call_next(request)
 
 
 @app.get("/health")

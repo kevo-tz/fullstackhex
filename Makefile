@@ -1,5 +1,7 @@
 .PHONY: up down restart logs-backend logs-frontend test bench clean check-env setup setup-env help
 .PHONY: verify-health check-prereqs preflight down-dev dev watch test-socket-ci
+.PHONY: migrate migrate-revert migrate-status
+.PHONY: rollback blue-green canary canary-promote canary-rollback
 
 # Default values (override with: make up POSTGRES_PASSWORD=mypassword)
 COMPOSE_DEV = docker compose -f compose/dev.yml --env-file .env
@@ -18,18 +20,18 @@ PYTHON_SOCK ?= /tmp/fullstackhex-python.sock
 # Shared startup sequence used by dev and watch targets
 START_DEPS = \
 	$(COMPOSE_DEV) up -d; \
-	@echo "Waiting for PostgreSQL (up to $$(( $(POSTGRES_RETRIES) * $(POSTGRES_POLL_INTERVAL) ))s)..."; \
-	@for i in $$(seq 1 $(POSTGRES_RETRIES)); do \
+	echo "Waiting for PostgreSQL (up to $$(( $(POSTGRES_RETRIES) * $(POSTGRES_POLL_INTERVAL) ))s)..."; \
+	for i in $$(seq 1 $(POSTGRES_RETRIES)); do \
 	  docker compose -f compose/dev.yml exec -T postgres pg_isready -U app_user 2>/dev/null && break; \
 	  sleep $(POSTGRES_POLL_INTERVAL); \
 	done; \
-	@echo "PostgreSQL ready (or timeout — Rust will retry connections)"; \
-	@echo "Starting Python sidecar..."; \
+	echo "PostgreSQL ready (or timeout — Rust will retry connections)"; \
+	echo "Starting Python sidecar..."; \
 	cd python-sidecar && set -a && . ../.env && set +a && uv run uvicorn app.main:app --uds $(PYTHON_SOCK) & \
 	echo $$! >> $(PID_FILE); \
-	@echo "Starting frontend..."; \
+	echo "Starting frontend..."; \
 	cd frontend && bun run dev & \
-	echo $$! >> $(PID_FILE);
+	echo $$! >> $(PID_FILE)
 
 # Help
 help:
@@ -40,6 +42,11 @@ help:
 	@echo "  setup-env   - Create .env from .env.example (no tool install)"
 	@echo ""
 	@echo "  Example: make setup && make dev"
+	@echo ""
+	@echo "Database:"
+	@echo "  migrate         - Run pending database migrations"
+	@echo "  migrate-revert  - Revert last database migration"
+	@echo "  migrate-status  - Show migration status"
 	@echo ""
 	@echo "Services:"
 	@echo "  up          - Start all development services (infra only)"
@@ -80,6 +87,12 @@ help:
 	@echo "Production:"
 	@echo "  prod-up         - Start production stack"
 	@echo "  prod-down       - Stop production stack"
+	@echo "  deploy          - Deploy to VPS (SSH + rsync + docker compose)"
+	@echo "  rollback        - Rollback to previous version"
+	@echo "  blue-green      - Zero-downtime blue-green deployment"
+	@echo "  canary          - Canary deployment (10% traffic)"
+	@echo "  canary-promote  - Promote canary to primary"
+	@echo "  canary-rollback - Rollback canary"
 
 # Setup
 setup: ## First-time setup: install dev tools and create .env
@@ -88,6 +101,20 @@ setup: ## First-time setup: install dev tools and create .env
 
 setup-env: ## Create .env from .env.example (skips tool installation)
 	./scripts/setup-env.sh
+
+# Database migrations
+migrate: ## Run pending database migrations
+	@echo "Running database migrations..."
+	@cd backend && cargo sqlx migrate run
+	@echo "Migrations applied."
+
+migrate-revert: ## Revert last database migration
+	@echo "Reverting last migration..."
+	@cd backend && cargo sqlx migrate revert
+	@echo "Migration reverted."
+
+migrate-status: ## Show database migration status
+	@cd backend && cargo sqlx migrate info
 
 # Services
 
@@ -253,10 +280,9 @@ down-dev:
 	  done < $(PID_FILE); \
 	  rm -f $(PID_FILE); \
 	fi
-	@pkill -f "uvicorn app.main:app" 2>/dev/null || true
-	@pkill -f "cargo run -p api" 2>/dev/null || true
-	@pkill -f "cargo watch" 2>/dev/null || true
-	@pkill -f "bun run dev" 2>/dev/null || true
+	@pkill -x uvicorn 2>/dev/null || true
+	@pkill -x api 2>/dev/null || true
+	@pkill -x bun 2>/dev/null || true
 	$(COMPOSE_DEV) down
 	@echo "All services stopped."
 
@@ -394,3 +420,19 @@ prod-restart:
 	@test -n "$(DEPLOY_USER)" || { echo "ERROR: DEPLOY_USER not set in .env"; exit 1; }
 	@test -n "$(DEPLOY_PATH)" || { echo "ERROR: DEPLOY_PATH not set in .env"; exit 1; }
 	ssh $(DEPLOY_USER)@$(DEPLOY_HOST) "cd $(DEPLOY_PATH) && docker compose -f compose/prod.yml down && docker compose -f compose/prod.yml up -d --wait"
+
+# Deploy safety — rollback, blue-green, canary
+rollback: ## Rollback to the previous deployment version
+	./scripts/rollback.sh
+
+blue-green: ## Zero-downtime blue-green deployment
+	./scripts/deploy-blue-green.sh
+
+canary: ## Canary deployment (10% traffic to new version)
+	./scripts/deploy-canary.sh
+
+canary-promote: ## Promote canary to primary (100% traffic)
+	./scripts/deploy-canary-promote.sh
+
+canary-rollback: ## Rollback canary deployment
+	./scripts/deploy-canary-rollback.sh

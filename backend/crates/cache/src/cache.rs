@@ -1,6 +1,7 @@
 //! Simple key-value cache with TTL support.
 
 use super::{CacheError, RedisClient};
+use fred::interfaces::LuaInterface;
 use fred::prelude::*;
 use fred::types::scan::Scanner;
 use futures::TryStreamExt;
@@ -102,5 +103,41 @@ impl RedisClient {
         }
 
         Ok(count)
+    }
+
+    /// Atomically read and delete a refresh token.
+    ///
+    /// Uses a Lua script to guarantee that concurrent refresh requests
+    /// cannot both read the same token before it's deleted.
+    /// Returns the user_id if the token existed, None otherwise.
+    pub async fn refresh_token_rotate(
+        &self,
+        token: &str,
+    ) -> Result<Option<String>, CacheError> {
+        let full_key = self.make_key("refresh", token);
+
+        // Lua: atomic GET + DEL — prevents token family leaks under concurrency
+        let script = r#"
+            local val = redis.call('GET', KEYS[1])
+            if val then
+                redis.call('DEL', KEYS[1])
+                return val
+            end
+            return ''
+        "#;
+
+        let keys = vec![full_key];
+        let args: Vec<String> = vec![];
+        let result: String = self
+            .client
+            .eval(script, keys, args)
+            .await
+            .map_err(CacheError::CommandFailed)?;
+
+        if result.is_empty() {
+            Ok(None)
+        } else {
+            Ok(Some(result))
+        }
     }
 }

@@ -2,25 +2,10 @@
 
 ## Next (this milestone)
 
-### S3. Atomic token refresh via Lua script [P1] [M]
-**What:** `POST /auth/refresh` does get→delete→set as three separate Redis commands. Concurrent refresh requests can corrupt token state.
-**Fix:** Replace with single Lua script that checks old token exists, deletes it, sets new token, returns user_id atomically.
-**Files:** `backend/crates/auth/src/routes.rs`, `backend/crates/cache/src/session.rs`
-
-### S4. Progressive brute-force backoff [P1] [M]
-**What:** Rate limiting uses fixed window. Spec specified progressive backoff: 5 failures → 60s, 10 → 5min, 20 → 30min.
-**Fix:** Track failure count in Redis key `backoff:{ip}:{endpoint}`. Increment on each failed login, set TTL based on threshold.
-**Files:** `backend/crates/auth/src/routes.rs`, `backend/crates/cache/src/rate_limit.rs`
-
 ### S5. Enable CSRF protection in cookie auth mode [P1] [M]
 **What:** `csrf.rs` exists and is tested, but cookie auth mode in `auth/src/middleware.rs` is stubbed with TODO. State-changing endpoints have no CSRF protection when `AUTH_MODE=cookie`.
 **Fix:** Wire `csrf::generate()` and `csrf::validate()` into cookie auth path. Set CSRF token in separate cookie, validate `X-CSRF-Token` header.
 **Files:** `backend/crates/auth/src/middleware.rs`, `backend/crates/auth/src/routes.rs`
-
-### A3. Add `make sync-env` [P1] [S]
-**What:** `.env` is gitignored. When `.env.example` changes, developers must manually diff and merge. No automated drift detection.
-**Fix:** Add `make sync-env` that compares `.env` against `.env.example` and prints missing keys with example values. Optionally support `make sync-env --apply`.
-**Files:** `Makefile`, `scripts/sync-env.sh`
 
 ### A5. Make `make dev` background processes survive terminal detachment [P1] [M]
 **What:** `make dev` runs `cargo run -p api &` inside shell script. When terminal closes, Rust backend gets SIGTERM and shuts down.

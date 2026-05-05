@@ -1,4 +1,4 @@
-.PHONY: up down restart logs-backend logs-frontend test bench clean check-env setup setup-env help
+.PHONY: up down restart logs-backend logs-frontend test bench clean check-env sync-env setup setup-env help
 .PHONY: verify-health check-prereqs preflight down-dev dev watch test-socket-ci
 .PHONY: migrate migrate-revert migrate-status
 .PHONY: rollback blue-green canary canary-promote canary-rollback
@@ -82,6 +82,8 @@ help:
 	@echo "  health          - Check all services health"
 	@echo "  verify-health   - Poll health endpoints until all OK or timeout"
 	@echo "  check-env       - Validate .env has all required keys and no CHANGE_ME placeholders"
+	@echo "  sync-env        - Compare .env against .env.example, show missing keys"
+	@echo "  sync-env-apply  - Append missing keys to .env (commented out)"
 	@echo "  check-prereqs   - Check required dev tools are installed"
 	@echo ""
 	@echo "Cleanup:"
@@ -125,6 +127,14 @@ migrate-status: ## Show database migration status
 # all required keys from .env.example are present, and no shell syntax errors.
 check-env:
 	@./scripts/validate-env.sh
+
+# sync-env: compare .env against .env.example and report missing keys.
+# With --apply: append missing keys (commented out) to .env.
+sync-env:
+	@./scripts/sync-env.sh
+
+sync-env-apply:
+	@./scripts/sync-env.sh --apply
 
 # check-prereqs: detect required dev tools and print install instructions
 check-prereqs:

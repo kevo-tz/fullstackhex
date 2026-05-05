@@ -27,6 +27,12 @@ pub enum CacheError {
     SessionNotFound,
     #[error("rate limit exceeded")]
     RateLimitExceeded,
+    #[error("backoff blocked: {count} failures, {label} cooldown, {remaining_secs}s remaining")]
+    BackoffBlocked {
+        remaining_secs: u64,
+        count: u64,
+        label: String,
+    },
 }
 
 /// Redis client wrapper with connection pool.

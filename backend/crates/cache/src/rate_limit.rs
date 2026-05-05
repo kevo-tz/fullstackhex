@@ -114,4 +114,90 @@ impl RedisClient {
 
         Ok(count)
     }
+
+    /// Check and apply progressive brute-force backoff.
+    ///
+    /// Tracks login failures per IP+endpoint. Failure count determines cooldown:
+    ///   - 5 failures  → 60s block
+    ///   - 10 failures → 5min block
+    ///   - 20 failures → 30min block
+    ///
+    /// Returns an error with the remaining cooldown seconds if the IP is blocked.
+    /// Call this BEFORE the rate limit check on login endpoints.
+    pub async fn backoff_check(
+        &self,
+        ip: &str,
+        endpoint: &str,
+    ) -> Result<(), CacheError> {
+        let key = self.make_key("backoff", &format!("{ip}:{endpoint}"));
+        let count: Option<u64> = self
+            .client
+            .get::<Option<u64>, _>(&key)
+            .await
+            .map_err(CacheError::CommandFailed)?;
+
+        let Some(count) = count else {
+            return Ok(());
+        };
+
+        let (_ttl, label) = backoff_params(count);
+
+        let remaining_ttl: i64 = self
+            .client
+            .ttl(&key)
+            .await
+            .map_err(CacheError::CommandFailed)?;
+
+        if remaining_ttl > 0 {
+            return Err(CacheError::BackoffBlocked {
+                remaining_secs: remaining_ttl as u64,
+                count,
+                label: label.to_string(),
+            });
+        }
+
+        // TTL expired — clean up the stale key
+        let _ = self.client.del::<(), _>(&key).await;
+        Ok(())
+    }
+
+    /// Record a failed login attempt, incrementing the backoff counter.
+    ///
+    /// Call this AFTER a failed login (wrong password, invalid credentials).
+    /// The TTL is set based on the current failure count threshold.
+    pub async fn backoff_increment(
+        &self,
+        ip: &str,
+        endpoint: &str,
+    ) -> Result<(), CacheError> {
+        let key = self.make_key("backoff", &format!("{ip}:{endpoint}"));
+
+        let count: u64 = self
+            .client
+            .incr::<u64, _>(&key)
+            .await
+            .map_err(CacheError::CommandFailed)?;
+
+        let (ttl_secs, _label) = backoff_params(count);
+
+        self.client
+            .expire::<(), _>(&key, ttl_secs as i64, None)
+            .await
+            .map_err(CacheError::CommandFailed)?;
+
+        Ok(())
+    }
+}
+
+/// Returns (ttl_seconds, label) for the given failure count.
+fn backoff_params(count: u64) -> (u64, &'static str) {
+    if count >= 20 {
+        (1800, "30min")  // 30 minutes
+    } else if count >= 10 {
+        (300, "5min")    // 5 minutes
+    } else if count >= 5 {
+        (60, "60s")      // 1 minute
+    } else {
+        (60, "tracking") // Track below threshold with 60s TTL
+    }
 }

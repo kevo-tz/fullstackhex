@@ -186,6 +186,20 @@ pub async fn login(
     headers: HeaderMap,
     Json(body): Json<LoginRequest>,
 ) -> Result<impl IntoResponse, ApiError> {
+    let ip = client_ip(&headers);
+
+    // Progressive brute-force backoff by IP (before rate limit check)
+    match state.redis.backoff_check(&ip, "login").await {
+        Ok(()) => {}
+        Err(cache::CacheError::BackoffBlocked { remaining_secs, count, label }) => {
+            return Err(ApiError::RateLimited(format!(
+                "Too many login attempts ({} failures). Try again in {} seconds ({} cooldown).",
+                count, remaining_secs, label
+            )));
+        }
+        Err(e) => return Err(ApiError::InternalError(format!("Backoff check failed: {e}"))),
+    }
+
     // Rate limit by email (5 attempts per 5 minutes)
     check_rate_limit(
         &state.redis,
@@ -196,7 +210,6 @@ pub async fn login(
     .await?;
 
     // Rate limit by IP (10 attempts per 5 minutes)
-    let ip = client_ip(&headers);
     check_rate_limit(
         &state.redis,
         &format!("login:ip:{ip}"),
@@ -215,14 +228,25 @@ pub async fn login(
     .await
     .map_err(|_e| ApiError::InternalError("Internal server error".to_string()))?;
 
-    let (user_id, email, name, provider, password_hash) =
-        user.ok_or_else(|| ApiError::Unauthorized("Invalid credentials".to_string()))?;
+    let (user_id, email, name, provider, password_hash) = match user {
+        Some(u) => u,
+        None => {
+            let _ = state.redis.backoff_increment(&ip, "login").await;
+            return Err(ApiError::Unauthorized("Invalid credentials".to_string()));
+        }
+    };
 
     // Verify password
-    let hash =
-        password_hash.ok_or_else(|| ApiError::Unauthorized("Invalid credentials".to_string()))?;
+    let hash = match password_hash {
+        Some(h) => h,
+        None => {
+            let _ = state.redis.backoff_increment(&ip, "login").await;
+            return Err(ApiError::Unauthorized("Invalid credentials".to_string()));
+        }
+    };
 
     if !password::verify_password(&body.password, &hash)? {
+        let _ = state.redis.backoff_increment(&ip, "login").await;
         return Err(ApiError::Unauthorized("Invalid credentials".to_string()));
     }
 
@@ -304,20 +328,12 @@ pub async fn refresh(
     State(state): State<AuthState>,
     Json(body): Json<RefreshRequest>,
 ) -> Result<impl IntoResponse, ApiError> {
-    // Look up refresh token in Redis
-    let user_id: Option<String> = state
+    // Atomically read and delete the refresh token (prevents token family leak)
+    let user_id = state
         .redis
-        .cache_get("refresh", &body.refresh_token)
-        .await?;
-
-    let user_id = user_id
+        .refresh_token_rotate(&body.refresh_token)
+        .await?
         .ok_or_else(|| ApiError::Unauthorized("Invalid or expired refresh token".to_string()))?;
-
-    // Delete old refresh token (rotation)
-    state
-        .redis
-        .cache_delete("refresh", &body.refresh_token)
-        .await?;
 
     // Get user info
     let user: Option<(String, String, Option<String>, String)> =

@@ -9,8 +9,6 @@ use axum::{
 };
 use metrics_exporter_prometheus::PrometheusHandle;
 use python_sidecar::PythonSidecar;
-#[cfg(test)]
-use serde_json::Value;
 use serde_json::json;
 use sqlx::PgPool;
 use sqlx::postgres::PgPoolOptions;
@@ -121,30 +119,30 @@ fn build_router(state: Arc<AppState>) -> Router {
         .with_state(state.clone());
 
     // Nest auth routes with their own state
-    if let (Some(auth_svc), Some(redis)) = (&state.auth, &state.redis) {
-        if let DbStatus::Connected(ref pool) = state.db {
-            let auth_state = auth::routes::AuthState {
-                auth: auth_svc.clone(),
-                db: pool.clone(),
-                redis: redis.clone(),
-            };
-            let auth_router = Router::new()
-                .route("/register", axum::routing::post(auth::routes::register))
-                .route("/login", axum::routing::post(auth::routes::login))
-                .route("/logout", axum::routing::post(auth::routes::logout))
-                .route("/refresh", axum::routing::post(auth::routes::refresh))
-                .route("/me", axum::routing::get(auth::routes::me))
-                .route(
-                    "/oauth/{provider}",
-                    axum::routing::get(auth::routes::oauth_redirect),
-                )
-                .route(
-                    "/oauth/{provider}/callback",
-                    axum::routing::get(auth::routes::oauth_callback),
-                )
-                .with_state(auth_state);
-            router = router.nest("/auth", auth_router);
-        }
+    if let (Some(auth_svc), Some(redis)) = (&state.auth, &state.redis)
+        && let DbStatus::Connected(ref pool) = state.db
+    {
+        let auth_state = auth::routes::AuthState {
+            auth: auth_svc.clone(),
+            db: pool.clone(),
+            redis: redis.clone(),
+        };
+        let auth_router = Router::new()
+            .route("/register", axum::routing::post(auth::routes::register))
+            .route("/login", axum::routing::post(auth::routes::login))
+            .route("/logout", axum::routing::post(auth::routes::logout))
+            .route("/refresh", axum::routing::post(auth::routes::refresh))
+            .route("/me", axum::routing::get(auth::routes::me))
+            .route(
+                "/oauth/{provider}",
+                axum::routing::get(auth::routes::oauth_redirect),
+            )
+            .route(
+                "/oauth/{provider}/callback",
+                axum::routing::get(auth::routes::oauth_callback),
+            )
+            .with_state(auth_state);
+        router = router.nest("/auth", auth_router);
     }
 
     // Nest storage routes with their own state

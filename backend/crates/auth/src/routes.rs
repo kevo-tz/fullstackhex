@@ -206,6 +206,7 @@ pub async fn login(
     .await?;
 
     // Find user
+    #[allow(clippy::type_complexity)]
     let user: Option<(String, String, Option<String>, String, Option<String>)> = sqlx::query_as(
         "SELECT id::text, email, name, provider, password_hash FROM users WHERE email = $1",
     )
@@ -453,7 +454,7 @@ pub async fn oauth_callback(
             .bind(&id)
             .bind(&user_info.email)
             .bind(&user_info.name)
-            .bind(&provider.to_string())
+            .bind(provider.to_string())
             .execute(&state.db)
             .await
             .map_err(|_e| ApiError::InternalError("Internal server error".to_string()))?;

@@ -88,15 +88,15 @@ impl RedisClient {
             .await
             .map_err(CacheError::CommandFailed)?
         {
-            if let Some(keys) = page.take_results() {
-                if !keys.is_empty() {
-                    let deleted = keys.len() as u64;
-                    self.client
-                        .del::<(), _>(keys)
-                        .await
-                        .map_err(CacheError::CommandFailed)?;
-                    count += deleted;
-                }
+            if let Some(keys) = page.take_results()
+                && !keys.is_empty()
+            {
+                let deleted = keys.len() as u64;
+                self.client
+                    .del::<(), _>(keys)
+                    .await
+                    .map_err(CacheError::CommandFailed)?;
+                count += deleted;
             }
             page.next();
         }

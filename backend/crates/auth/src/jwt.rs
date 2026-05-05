@@ -1,7 +1,7 @@
 //! JWT token creation and validation.
 
 use domain::error::ApiError;
-use jsonwebtoken::{decode, encode, DecodingKey, EncodingKey, Header, Validation};
+use jsonwebtoken::{DecodingKey, EncodingKey, Header, Validation, decode, encode};
 use serde::{Deserialize, Serialize};
 
 /// JWT claims.
@@ -105,7 +105,9 @@ mod tests {
     #[test]
     fn create_and_validate_token() {
         let svc = test_service();
-        let token = svc.create_token("user-123", "test@example.com", Some("Test"), "local").unwrap();
+        let token = svc
+            .create_token("user-123", "test@example.com", Some("Test"), "local")
+            .unwrap();
         let claims = svc.validate_token(&token).unwrap();
         assert_eq!(claims.sub, "user-123");
         assert_eq!(claims.email, "test@example.com");
@@ -125,7 +127,9 @@ mod tests {
     fn validate_wrong_secret_fails() {
         let svc1 = test_service();
         let svc2 = JwtService::new("wrong-secret".to_string(), "test-issuer".to_string(), 900);
-        let token = svc1.create_token("user-123", "test@example.com", None, "local").unwrap();
+        let token = svc1
+            .create_token("user-123", "test@example.com", None, "local")
+            .unwrap();
         assert!(svc2.validate_token(&token).is_err());
     }
 

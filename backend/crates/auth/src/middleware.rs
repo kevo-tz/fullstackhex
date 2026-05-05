@@ -3,11 +3,11 @@
 //! Provides `AuthLayer` middleware and `AuthUser` extractor for Axum.
 
 use super::{AuthMode, AuthService};
-use axum::extract::FromRequestParts;
-use axum::http::request::Parts;
-use axum::http::StatusCode;
-use axum::response::{IntoResponse, Response};
 use axum::Json;
+use axum::extract::FromRequestParts;
+use axum::http::StatusCode;
+use axum::http::request::Parts;
+use axum::response::{IntoResponse, Response};
 use hmac::{Hmac, Mac};
 use sha2::Sha256;
 use std::sync::Arc;
@@ -65,10 +65,7 @@ pub async fn auth_middleware(
     mut req: axum::http::Request<axum::body::Body>,
     next: axum::middleware::Next,
 ) -> Response {
-    let auth_service = req
-        .extensions()
-        .get::<Arc<AuthService>>()
-        .cloned();
+    let auth_service = req.extensions().get::<Arc<AuthService>>().cloned();
 
     let Some(auth_service) = auth_service else {
         // No auth service — pass through (auth disabled)
@@ -96,8 +93,7 @@ fn extract_auth_user(
         AuthMode::Cookie => extract_cookie(req, auth_service),
         AuthMode::Both => {
             // Bearer takes precedence
-            extract_bearer(req, auth_service)
-                .or_else(|| extract_cookie(req, auth_service))
+            extract_bearer(req, auth_service).or_else(|| extract_cookie(req, auth_service))
         }
     }
 }
@@ -200,19 +196,29 @@ mod tests {
     fn hmac_roundtrip() {
         let secret = "test-shared-secret";
         let sig = compute_auth_signature(secret, "user-123", "test@example.com", "Test").unwrap();
-        assert!(verify_auth_signature(secret, "user-123", "test@example.com", "Test", &sig));
+        assert!(verify_auth_signature(
+            secret,
+            "user-123",
+            "test@example.com",
+            "Test",
+            &sig
+        ));
     }
 
     #[test]
     fn hmac_wrong_secret_fails() {
         let sig = compute_auth_signature("secret1", "user-123", "a@b.com", "T").unwrap();
-        assert!(!verify_auth_signature("secret2", "user-123", "a@b.com", "T", &sig));
+        assert!(!verify_auth_signature(
+            "secret2", "user-123", "a@b.com", "T", &sig
+        ));
     }
 
     #[test]
     fn hmac_wrong_payload_fails() {
         let sig = compute_auth_signature("secret", "user-123", "a@b.com", "T").unwrap();
-        assert!(!verify_auth_signature("secret", "user-456", "a@b.com", "T", &sig));
+        assert!(!verify_auth_signature(
+            "secret", "user-456", "a@b.com", "T", &sig
+        ));
     }
 
     #[test]
@@ -223,7 +229,10 @@ mod tests {
 
     #[test]
     fn extract_bearer_missing_header() {
-        let req = axum::http::Request::builder().uri("/").body(axum::body::Body::empty()).unwrap();
+        let req = axum::http::Request::builder()
+            .uri("/")
+            .body(axum::body::Body::empty())
+            .unwrap();
         let auth = test_auth_service(AuthMode::Bearer);
         assert!(extract_bearer(&req, &auth).is_none());
     }
@@ -242,7 +251,10 @@ mod tests {
     #[test]
     fn extract_bearer_valid_token() {
         let auth = test_auth_service(AuthMode::Bearer);
-        let token = auth.jwt.create_token("u1", "a@b.com", None, "local").unwrap();
+        let token = auth
+            .jwt
+            .create_token("u1", "a@b.com", None, "local")
+            .unwrap();
         let req = axum::http::Request::builder()
             .uri("/")
             .header("authorization", format!("Bearer {}", token))
@@ -256,7 +268,10 @@ mod tests {
     #[test]
     fn extract_auth_user_both_prefers_bearer() {
         let auth = test_auth_service(AuthMode::Both);
-        let token = auth.jwt.create_token("u1", "a@b.com", None, "local").unwrap();
+        let token = auth
+            .jwt
+            .create_token("u1", "a@b.com", None, "local")
+            .unwrap();
         let req = axum::http::Request::builder()
             .uri("/")
             .header("authorization", format!("Bearer {}", token))

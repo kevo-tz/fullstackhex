@@ -48,23 +48,34 @@ impl OAuthService {
         github_client_id: Option<String>,
         github_client_secret: Option<String>,
     ) -> Self {
-        let google_client = google_client_id.zip(google_client_secret).map(|(id, secret)| {
-            BasicClient::new(
-                ClientId::new(id),
-                Some(ClientSecret::new(secret)),
-                AuthUrl::new("https://accounts.google.com/o/oauth2/v2/auth".to_string()).unwrap(),
-                Some(TokenUrl::new("https://www.googleapis.com/oauth2/v3/token".to_string()).unwrap()),
-            )
-        });
+        let google_client = google_client_id
+            .zip(google_client_secret)
+            .map(|(id, secret)| {
+                BasicClient::new(
+                    ClientId::new(id),
+                    Some(ClientSecret::new(secret)),
+                    AuthUrl::new("https://accounts.google.com/o/oauth2/v2/auth".to_string())
+                        .unwrap(),
+                    Some(
+                        TokenUrl::new("https://www.googleapis.com/oauth2/v3/token".to_string())
+                            .unwrap(),
+                    ),
+                )
+            });
 
-        let github_client = github_client_id.zip(github_client_secret).map(|(id, secret)| {
-            BasicClient::new(
-                ClientId::new(id),
-                Some(ClientSecret::new(secret)),
-                AuthUrl::new("https://github.com/login/oauth/authorize".to_string()).unwrap(),
-                Some(TokenUrl::new("https://github.com/login/oauth/access_token".to_string()).unwrap()),
-            )
-        });
+        let github_client = github_client_id
+            .zip(github_client_secret)
+            .map(|(id, secret)| {
+                BasicClient::new(
+                    ClientId::new(id),
+                    Some(ClientSecret::new(secret)),
+                    AuthUrl::new("https://github.com/login/oauth/authorize".to_string()).unwrap(),
+                    Some(
+                        TokenUrl::new("https://github.com/login/oauth/access_token".to_string())
+                            .unwrap(),
+                    ),
+                )
+            });
 
         Self {
             google_client,
@@ -87,12 +98,8 @@ impl OAuthService {
             .authorize_url(CsrfToken::new_random)
             .set_redirect_uri(std::borrow::Cow::Owned(redirect_url))
             .add_scope(match provider {
-                OAuthProvider::Google => {
-                    oauth2::Scope::new("email".to_string())
-                }
-                OAuthProvider::GitHub => {
-                    oauth2::Scope::new("user:email".to_string())
-                }
+                OAuthProvider::Google => oauth2::Scope::new("email".to_string()),
+                OAuthProvider::GitHub => oauth2::Scope::new("user:email".to_string()),
             })
             .url();
 
@@ -195,7 +202,9 @@ async fn fetch_github_user_info(access_token: &str) -> Result<OAuthUserInfo, Api
     // Fetch primary email if not public
     let email = match user.email {
         Some(e) => e,
-        None => fetch_github_primary_email(access_token).await.unwrap_or_default(),
+        None => fetch_github_primary_email(access_token)
+            .await
+            .unwrap_or_default(),
     };
 
     Ok(OAuthUserInfo {
@@ -221,10 +230,7 @@ async fn fetch_github_primary_email(access_token: &str) -> Option<String> {
     }
 
     let emails: Vec<GitHubEmail> = resp.json().await.ok()?;
-    emails
-        .into_iter()
-        .find(|e| e.primary)
-        .map(|e| e.email)
+    emails.into_iter().find(|e| e.primary).map(|e| e.email)
 }
 
 #[derive(Debug, Deserialize)]
@@ -271,7 +277,12 @@ mod tests {
 
     #[test]
     fn oauth_service_google_configured() {
-        let svc = OAuthService::new(Some("id".to_string()), Some("secret".to_string()), None, None);
+        let svc = OAuthService::new(
+            Some("id".to_string()),
+            Some("secret".to_string()),
+            None,
+            None,
+        );
         assert!(svc.is_configured(&OAuthProvider::Google));
         assert!(!svc.is_configured(&OAuthProvider::GitHub));
     }

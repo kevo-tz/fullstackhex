@@ -10,8 +10,6 @@ pub mod oauth;
 pub mod password;
 pub mod routes;
 
-
-
 /// Authentication configuration.
 #[derive(Debug, Clone)]
 pub struct AuthConfig {
@@ -59,7 +57,10 @@ impl AuthConfig {
             return None;
         }
 
-        let auth_mode = match std::env::var("AUTH_MODE").unwrap_or_else(|_| "both".to_string()).as_str() {
+        let auth_mode = match std::env::var("AUTH_MODE")
+            .unwrap_or_else(|_| "both".to_string())
+            .as_str()
+        {
             "cookie" => AuthMode::Cookie,
             "bearer" => AuthMode::Bearer,
             _ => AuthMode::Both,
@@ -112,5 +113,3 @@ impl AuthService {
         Some(Self::new(config))
     }
 }
-
-

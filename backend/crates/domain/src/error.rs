@@ -29,12 +29,22 @@ pub enum ApiError {
 impl From<cache::CacheError> for ApiError {
     fn from(e: cache::CacheError) -> Self {
         match e {
-            cache::CacheError::NotConfigured => ApiError::ServiceUnavailable("Redis not configured".to_string()),
-            cache::CacheError::ConnectionFailed(msg) => ApiError::ServiceUnavailable(format!("Redis connection failed: {msg}")),
-            cache::CacheError::CommandFailed(e) => ApiError::InternalError(format!("Redis error: {e}")),
+            cache::CacheError::NotConfigured => {
+                ApiError::ServiceUnavailable("Redis not configured".to_string())
+            }
+            cache::CacheError::ConnectionFailed(msg) => {
+                ApiError::ServiceUnavailable(format!("Redis connection failed: {msg}"))
+            }
+            cache::CacheError::CommandFailed(e) => {
+                ApiError::InternalError(format!("Redis error: {e}"))
+            }
             cache::CacheError::SerializationFailed(msg) => ApiError::InternalError(msg),
-            cache::CacheError::SessionNotFound => ApiError::Unauthorized("Session not found".to_string()),
-            cache::CacheError::RateLimitExceeded => ApiError::RateLimited("Rate limit exceeded".to_string()),
+            cache::CacheError::SessionNotFound => {
+                ApiError::Unauthorized("Session not found".to_string())
+            }
+            cache::CacheError::RateLimitExceeded => {
+                ApiError::RateLimited("Rate limit exceeded".to_string())
+            }
         }
     }
 }
@@ -42,10 +52,16 @@ impl From<cache::CacheError> for ApiError {
 impl From<db::DbError> for ApiError {
     fn from(e: db::DbError) -> Self {
         match e {
-            db::DbError::NotConfigured => ApiError::ServiceUnavailable("Database not configured".to_string()),
-            db::DbError::PoolTimeout(_) => ApiError::ServiceUnavailable("Database pool timeout".to_string()),
+            db::DbError::NotConfigured => {
+                ApiError::ServiceUnavailable("Database not configured".to_string())
+            }
+            db::DbError::PoolTimeout(_) => {
+                ApiError::ServiceUnavailable("Database pool timeout".to_string())
+            }
             db::DbError::QueryFailed(e) => ApiError::InternalError(format!("Database error: {e}")),
-            db::DbError::MigrationFailed(e) => ApiError::InternalError(format!("Migration error: {e}")),
+            db::DbError::MigrationFailed(e) => {
+                ApiError::InternalError(format!("Migration error: {e}"))
+            }
         }
     }
 }
@@ -56,10 +72,22 @@ impl IntoResponse for ApiError {
             ApiError::Unauthorized(msg) => (StatusCode::UNAUTHORIZED, "UNAUTHORIZED", msg.clone()),
             ApiError::Forbidden(msg) => (StatusCode::FORBIDDEN, "FORBIDDEN", msg.clone()),
             ApiError::NotFound(msg) => (StatusCode::NOT_FOUND, "NOT_FOUND", msg.clone()),
-            ApiError::ValidationError(msg) => (StatusCode::BAD_REQUEST, "VALIDATION_ERROR", msg.clone()),
-            ApiError::RateLimited(msg) => (StatusCode::TOO_MANY_REQUESTS, "RATE_LIMITED", msg.clone()),
-            ApiError::InternalError(msg) => (StatusCode::INTERNAL_SERVER_ERROR, "INTERNAL_ERROR", msg.clone()),
-            ApiError::ServiceUnavailable(msg) => (StatusCode::SERVICE_UNAVAILABLE, "SERVICE_UNAVAILABLE", msg.clone()),
+            ApiError::ValidationError(msg) => {
+                (StatusCode::BAD_REQUEST, "VALIDATION_ERROR", msg.clone())
+            }
+            ApiError::RateLimited(msg) => {
+                (StatusCode::TOO_MANY_REQUESTS, "RATE_LIMITED", msg.clone())
+            }
+            ApiError::InternalError(msg) => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "INTERNAL_ERROR",
+                msg.clone(),
+            ),
+            ApiError::ServiceUnavailable(msg) => (
+                StatusCode::SERVICE_UNAVAILABLE,
+                "SERVICE_UNAVAILABLE",
+                msg.clone(),
+            ),
         };
 
         let body = json!({

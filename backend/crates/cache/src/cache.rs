@@ -4,7 +4,7 @@ use super::{CacheError, RedisClient};
 use fred::prelude::*;
 use fred::types::scan::Scanner;
 use futures::TryStreamExt;
-use serde::{de::DeserializeOwned, Serialize};
+use serde::{Serialize, de::DeserializeOwned};
 use std::time::Duration;
 
 impl RedisClient {
@@ -48,7 +48,13 @@ impl RedisClient {
             .map_err(|e| CacheError::SerializationFailed(e.to_string()))?;
 
         self.client
-            .set::<(), _, _>(&full_key, json, Some(Expiration::EX(ttl.as_secs() as i64)), None, false)
+            .set::<(), _, _>(
+                &full_key,
+                json,
+                Some(Expiration::EX(ttl.as_secs() as i64)),
+                None,
+                false,
+            )
             .await
             .map_err(CacheError::CommandFailed)?;
 
@@ -77,7 +83,11 @@ impl RedisClient {
         let mut count: u64 = 0;
         let mut scan_stream = self.client.scan(&full_pattern, Some(100), None);
 
-        while let Some(mut page) = scan_stream.try_next().await.map_err(CacheError::CommandFailed)? {
+        while let Some(mut page) = scan_stream
+            .try_next()
+            .await
+            .map_err(CacheError::CommandFailed)?
+        {
             if let Some(keys) = page.take_results() {
                 if !keys.is_empty() {
                     let deleted = keys.len() as u64;

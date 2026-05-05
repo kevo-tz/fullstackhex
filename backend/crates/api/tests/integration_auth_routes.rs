@@ -1,8 +1,8 @@
+use api::AppState;
+use api::DbStatus;
 /// Integration tests verifying auth routes are absent when auth is not configured.
 use api::metrics::init_metrics_recorder;
 use api::router_with_state;
-use api::AppState;
-use api::DbStatus;
 use axum::http::{Request, StatusCode};
 use python_sidecar::PythonSidecar;
 use std::time::Duration;

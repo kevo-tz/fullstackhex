@@ -4,13 +4,13 @@
 //! POST /auth/refresh, GET /auth/me,
 //! GET /auth/oauth/{provider}, GET /auth/oauth/{provider}/callback
 
+use super::AuthService;
 use super::middleware::AuthUser;
 use super::password;
-use super::AuthService;
-use axum::extract::{Path, Query, State};
-use axum::http::{header, HeaderMap, StatusCode};
-use axum::response::IntoResponse;
 use axum::Json;
+use axum::extract::{Path, Query, State};
+use axum::http::{HeaderMap, StatusCode, header};
+use axum::response::IntoResponse;
 use domain::error::ApiError;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -122,17 +122,14 @@ pub async fn register(
     }
 
     // Check if user exists
-    let existing: Option<(String,)> =
-        sqlx::query_as("SELECT id::text FROM users WHERE email = $1")
-            .bind(&body.email)
-            .fetch_optional(&state.db)
-            .await
-            .map_err(|_e| ApiError::InternalError("Internal server error".to_string()))?;
+    let existing: Option<(String,)> = sqlx::query_as("SELECT id::text FROM users WHERE email = $1")
+        .bind(&body.email)
+        .fetch_optional(&state.db)
+        .await
+        .map_err(|_e| ApiError::InternalError("Internal server error".to_string()))?;
 
     if existing.is_some() {
-        return Err(ApiError::ValidationError(
-            "Invalid credentials".to_string(),
-        ));
+        return Err(ApiError::ValidationError("Invalid credentials".to_string()));
     }
 
     // Hash password
@@ -150,12 +147,11 @@ pub async fn register(
     .map_err(|_e| ApiError::InternalError("Internal server error".to_string()))?;
 
     // Create JWT
-    let access_token = state.auth.jwt.create_token(
-        &user_id.0,
-        &body.email,
-        body.name.as_deref(),
-        "local",
-    )?;
+    let access_token =
+        state
+            .auth
+            .jwt
+            .create_token(&user_id.0, &body.email, body.name.as_deref(), "local")?;
 
     // Create refresh token in Redis
     let refresh_token = uuid::Uuid::new_v4().to_string();
@@ -210,33 +206,30 @@ pub async fn login(
     .await?;
 
     // Find user
-    let user: Option<(String, String, Option<String>, String, Option<String>)> =
-        sqlx::query_as(
-            "SELECT id::text, email, name, provider, password_hash FROM users WHERE email = $1",
-        )
-        .bind(&body.email)
-        .fetch_optional(&state.db)
-        .await
-        .map_err(|_e| ApiError::InternalError("Internal server error".to_string()))?;
+    let user: Option<(String, String, Option<String>, String, Option<String>)> = sqlx::query_as(
+        "SELECT id::text, email, name, provider, password_hash FROM users WHERE email = $1",
+    )
+    .bind(&body.email)
+    .fetch_optional(&state.db)
+    .await
+    .map_err(|_e| ApiError::InternalError("Internal server error".to_string()))?;
 
     let (user_id, email, name, provider, password_hash) =
         user.ok_or_else(|| ApiError::Unauthorized("Invalid credentials".to_string()))?;
 
     // Verify password
-    let hash = password_hash.ok_or_else(|| {
-        ApiError::Unauthorized("Invalid credentials".to_string())
-    })?;
+    let hash =
+        password_hash.ok_or_else(|| ApiError::Unauthorized("Invalid credentials".to_string()))?;
 
     if !password::verify_password(&body.password, &hash)? {
         return Err(ApiError::Unauthorized("Invalid credentials".to_string()));
     }
 
     // Create JWT
-    let access_token =
-        state
-            .auth
-            .jwt
-            .create_token(&user_id, &email, name.as_deref(), &provider)?;
+    let access_token = state
+        .auth
+        .jwt
+        .create_token(&user_id, &email, name.as_deref(), &provider)?;
 
     // Create refresh token in Redis
     let refresh_token = uuid::Uuid::new_v4().to_string();
@@ -294,9 +287,8 @@ pub async fn refresh(
         .cache_get("refresh", &body.refresh_token)
         .await?;
 
-    let user_id = user_id.ok_or_else(|| {
-        ApiError::Unauthorized("Invalid or expired refresh token".to_string())
-    })?;
+    let user_id = user_id
+        .ok_or_else(|| ApiError::Unauthorized("Invalid or expired refresh token".to_string()))?;
 
     // Delete old refresh token (rotation)
     state
@@ -316,11 +308,10 @@ pub async fn refresh(
         user.ok_or_else(|| ApiError::Unauthorized("Invalid credentials".to_string()))?;
 
     // Create new access token
-    let access_token =
-        state
-            .auth
-            .jwt
-            .create_token(&user_id, &email, name.as_deref(), &provider)?;
+    let access_token = state
+        .auth
+        .jwt
+        .create_token(&user_id, &email, name.as_deref(), &provider)?;
 
     // Create new refresh token
     let new_refresh_token = uuid::Uuid::new_v4().to_string();
@@ -398,10 +389,7 @@ pub async fn oauth_redirect(
         )
         .await?;
 
-    Ok((
-        StatusCode::FOUND,
-        [(header::LOCATION, url)],
-    ))
+    Ok((StatusCode::FOUND, [(header::LOCATION, url)]))
 }
 
 /// OAuth callback query parameters.
@@ -420,17 +408,15 @@ pub async fn oauth_callback(
     let provider = parse_provider(&provider)?;
 
     // Validate CSRF state token
-    let stored_provider: Option<String> = state
-        .redis
-        .cache_get("oauth_csrf", &query.state)
-        .await?;
+    let stored_provider: Option<String> = state.redis.cache_get("oauth_csrf", &query.state).await?;
 
-    let stored_provider = stored_provider.ok_or_else(|| {
-        ApiError::Unauthorized("Invalid or expired OAuth state".to_string())
-    })?;
+    let stored_provider = stored_provider
+        .ok_or_else(|| ApiError::Unauthorized("Invalid or expired OAuth state".to_string()))?;
 
     if stored_provider != provider.to_string() {
-        return Err(ApiError::Unauthorized("OAuth provider mismatch".to_string()));
+        return Err(ApiError::Unauthorized(
+            "OAuth provider mismatch".to_string(),
+        ));
     }
 
     // Delete the CSRF token (one-time use)
@@ -477,10 +463,12 @@ pub async fn oauth_callback(
     };
 
     // Create JWT
-    let access_token = state
-        .auth
-        .jwt
-        .create_token(&user_id, &user_info.email, user_info.name.as_deref(), &provider.to_string())?;
+    let access_token = state.auth.jwt.create_token(
+        &user_id,
+        &user_info.email,
+        user_info.name.as_deref(),
+        &provider.to_string(),
+    )?;
 
     let refresh_token = uuid::Uuid::new_v4().to_string();
     state
@@ -544,12 +532,18 @@ mod route_tests {
 
     #[test]
     fn parse_provider_google() {
-        assert!(matches!(parse_provider("google"), Ok(super::super::oauth::OAuthProvider::Google)));
+        assert!(matches!(
+            parse_provider("google"),
+            Ok(super::super::oauth::OAuthProvider::Google)
+        ));
     }
 
     #[test]
     fn parse_provider_github() {
-        assert!(matches!(parse_provider("github"), Ok(super::super::oauth::OAuthProvider::GitHub)));
+        assert!(matches!(
+            parse_provider("github"),
+            Ok(super::super::oauth::OAuthProvider::GitHub)
+        ));
     }
 
     #[test]
@@ -568,7 +562,9 @@ mod route_tests {
         let response = me(auth_user).await.into_response();
         assert_eq!(response.status(), StatusCode::OK);
 
-        let body = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
         let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
         assert_eq!(json["user_id"], "user-123");
         assert_eq!(json["email"], "test@example.com");
@@ -587,7 +583,9 @@ mod route_tests {
         let response = me(auth_user).await.into_response();
         assert_eq!(response.status(), StatusCode::OK);
 
-        let body = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
         let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
         assert_eq!(json["user_id"], "user-456");
         assert_eq!(json["email"], "anon@example.com");

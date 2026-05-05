@@ -29,7 +29,9 @@ impl StorageConfig {
         let secret_key = std::env::var("RUSTFS_SECRET_KEY").ok()?;
 
         if access_key == "CHANGE_ME" || secret_key == "CHANGE_ME" {
-            tracing::warn!("RUSTFS_ACCESS_KEY or RUSTFS_SECRET_KEY is CHANGE_ME — storage disabled");
+            tracing::warn!(
+                "RUSTFS_ACCESS_KEY or RUSTFS_SECRET_KEY is CHANGE_ME — storage disabled"
+            );
             return None;
         }
 
@@ -88,9 +90,10 @@ impl StorageClient {
         let url = format!("{}/{}", self.config.endpoint, self.config.bucket);
         let req = self.client.put(&url);
         let req = sign_request(req, &self.config, "PUT", &url, "", &[]).await?;
-        let resp = req.send().await.map_err(|e| {
-            ApiError::ServiceUnavailable(format!("Failed to create bucket: {e}"))
-        })?;
+        let resp = req
+            .send()
+            .await
+            .map_err(|e| ApiError::ServiceUnavailable(format!("Failed to create bucket: {e}")))?;
 
         if !resp.status().is_success() {
             return Err(ApiError::ServiceUnavailable(format!(
@@ -107,9 +110,10 @@ impl StorageClient {
         let url = format!("{}/{}", self.config.endpoint, self.config.bucket);
         let req = self.client.head(&url);
         let req = sign_request(req, &self.config, "HEAD", &url, "", &[]).await?;
-        let resp = req.send().await.map_err(|e| {
-            ApiError::ServiceUnavailable(format!("Storage unreachable: {e}"))
-        })?;
+        let resp = req
+            .send()
+            .await
+            .map_err(|e| ApiError::ServiceUnavailable(format!("Storage unreachable: {e}")))?;
         Ok(resp.status().is_success())
     }
 }
@@ -139,7 +143,9 @@ mod tests {
     #[test]
     fn config_from_env_missing_returns_none() {
         // SAFETY: test-only, single-threaded context
-        unsafe { std::env::remove_var("RUSTFS_ENDPOINT"); }
+        unsafe {
+            std::env::remove_var("RUSTFS_ENDPOINT");
+        }
         assert!(StorageConfig::from_env().is_none());
     }
 

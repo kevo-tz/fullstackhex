@@ -1,6 +1,12 @@
 use axum::http::{HeaderMap, StatusCode, header};
 use axum::response::IntoResponse;
-use axum::{Json, Router, extract::{State, Extension, DefaultBodyLimit}, http::Request, middleware, routing::get};
+use axum::{
+    Json, Router,
+    extract::{DefaultBodyLimit, Extension, State},
+    http::Request,
+    middleware,
+    routing::get,
+};
 use metrics_exporter_prometheus::PrometheusHandle;
 use python_sidecar::PythonSidecar;
 #[cfg(test)]
@@ -30,7 +36,9 @@ pub struct AppState {
     pub gauge_task: Option<tokio::task::AbortHandle>,
 }
 
-pub async fn router(prometheus_handle: PrometheusHandle) -> Result<(Router, Arc<AppState>), Box<dyn std::error::Error + Send + Sync>> {
+pub async fn router(
+    prometheus_handle: PrometheusHandle,
+) -> Result<(Router, Arc<AppState>), Box<dyn std::error::Error + Send + Sync>> {
     let db = match std::env::var("DATABASE_URL") {
         Ok(url) => {
             match PgPoolOptions::new()
@@ -126,8 +134,14 @@ fn build_router(state: Arc<AppState>) -> Router {
                 .route("/logout", axum::routing::post(auth::routes::logout))
                 .route("/refresh", axum::routing::post(auth::routes::refresh))
                 .route("/me", axum::routing::get(auth::routes::me))
-                .route("/oauth/{provider}", axum::routing::get(auth::routes::oauth_redirect))
-                .route("/oauth/{provider}/callback", axum::routing::get(auth::routes::oauth_callback))
+                .route(
+                    "/oauth/{provider}",
+                    axum::routing::get(auth::routes::oauth_redirect),
+                )
+                .route(
+                    "/oauth/{provider}/callback",
+                    axum::routing::get(auth::routes::oauth_callback),
+                )
                 .with_state(auth_state);
             router = router.nest("/auth", auth_router);
         }
@@ -398,8 +412,14 @@ mod tests {
     async fn health_returns_200() {
         let app = router_with_state(test_state());
         let response = app
-            .oneshot(Request::builder().uri("/health").body(axum::body::Body::empty()).unwrap())
-            .await.unwrap();
+            .oneshot(
+                Request::builder()
+                    .uri("/health")
+                    .body(axum::body::Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
         assert_eq!(response.status(), StatusCode::OK);
     }
 
@@ -407,8 +427,14 @@ mod tests {
     async fn health_db_returns_503_when_not_configured() {
         let app = router_with_state(test_state());
         let response = app
-            .oneshot(Request::builder().uri("/health/db").body(axum::body::Body::empty()).unwrap())
-            .await.unwrap();
+            .oneshot(
+                Request::builder()
+                    .uri("/health/db")
+                    .body(axum::body::Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
         assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
     }
 
@@ -416,8 +442,14 @@ mod tests {
     async fn health_redis_returns_503_when_not_configured() {
         let app = router_with_state(test_state());
         let response = app
-            .oneshot(Request::builder().uri("/health/redis").body(axum::body::Body::empty()).unwrap())
-            .await.unwrap();
+            .oneshot(
+                Request::builder()
+                    .uri("/health/redis")
+                    .body(axum::body::Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
         assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
     }
 
@@ -425,8 +457,14 @@ mod tests {
     async fn health_storage_returns_503_when_not_configured() {
         let app = router_with_state(test_state());
         let response = app
-            .oneshot(Request::builder().uri("/health/storage").body(axum::body::Body::empty()).unwrap())
-            .await.unwrap();
+            .oneshot(
+                Request::builder()
+                    .uri("/health/storage")
+                    .body(axum::body::Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
         assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
     }
 
@@ -434,8 +472,14 @@ mod tests {
     async fn health_python_returns_503_when_no_socket() {
         let app = router_with_state(test_state());
         let response = app
-            .oneshot(Request::builder().uri("/health/python").body(axum::body::Body::empty()).unwrap())
-            .await.unwrap();
+            .oneshot(
+                Request::builder()
+                    .uri("/health/python")
+                    .body(axum::body::Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
         assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
     }
 
@@ -443,8 +487,14 @@ mod tests {
     async fn metrics_endpoint_returns_prometheus_text() {
         let app = router_with_state(test_state());
         let response = app
-            .oneshot(Request::builder().uri("/metrics").body(axum::body::Body::empty()).unwrap())
-            .await.unwrap();
+            .oneshot(
+                Request::builder()
+                    .uri("/metrics")
+                    .body(axum::body::Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
         assert_eq!(response.status(), StatusCode::OK);
     }
 
@@ -453,6 +503,9 @@ mod tests {
         assert_eq!(metrics::normalize_route("/health"), "/health");
         assert_eq!(metrics::normalize_route("/health/db"), "/health/db");
         assert_eq!(metrics::normalize_route("/health/redis"), "/health/redis");
-        assert_eq!(metrics::normalize_route("/health/storage"), "/health/storage");
+        assert_eq!(
+            metrics::normalize_route("/health/storage"),
+            "/health/storage"
+        );
     }
 }

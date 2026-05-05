@@ -7,10 +7,10 @@
 //! `users/{user_id}/` to enforce per-user isolation.
 
 use auth::middleware::AuthUser;
+use axum::Json;
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
-use axum::Json;
 use domain::error::ApiError;
 use serde::{Deserialize, Serialize};
 
@@ -51,7 +51,14 @@ pub async fn upload(
     body: axum::body::Bytes,
 ) -> Result<impl IntoResponse, ApiError> {
     let key = user_key(&auth_user.user_id, &key);
-    super::client::upload(&state.client, &state.config, &key, body.to_vec(), "application/octet-stream").await?;
+    super::client::upload(
+        &state.client,
+        &state.config,
+        &key,
+        body.to_vec(),
+        "application/octet-stream",
+    )
+    .await?;
 
     Ok(StatusCode::CREATED)
 }
@@ -89,7 +96,9 @@ pub async fn list(
     auth_user: AuthUser,
     Query(query): Query<ListQuery>,
 ) -> Result<impl IntoResponse, ApiError> {
-    let prefix = query.prefix.map(|p| user_key(&auth_user.user_id, &p))
+    let prefix = query
+        .prefix
+        .map(|p| user_key(&auth_user.user_id, &p))
         .unwrap_or_else(|| format!("users/{}/", auth_user.user_id));
     let objects = super::client::list(&state.client, &state.config, &prefix).await?;
     Ok(Json(objects))
@@ -135,7 +144,10 @@ mod tests {
 
     #[test]
     fn user_key_handles_nested_paths() {
-        assert_eq!(user_key("user-123", "a/b/c.png"), "users/user-123/a/b/c.png");
+        assert_eq!(
+            user_key("user-123", "a/b/c.png"),
+            "users/user-123/a/b/c.png"
+        );
     }
 
     #[tokio::test]
@@ -172,9 +184,14 @@ mod tests {
         let resp = response.unwrap().into_response();
         assert_eq!(resp.status(), axum::http::StatusCode::OK);
 
-        let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
         let v: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
-        assert_eq!(v["url"], "http://pub.local:9000/test-bucket/users/user-123/file.txt");
+        assert_eq!(
+            v["url"],
+            "http://pub.local:9000/test-bucket/users/user-123/file.txt"
+        );
         assert_eq!(v["method"], "GET");
         assert_eq!(v["expires_in"], 3600);
     }
@@ -213,7 +230,9 @@ mod tests {
         let resp = response.unwrap().into_response();
         assert_eq!(resp.status(), axum::http::StatusCode::OK);
 
-        let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
         let v: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
         assert_eq!(v["method"], "GET");
         assert_eq!(v["expires_in"], 3600);

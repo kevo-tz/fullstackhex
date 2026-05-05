@@ -31,7 +31,13 @@ impl RedisClient {
             .map_err(|e| CacheError::SerializationFailed(e.to_string()))?;
 
         self.client
-            .set::<(), _, _>(&key, json, Some(Expiration::EX(ttl.as_secs() as i64)), None, false)
+            .set::<(), _, _>(
+                &key,
+                json,
+                Some(Expiration::EX(ttl.as_secs() as i64)),
+                None,
+                false,
+            )
             .await
             .map_err(CacheError::CommandFailed)?;
 

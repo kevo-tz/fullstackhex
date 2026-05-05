@@ -49,9 +49,10 @@ pub async fn upload(
         .header("X-Amz-Date", &signed.amz_date)
         .header("X-Amz-Content-Sha256", &signed.payload_hash)
         .header("Authorization", &signed.authorization);
-    let resp = req.send().await.map_err(|e| {
-        ApiError::ServiceUnavailable(format!("Upload failed: {e}"))
-    })?;
+    let resp = req
+        .send()
+        .await
+        .map_err(|e| ApiError::ServiceUnavailable(format!("Upload failed: {e}")))?;
     if !resp.status().is_success() {
         return Err(ApiError::ServiceUnavailable(format!(
             "Upload failed: HTTP {}",
@@ -77,17 +78,19 @@ pub async fn download(
         .header("X-Amz-Date", &signed.amz_date)
         .header("X-Amz-Content-Sha256", &signed.payload_hash)
         .header("Authorization", &signed.authorization);
-    let resp = req.send().await.map_err(|e| {
-        ApiError::ServiceUnavailable(format!("Download failed: {e}"))
-    })?;
+    let resp = req
+        .send()
+        .await
+        .map_err(|e| ApiError::ServiceUnavailable(format!("Download failed: {e}")))?;
     if !resp.status().is_success() {
         return Err(ApiError::NotFound(format!("Object not found: {key}")));
     }
     // Guard against unbounded download sizes (100 MB limit)
     const MAX_DOWNLOAD_SIZE: usize = 100 * 1024 * 1024;
-    let bytes = resp.bytes().await.map_err(|e| {
-        ApiError::InternalError(format!("Failed to read response: {e}"))
-    })?;
+    let bytes = resp
+        .bytes()
+        .await
+        .map_err(|e| ApiError::InternalError(format!("Failed to read response: {e}")))?;
     if bytes.len() > MAX_DOWNLOAD_SIZE {
         return Err(ApiError::InternalError(
             "Download exceeds maximum size (100 MB)".to_string(),
@@ -112,9 +115,10 @@ pub async fn delete(
         .header("X-Amz-Date", &signed.amz_date)
         .header("X-Amz-Content-Sha256", &signed.payload_hash)
         .header("Authorization", &signed.authorization);
-    let resp = req.send().await.map_err(|e| {
-        ApiError::ServiceUnavailable(format!("Delete failed: {e}"))
-    })?;
+    let resp = req
+        .send()
+        .await
+        .map_err(|e| ApiError::ServiceUnavailable(format!("Delete failed: {e}")))?;
     if !resp.status().is_success() && resp.status() != 204 {
         return Err(ApiError::ServiceUnavailable(format!(
             "Delete failed: HTTP {}",
@@ -144,13 +148,15 @@ pub async fn list(
         .header("X-Amz-Date", &signed.amz_date)
         .header("X-Amz-Content-Sha256", &signed.payload_hash)
         .header("Authorization", &signed.authorization);
-    let resp = req.send().await.map_err(|e| {
-        ApiError::ServiceUnavailable(format!("List failed: {e}"))
-    })?;
+    let resp = req
+        .send()
+        .await
+        .map_err(|e| ApiError::ServiceUnavailable(format!("List failed: {e}")))?;
 
-    let body = resp.text().await.map_err(|e| {
-        ApiError::InternalError(format!("Failed to read response: {e}"))
-    })?;
+    let body = resp
+        .text()
+        .await
+        .map_err(|e| ApiError::InternalError(format!("Failed to read response: {e}")))?;
 
     // Quick XML parse - just extract keys for now
     let mut objects = Vec::new();
@@ -198,8 +204,8 @@ pub fn sign_request(
     let date_stamp = amz_date[..8].to_string();
     let payload_hash = sha256_hex(body);
 
-    let parsed = url::Url::parse(url)
-        .map_err(|e| ApiError::InternalError(format!("Invalid URL: {e}")))?;
+    let parsed =
+        url::Url::parse(url).map_err(|e| ApiError::InternalError(format!("Invalid URL: {e}")))?;
     let host = parsed.host_str().unwrap_or("localhost").to_string();
     let uri = parsed.path();
     let query = parsed.query().unwrap_or("");
@@ -230,12 +236,7 @@ pub fn sign_request(
     // Canonical request
     let canonical_request = format!(
         "{}\n{}\n{}\n{}\n{}\n{}",
-        method,
-        uri,
-        query,
-        canonical_headers,
-        signed_headers,
-        payload_hash
+        method, uri, query, canonical_headers, signed_headers, payload_hash
     );
 
     // String to sign
@@ -324,7 +325,14 @@ mod tests {
             region: "us-east-1".to_string(),
             auto_create_bucket: false,
         };
-        let signed = sign_request(&config, "GET", "http://localhost:9000/test-bucket/file.txt", "", &[]).unwrap();
+        let signed = sign_request(
+            &config,
+            "GET",
+            "http://localhost:9000/test-bucket/file.txt",
+            "",
+            &[],
+        )
+        .unwrap();
         assert!(!signed.authorization.is_empty());
         assert!(!signed.amz_date.is_empty());
         assert!(!signed.payload_hash.is_empty());
@@ -342,7 +350,13 @@ mod tests {
             region: "us-east-1".to_string(),
             auto_create_bucket: false,
         };
-        let url = presigned_url(&config, "file.txt", "GET", std::time::Duration::from_secs(3600)).unwrap();
+        let url = presigned_url(
+            &config,
+            "file.txt",
+            "GET",
+            std::time::Duration::from_secs(3600),
+        )
+        .unwrap();
         assert_eq!(url, "http://pub.local:9000/test-bucket/file.txt");
     }
 
@@ -357,7 +371,14 @@ mod tests {
             region: "us-east-1".to_string(),
             auto_create_bucket: false,
         };
-        let signed = sign_request(&config, "PUT", "http://localhost:9000/test-bucket/file.txt", "application/json", b"{}").unwrap();
+        let signed = sign_request(
+            &config,
+            "PUT",
+            "http://localhost:9000/test-bucket/file.txt",
+            "application/json",
+            b"{}",
+        )
+        .unwrap();
         assert!(signed.authorization.contains("AWS4-HMAC-SHA256"));
         assert!(signed.authorization.contains("test-key"));
         assert_eq!(signed.host, "localhost");
@@ -375,9 +396,19 @@ mod tests {
             region: "us-east-1".to_string(),
             auto_create_bucket: false,
         };
-        let signed = sign_request(&config, "GET", "http://localhost:9000/test-bucket/file.txt", "", &[]).unwrap();
+        let signed = sign_request(
+            &config,
+            "GET",
+            "http://localhost:9000/test-bucket/file.txt",
+            "",
+            &[],
+        )
+        .unwrap();
         // SHA-256 of empty body
-        assert_eq!(signed.payload_hash, "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855");
+        assert_eq!(
+            signed.payload_hash,
+            "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        );
     }
 
     #[test]

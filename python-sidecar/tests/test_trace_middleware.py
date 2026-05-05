@@ -1,5 +1,4 @@
 """Tests for trace middleware and metrics endpoint."""
-import json
 
 from fastapi.testclient import TestClient
 

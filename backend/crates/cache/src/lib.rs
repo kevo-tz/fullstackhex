@@ -41,8 +41,7 @@ impl RedisClient {
     /// Reads `REDIS_URL` for the connection string and `REDIS_POOL_SIZE`
     /// for the connection pool size (default: 10).
     pub async fn from_env() -> Result<Self, CacheError> {
-        let redis_url =
-            std::env::var("REDIS_URL").map_err(|_| CacheError::NotConfigured)?;
+        let redis_url = std::env::var("REDIS_URL").map_err(|_| CacheError::NotConfigured)?;
 
         let config = Config::from_url(&redis_url)
             .map_err(|e| CacheError::ConnectionFailed(e.to_string()))?;
@@ -73,8 +72,8 @@ impl RedisClient {
 
     /// Create a Redis client for testing with explicit URL.
     pub async fn new(url: &str, prefix: &str) -> Result<Self, CacheError> {
-        let config = Config::from_url(url)
-            .map_err(|e| CacheError::ConnectionFailed(e.to_string()))?;
+        let config =
+            Config::from_url(url).map_err(|e| CacheError::ConnectionFailed(e.to_string()))?;
 
         let client = Builder::from_config(config)
             .with_connection_config(|c| {
@@ -121,11 +120,25 @@ mod tests {
 
     #[test]
     fn cache_error_display_variants() {
-        assert_eq!(CacheError::NotConfigured.to_string(), "redis not configured");
-        assert!(CacheError::ConnectionFailed("err".to_string()).to_string().contains("err"));
-        assert!(CacheError::SerializationFailed("bad".to_string()).to_string().contains("bad"));
+        assert_eq!(
+            CacheError::NotConfigured.to_string(),
+            "redis not configured"
+        );
+        assert!(
+            CacheError::ConnectionFailed("err".to_string())
+                .to_string()
+                .contains("err")
+        );
+        assert!(
+            CacheError::SerializationFailed("bad".to_string())
+                .to_string()
+                .contains("bad")
+        );
         assert_eq!(CacheError::SessionNotFound.to_string(), "session not found");
-        assert_eq!(CacheError::RateLimitExceeded.to_string(), "rate limit exceeded");
+        assert_eq!(
+            CacheError::RateLimitExceeded.to_string(),
+            "rate limit exceeded"
+        );
     }
 
     #[test]

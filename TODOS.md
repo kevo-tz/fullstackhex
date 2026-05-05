@@ -6,7 +6,6 @@
 **What:** Test suites run in isolation. No verification that backend + frontend + database work together. /qa found auth 500 only by manual curl.
 **Fix:** Add Playwright or Bun-based e2e test: start services, register user, login, hit `/auth/me`, verify dashboard. Run in CI on every PR.
 **Files:** `e2e/`, `.github/workflows/e2e.yml`, `package.json`
-**Depends on:** A5
 
 ### A10. Add auth login/register UI [P2] [L]
 **What:** v0.8 ships auth backend but frontend has no auth UI. Developers must use curl to test registration/login.
@@ -37,26 +36,6 @@
 **What:** Spec specified auth dashboard with login rates, active sessions, OAuth callback success/fail, token refresh rate, brute-force blocked attempts.
 **Fix:** Create `monitoring/grafana/dashboards/auth.json` with Prometheus queries for auth metrics.
 **Files:** `monitoring/grafana/dashboards/auth.json`
-
-### S12. docs/AUTH.md [P2] [S]
-**What:** No auth documentation exists.
-**Fix:** Write setup guide: JWT config, OAuth provider setup, session config, brute-force protection, CSRF notes, Python sidecar HMAC trust.
-**Files:** `docs/AUTH.md`
-
-### S13. docs/REDIS.md [P2] [S]
-**What:** No Redis documentation exists.
-**Fix:** Document caching patterns, session usage, pub/sub, rate limiting, connection pool tuning.
-**Files:** `docs/REDIS.md`
-
-### S14. docs/STORAGE.md [P2] [S]
-**What:** No storage documentation exists.
-**Fix:** Document S3/RustFS setup, bucket config, presigned URLs, multipart upload, streaming.
-**Files:** `docs/STORAGE.md`
-
-### S15. docs/DEPLOY.md [P2] [S]
-**What:** No deploy safety documentation exists.
-**Fix:** Document canary, blue-green, rollback commands, deploy lock, nginx config templates, verify script.
-**Files:** `docs/DEPLOY.md`
 
 ## Icebox
 

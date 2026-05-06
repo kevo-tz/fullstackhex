@@ -301,16 +301,38 @@ pub async fn create_multipart_upload(
     let body = resp.text().await.map_err(|e| {
         ApiError::InternalError(format!("Failed to read init response: {e}"))
     })?;
-    let upload_id = body
-        .split("<UploadId>")
-        .nth(1)
-        .and_then(|s| s.split("</UploadId>").next())
-        .ok_or_else(|| {
-            ApiError::InternalError(format!("Missing UploadId in response: {body}"))
-        })?;
+    use quick_xml::events::Event;
+    use quick_xml::Reader;
+    let mut reader = Reader::from_str(&body);
+    let mut upload_id = None;
+    let mut buf = Vec::new();
+    loop {
+        match reader.read_event_into(&mut buf) {
+            Ok(Event::Start(ref e)) if e.name().as_ref() == b"UploadId" => {
+                upload_id = Some(reader.read_text(e.name()).map_err(|e| {
+                    ApiError::InternalError(format!("Failed to read UploadId text: {e}"))
+                })?);
+            }
+            Ok(Event::Eof) => break,
+            Ok(Event::Start(ref e)) if e.name().as_ref() == b"Key" => {
+                // Read key text but don't store — just consume it
+                let _ = reader.read_text(e.name());
+            }
+            Err(e) => {
+                return Err(ApiError::InternalError(format!(
+                    "XML parse error: {e} body={body}"
+                )));
+            }
+            _ => {}
+        }
+        buf.clear();
+    }
+    let upload_id = upload_id.ok_or_else(|| {
+        ApiError::InternalError(format!("Missing UploadId in response: {body}"))
+    })?.to_string();
 
     Ok(MultipartUpload {
-        upload_id: upload_id.to_string(),
+        upload_id,
         key: key.to_string(),
     })
 }

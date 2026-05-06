@@ -184,7 +184,7 @@ pub async fn register(
         },
     };
 
-    Ok(Json(response))
+    Ok((StatusCode::CREATED, Json(response)))
 }
 
 /// POST /auth/login — authenticate with email/password, return JWT.

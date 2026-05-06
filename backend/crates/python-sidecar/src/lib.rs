@@ -362,9 +362,7 @@ impl PythonSidecar {
         let trace_id = uuid::Uuid::new_v4().to_string();
         tracing::info!(%trace_id, target = "python_sidecar", "health check");
         let start = std::time::Instant::now();
-        let result = self
-            .get_with_trace_id("/health", &trace_id, None)
-            .await;
+        let result = self.get_with_trace_id("/health", &trace_id, None).await;
         let duration_ms = start.elapsed().as_millis() as u64;
         match &result {
             Ok(_) => {
@@ -668,7 +666,9 @@ mod tests {
         let path = dir.path().join("trace-crlf.sock");
         std::fs::File::create(&path).unwrap();
         let sc = PythonSidecar::new(path, Duration::from_secs(1), 0);
-        let result = sc.get_with_trace_id("/health", "test-id\r\nInjected", None).await;
+        let result = sc
+            .get_with_trace_id("/health", "test-id\r\nInjected", None)
+            .await;
         assert!(matches!(result, Err(SidecarError::InvalidInput(_))));
     }
 
@@ -678,7 +678,9 @@ mod tests {
         let path = dir.path().join("trace-cr.sock");
         std::fs::File::create(&path).unwrap();
         let sc = PythonSidecar::new(path, Duration::from_secs(1), 0);
-        let result = sc.get_with_trace_id("/health", "test-id\rInjected", None).await;
+        let result = sc
+            .get_with_trace_id("/health", "test-id\rInjected", None)
+            .await;
         assert!(matches!(result, Err(SidecarError::InvalidInput(_))));
     }
 
@@ -688,7 +690,9 @@ mod tests {
         let path = dir.path().join("trace-lf.sock");
         std::fs::File::create(&path).unwrap();
         let sc = PythonSidecar::new(path, Duration::from_secs(1), 0);
-        let result = sc.get_with_trace_id("/health", "test-id\nInjected", None).await;
+        let result = sc
+            .get_with_trace_id("/health", "test-id\nInjected", None)
+            .await;
         assert!(matches!(result, Err(SidecarError::InvalidInput(_))));
     }
 
@@ -815,7 +819,9 @@ mod tests {
         });
 
         tokio::time::sleep(Duration::from_millis(50)).await;
-        let result = sc.get_with_trace_id("/health", "qa-propagate-123", None).await;
+        let result = sc
+            .get_with_trace_id("/health", "qa-propagate-123", None)
+            .await;
         assert!(result.is_ok(), "expected Ok, got {:?}", result);
         let v = result.unwrap();
         assert_eq!(v["status"], "ok");

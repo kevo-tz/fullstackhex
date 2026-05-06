@@ -110,10 +110,7 @@ impl RedisClient {
     /// Uses a Lua script to guarantee that concurrent refresh requests
     /// cannot both read the same token before it's deleted.
     /// Returns the user_id if the token existed, None otherwise.
-    pub async fn refresh_token_rotate(
-        &self,
-        token: &str,
-    ) -> Result<Option<String>, CacheError> {
+    pub async fn refresh_token_rotate(&self, token: &str) -> Result<Option<String>, CacheError> {
         let full_key = self.make_key("refresh", token);
 
         // Lua: atomic GET + DEL — prevents token family leaks under concurrency

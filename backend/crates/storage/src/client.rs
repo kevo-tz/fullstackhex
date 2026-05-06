@@ -285,9 +285,10 @@ pub async fn create_multipart_upload(
         req = req.header("Content-Type", content_type);
     }
 
-    let resp = req.send().await.map_err(|e| {
-        ApiError::ServiceUnavailable(format!("Multipart init failed: {e}"))
-    })?;
+    let resp = req
+        .send()
+        .await
+        .map_err(|e| ApiError::ServiceUnavailable(format!("Multipart init failed: {e}")))?;
 
     let status = resp.status();
     if !status.is_success() {
@@ -298,11 +299,12 @@ pub async fn create_multipart_upload(
     }
 
     // Parse XML for UploadId
-    let body = resp.text().await.map_err(|e| {
-        ApiError::InternalError(format!("Failed to read init response: {e}"))
-    })?;
-    use quick_xml::events::Event;
+    let body = resp
+        .text()
+        .await
+        .map_err(|e| ApiError::InternalError(format!("Failed to read init response: {e}")))?;
     use quick_xml::Reader;
+    use quick_xml::events::Event;
     let mut reader = Reader::from_str(&body);
     let mut upload_id = None;
     let mut buf = Vec::new();
@@ -327,9 +329,9 @@ pub async fn create_multipart_upload(
         }
         buf.clear();
     }
-    let upload_id = upload_id.ok_or_else(|| {
-        ApiError::InternalError(format!("Missing UploadId in response: {body}"))
-    })?.to_string();
+    let upload_id = upload_id
+        .ok_or_else(|| ApiError::InternalError(format!("Missing UploadId in response: {body}")))?
+        .to_string();
 
     Ok(MultipartUpload {
         upload_id,
@@ -348,10 +350,7 @@ pub async fn upload_part(
 ) -> Result<PartInfo, ApiError> {
     let base = build_object_url(&config.endpoint, &config.bucket, key)
         .map_err(|e| ApiError::InternalError(format!("Invalid URL: {e}")))?;
-    let url_str = format!(
-        "{}?partNumber={}&uploadId={}",
-        base, part_number, upload_id
-    );
+    let url_str = format!("{}?partNumber={}&uploadId={}", base, part_number, upload_id);
     let signed = sign_request(config, "PUT", &url_str, "", &body)?;
 
     let resp = client
@@ -381,17 +380,13 @@ pub async fn upload_part(
         .trim_matches('"')
         .to_string();
 
-    Ok(PartInfo {
-        part_number,
-        etag,
-    })
+    Ok(PartInfo { part_number, etag })
 }
 
 /// Build the XML body for completing a multipart upload.
 fn build_complete_multipart_xml(parts: &[PartInfo]) -> String {
-    let mut xml = String::from(
-        "<CompleteMultipartUpload xmlns=\"http://s3.amazonaws.com/doc/2006-03-01/\">",
-    );
+    let mut xml =
+        String::from("<CompleteMultipartUpload xmlns=\"http://s3.amazonaws.com/doc/2006-03-01/\">");
     for p in parts {
         xml.push_str(&format!(
             "<Part><PartNumber>{}</PartNumber><ETag>\"{}\"</ETag></Part>",
@@ -490,7 +485,13 @@ pub fn sign_request_unsigned(
     url: &str,
     content_type: &str,
 ) -> Result<SignedRequest, ApiError> {
-    sign_request_inner(config, method, url, content_type, "UNSIGNED-PAYLOAD".to_string())
+    sign_request_inner(
+        config,
+        method,
+        url,
+        content_type,
+        "UNSIGNED-PAYLOAD".to_string(),
+    )
 }
 
 /// Sign a request with AWS SigV4.
@@ -756,12 +757,8 @@ mod tests {
 
     #[test]
     fn build_object_url_nested_key() {
-        let url =
-            build_object_url("http://localhost:9000", "bucket", "a/b/c.txt").unwrap();
-        assert_eq!(
-            url.to_string(),
-            "http://localhost:9000/bucket/a/b/c.txt"
-        );
+        let url = build_object_url("http://localhost:9000", "bucket", "a/b/c.txt").unwrap();
+        assert_eq!(url.to_string(), "http://localhost:9000/bucket/a/b/c.txt");
     }
 
     #[test]
@@ -772,8 +769,7 @@ mod tests {
 
     #[test]
     fn build_object_url_trailing_slash_on_endpoint() {
-        let url =
-            build_object_url("http://localhost:9000/", "bucket", "file.txt").unwrap();
+        let url = build_object_url("http://localhost:9000/", "bucket", "file.txt").unwrap();
         assert_eq!(url.to_string(), "http://localhost:9000/bucket/file.txt");
     }
 

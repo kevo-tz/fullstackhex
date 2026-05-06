@@ -308,7 +308,10 @@ mod tests {
             None,
         );
         let (url, _csrf) = svc
-            .get_redirect_url(&OAuthProvider::Google, "http://localhost:8001/auth/oauth/google/callback")
+            .get_redirect_url(
+                &OAuthProvider::Google,
+                "http://localhost:8001/auth/oauth/google/callback",
+            )
             .unwrap();
         assert!(url.starts_with("https://accounts.google.com/o/oauth2/v2/auth"));
         assert!(url.contains("client_id=google-id"));
@@ -325,7 +328,10 @@ mod tests {
             Some("gh-secret".to_string()),
         );
         let (url, _csrf) = svc
-            .get_redirect_url(&OAuthProvider::GitHub, "http://localhost:8001/auth/oauth/github/callback")
+            .get_redirect_url(
+                &OAuthProvider::GitHub,
+                "http://localhost:8001/auth/oauth/github/callback",
+            )
             .unwrap();
         assert!(url.starts_with("https://github.com/login/oauth/authorize"));
         assert!(url.contains("client_id=gh-id"));

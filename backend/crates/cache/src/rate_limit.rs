@@ -124,11 +124,7 @@ impl RedisClient {
     ///
     /// Returns an error with the remaining cooldown seconds if the IP is blocked.
     /// Call this BEFORE the rate limit check on login endpoints.
-    pub async fn backoff_check(
-        &self,
-        ip: &str,
-        endpoint: &str,
-    ) -> Result<(), CacheError> {
+    pub async fn backoff_check(&self, ip: &str, endpoint: &str) -> Result<(), CacheError> {
         let key = self.make_key("backoff", &format!("{ip}:{endpoint}"));
         let count: Option<u64> = self
             .client
@@ -165,11 +161,7 @@ impl RedisClient {
     ///
     /// Call this AFTER a failed login (wrong password, invalid credentials).
     /// The TTL is set based on the current failure count threshold.
-    pub async fn backoff_increment(
-        &self,
-        ip: &str,
-        endpoint: &str,
-    ) -> Result<(), CacheError> {
+    pub async fn backoff_increment(&self, ip: &str, endpoint: &str) -> Result<(), CacheError> {
         let key = self.make_key("backoff", &format!("{ip}:{endpoint}"));
 
         let count: u64 = self
@@ -192,11 +184,11 @@ impl RedisClient {
 /// Returns (ttl_seconds, label) for the given failure count.
 fn backoff_params(count: u64) -> (u64, &'static str) {
     if count >= 20 {
-        (1800, "30min")  // 30 minutes
+        (1800, "30min") // 30 minutes
     } else if count >= 10 {
-        (300, "5min")    // 5 minutes
+        (300, "5min") // 5 minutes
     } else if count >= 5 {
-        (60, "60s")      // 1 minute
+        (60, "60s") // 1 minute
     } else {
         (60, "tracking") // Track below threshold with 60s TTL
     }

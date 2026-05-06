@@ -45,12 +45,14 @@ impl From<cache::CacheError> for ApiError {
             cache::CacheError::RateLimitExceeded => {
                 ApiError::RateLimited("Rate limit exceeded".to_string())
             }
-            cache::CacheError::BackoffBlocked { remaining_secs, count, label } => {
-                ApiError::RateLimited(format!(
-                    "Too many attempts ({} failures). Try again in {} seconds ({} cooldown).",
-                    count, remaining_secs, label
-                ))
-            }
+            cache::CacheError::BackoffBlocked {
+                remaining_secs,
+                count,
+                label,
+            } => ApiError::RateLimited(format!(
+                "Too many attempts ({} failures). Try again in {} seconds ({} cooldown).",
+                count, remaining_secs, label
+            )),
         }
     }
 }

@@ -83,11 +83,9 @@ pub async fn download(
         .unwrap_or("application/octet-stream")
         .to_string();
 
-    let stream = resp.bytes_stream().map(|r| {
-        r.map_err(|e| {
-            axum::Error::new(std::io::Error::other(e))
-        })
-    });
+    let stream = resp
+        .bytes_stream()
+        .map(|r| r.map_err(|e| axum::Error::new(std::io::Error::other(e))));
     let body = Body::from_stream(stream);
 
     Ok((
@@ -168,14 +166,13 @@ pub async fn init_multipart(
     Json(body): Json<MultipartInitRequest>,
 ) -> Result<impl IntoResponse, ApiError> {
     let key = user_key(&auth_user.user_id, &body.key);
-    let content_type = body.content_type.as_deref().unwrap_or("application/octet-stream");
-    let upload = super::client::create_multipart_upload(
-        &state.client,
-        &state.config,
-        &key,
-        content_type,
-    )
-    .await?;
+    let content_type = body
+        .content_type
+        .as_deref()
+        .unwrap_or("application/octet-stream");
+    let upload =
+        super::client::create_multipart_upload(&state.client, &state.config, &key, content_type)
+            .await?;
     Ok((StatusCode::CREATED, Json(upload)))
 }
 
@@ -225,13 +222,7 @@ pub async fn abort_multipart(
     Path((key, upload_id)): Path<(String, String)>,
 ) -> Result<impl IntoResponse, ApiError> {
     let key = user_key(&auth_user.user_id, &key);
-    super::client::abort_multipart_upload(
-        &state.client,
-        &state.config,
-        &key,
-        &upload_id,
-    )
-    .await?;
+    super::client::abort_multipart_upload(&state.client, &state.config, &key, &upload_id).await?;
     Ok(StatusCode::NO_CONTENT)
 }
 

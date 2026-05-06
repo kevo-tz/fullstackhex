@@ -198,13 +198,21 @@ pub async fn login(
     // Progressive brute-force backoff by IP (before rate limit check)
     match state.redis.backoff_check(&ip, "login").await {
         Ok(()) => {}
-        Err(cache::CacheError::BackoffBlocked { remaining_secs, count, label }) => {
+        Err(cache::CacheError::BackoffBlocked {
+            remaining_secs,
+            count,
+            label,
+        }) => {
             return Err(ApiError::RateLimited(format!(
                 "Too many login attempts ({} failures). Try again in {} seconds ({} cooldown).",
                 count, remaining_secs, label
             )));
         }
-        Err(e) => return Err(ApiError::InternalError(format!("Backoff check failed: {e}"))),
+        Err(e) => {
+            return Err(ApiError::InternalError(format!(
+                "Backoff check failed: {e}"
+            )));
+        }
     }
 
     // Rate limit by email (5 attempts per 5 minutes)
@@ -401,9 +409,7 @@ fn list_providers(config: &super::AuthConfig) -> Vec<&'static str> {
 }
 
 /// GET /auth/providers — list configured OAuth providers.
-pub async fn providers(
-    State(state): State<AuthState>,
-) -> impl IntoResponse {
+pub async fn providers(State(state): State<AuthState>) -> impl IntoResponse {
     Json(serde_json::json!({ "providers": list_providers(&state.auth.config) }))
 }
 

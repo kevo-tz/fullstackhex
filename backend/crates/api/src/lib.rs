@@ -113,7 +113,7 @@ fn build_router(state: Arc<AppState>) -> Router {
         .route("/health/redis", get(health_redis))
         .route("/health/storage", get(health_storage))
         .route("/health/python", get(health_python))
-    .route("/health/auth", get(health_auth))
+        .route("/health/auth", get(health_auth))
         .route("/metrics", get(metrics_handler))
         .route("/metrics/python", get(metrics_python_proxy))
         .layer(middleware::from_fn(metrics::track_metrics))
@@ -331,7 +331,10 @@ async fn health_python(
     let result = if trace_id.is_empty() {
         state.sidecar.health().await
     } else {
-        state.sidecar.get_with_trace_id("/health", trace_id, None).await
+        state
+            .sidecar
+            .get_with_trace_id("/health", trace_id, None)
+            .await
     };
 
     match result {

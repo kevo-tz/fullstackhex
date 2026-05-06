@@ -13,7 +13,8 @@ source "$SCRIPT_DIR/config.sh"
 
 # Check dependencies
 check_deps() {
-    local missing=0
+    local missing
+    missing=0
 
     if ! command -v jq &> /dev/null; then
         log_error "jq not found"

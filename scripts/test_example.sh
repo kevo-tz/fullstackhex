@@ -13,7 +13,8 @@ source "$SCRIPT_DIR/test/helpers.sh"
 # confirm_action should return 0 immediately in dry-run mode
 test_confirm_action_dry_run() {
     test_setup
-    local result=0
+    local result
+    result=0
     confirm_action "Test prompt" || result=$?
     test_teardown
     assert_exit_code 0 "$result" "confirm_action should succeed in dry-run mode"
@@ -22,10 +23,12 @@ test_confirm_action_dry_run() {
 # safe_remove should not delete the file when DRY_RUN=true
 test_safe_remove_dry_run() {
     test_setup
-    local tmp_file="$MOCK_FILE_DIR/test_file.txt"
+    local tmp_file
+    tmp_file="$MOCK_FILE_DIR/test_file.txt"
     echo "content" > "$tmp_file"
     safe_remove "$tmp_file"
-    local result=0
+    local result
+    result=0
     assert_file_exists "$tmp_file" "safe_remove in dry-run should not delete file" || result=1
     test_teardown
     return $result
@@ -61,7 +64,8 @@ test_mock_command() {
     test_setup
     local output
     output=$(mock_command false 2>&1)
-    local result=0
+    local result
+    result=0
     assert_contains "$output" "[MOCK]" "mock_command should emit [MOCK] prefix" || result=1
     test_teardown
     return $result
@@ -73,7 +77,8 @@ test_mock_network_calls() {
     export MOCK_HTTP_RESPONSES="http://example.com/health=OK"
     local response
     response=$(mock_network_calls "http://example.com/health" 2>/dev/null)
-    local result=0
+    local result
+    result=0
     assert_equals "OK" "$response" "mock_network_calls should return registered response" || result=1
     test_teardown
     return $result
@@ -85,7 +90,8 @@ test_mock_read_file() {
     echo "mock content" > "$MOCK_FILE_DIR/myfile.txt"
     local content
     content=$(mock_read_file "/real/path/myfile.txt" 2>/dev/null)
-    local result=0
+    local result
+    result=0
     assert_equals "mock content" "$content" "mock_read_file should return mock content" || result=1
     test_teardown
     return $result
@@ -95,7 +101,8 @@ test_mock_read_file() {
 test_mock_write_file() {
     test_setup
     mock_write_file "/real/path/output.txt" "written content" 2>/dev/null
-    local result=0
+    local result
+    result=0
     assert_file_exists "$MOCK_FILE_DIR/output.txt" "mock_write_file should create file in mock dir" || result=1
     test_teardown
     return $result
@@ -113,7 +120,8 @@ test_assert_file_exists_missing() {
 
 # assert_command_exists should pass for a known command and fail for a bogus one
 test_assert_command_exists() {
-    local result=0
+    local result
+    result=0
     assert_command_exists "bash" "bash should exist" || result=1
     if assert_command_exists "_nonexistent_cmd_xyz_" "should not exist" 2>/dev/null; then
         log_error "[FAIL] assert_command_exists should have returned non-zero for missing command"
@@ -125,11 +133,14 @@ test_assert_command_exists() {
 # test_summary should return 1 when there are failures
 test_summary_with_failure() {
     # Temporarily save and reset counters
-    local saved_pass=$_TEST_PASS
-    local saved_fail=$_TEST_FAIL
+    local saved_pass
+    saved_pass=$_TEST_PASS
+    local saved_fail
+    saved_fail=$_TEST_FAIL
     _TEST_PASS=2
     _TEST_FAIL=1
-    local exit_code=0
+    local exit_code
+    exit_code=0
     test_summary 2>/dev/null || exit_code=$?
     # Restore counters
     _TEST_PASS=$saved_pass

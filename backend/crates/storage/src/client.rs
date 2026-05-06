@@ -387,6 +387,21 @@ pub async fn upload_part(
     })
 }
 
+/// Build the XML body for completing a multipart upload.
+fn build_complete_multipart_xml(parts: &[PartInfo]) -> String {
+    let mut xml = String::from(
+        "<CompleteMultipartUpload xmlns=\"http://s3.amazonaws.com/doc/2006-03-01/\">",
+    );
+    for p in parts {
+        xml.push_str(&format!(
+            "<Part><PartNumber>{}</PartNumber><ETag>\"{}\"</ETag></Part>",
+            p.part_number, p.etag
+        ));
+    }
+    xml.push_str("</CompleteMultipartUpload>");
+    xml
+}
+
 /// Complete a multipart upload by providing all parts with their ETags.
 pub async fn complete_multipart_upload(
     client: &reqwest::Client,
@@ -399,17 +414,7 @@ pub async fn complete_multipart_upload(
         .map_err(|e| ApiError::InternalError(format!("Invalid URL: {e}")))?;
     let url_str = format!("{}?uploadId={}", base, upload_id);
 
-    // Build the XML body
-    let mut xml = String::from(
-        "<CompleteMultipartUpload xmlns=\"http://s3.amazonaws.com/doc/2006-03-01/\">",
-    );
-    for p in parts {
-        xml.push_str(&format!(
-            "<Part><PartNumber>{}</PartNumber><ETag>\"{}\"</ETag></Part>",
-            p.part_number, p.etag
-        ));
-    }
-    xml.push_str("</CompleteMultipartUpload>");
+    let xml = build_complete_multipart_xml(parts);
 
     let signed = sign_request(config, "POST", &url_str, "application/xml", xml.as_bytes())?;
 
@@ -733,5 +738,86 @@ mod tests {
     #[test]
     fn hex_zero_bytes() {
         assert_eq!(hex(&[0x00, 0x01, 0xff]), "0001ff");
+    }
+
+    // ── build_object_url tests ──────────────────────────────────────────
+
+    #[test]
+    fn build_object_url_regular_key() {
+        let url = build_object_url("http://localhost:9000", "bucket", "file.txt").unwrap();
+        assert_eq!(url.to_string(), "http://localhost:9000/bucket/file.txt");
+    }
+
+    #[test]
+    fn build_object_url_empty_key_gets_trailing_slash() {
+        let url = build_object_url("http://localhost:9000", "bucket", "").unwrap();
+        assert_eq!(url.to_string(), "http://localhost:9000/bucket/");
+    }
+
+    #[test]
+    fn build_object_url_nested_key() {
+        let url =
+            build_object_url("http://localhost:9000", "bucket", "a/b/c.txt").unwrap();
+        assert_eq!(
+            url.to_string(),
+            "http://localhost:9000/bucket/a/b/c.txt"
+        );
+    }
+
+    #[test]
+    fn build_object_url_invalid_endpoint_fails() {
+        let result = build_object_url("not a valid url", "bucket", "key");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn build_object_url_trailing_slash_on_endpoint() {
+        let url =
+            build_object_url("http://localhost:9000/", "bucket", "file.txt").unwrap();
+        assert_eq!(url.to_string(), "http://localhost:9000/bucket/file.txt");
+    }
+
+    // ── Multipart XML body tests ────────────────────────────────────────
+
+    #[test]
+    fn complete_multipart_xml_single_part() {
+        let parts = [PartInfo {
+            part_number: 1,
+            etag: "abc123".to_string(),
+        }];
+        let xml = build_complete_multipart_xml(&parts);
+        assert!(xml.contains("<PartNumber>1</PartNumber>"));
+        assert!(xml.contains("<ETag>\"abc123\"</ETag>"));
+        assert!(xml.starts_with("<CompleteMultipartUpload"));
+        assert!(xml.ends_with("</CompleteMultipartUpload>"));
+    }
+
+    #[test]
+    fn complete_multipart_xml_multiple_parts() {
+        let parts = [
+            PartInfo {
+                part_number: 1,
+                etag: "etag1".to_string(),
+            },
+            PartInfo {
+                part_number: 2,
+                etag: "etag2".to_string(),
+            },
+        ];
+        let xml = build_complete_multipart_xml(&parts);
+        assert!(xml.contains("<PartNumber>1</PartNumber>"));
+        assert!(xml.contains("<PartNumber>2</PartNumber>"));
+        assert!(xml.contains("<ETag>\"etag1\"</ETag>"));
+        assert!(xml.contains("<ETag>\"etag2\"</ETag>"));
+    }
+
+    #[test]
+    fn complete_multipart_xml_empty_parts() {
+        let parts: [PartInfo; 0] = [];
+        let xml = build_complete_multipart_xml(&parts);
+        assert!(xml.starts_with("<CompleteMultipartUpload"));
+        assert!(xml.ends_with("</CompleteMultipartUpload>"));
+        // No <Part> elements when empty
+        assert!(!xml.contains("<Part>"));
     }
 }

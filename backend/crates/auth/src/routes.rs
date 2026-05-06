@@ -96,6 +96,19 @@ pub struct UserInfo {
     pub provider: String,
 }
 
+/// Validate registration request fields.
+fn validate_registration(body: &RegisterRequest) -> Result<(), ApiError> {
+    if body.email.is_empty() || !body.email.contains('@') {
+        return Err(ApiError::ValidationError("Invalid email".to_string()));
+    }
+    if body.password.len() < 8 {
+        return Err(ApiError::ValidationError(
+            "Password must be at least 8 characters".to_string(),
+        ));
+    }
+    Ok(())
+}
+
 /// POST /auth/register — create user with email/password, return JWT.
 pub async fn register(
     State(state): State<AuthState>,
@@ -112,15 +125,7 @@ pub async fn register(
     )
     .await?;
 
-    // Validate input
-    if body.email.is_empty() || !body.email.contains('@') {
-        return Err(ApiError::ValidationError("Invalid email".to_string()));
-    }
-    if body.password.len() < 8 {
-        return Err(ApiError::ValidationError(
-            "Password must be at least 8 characters".to_string(),
-        ));
-    }
+    validate_registration(&body)?;
 
     // Check if user exists
     let existing: Option<(String,)> = sqlx::query_as("SELECT id::text FROM users WHERE email = $1")
@@ -383,18 +388,23 @@ pub async fn refresh(
     Ok(Json(response))
 }
 
+/// List configured OAuth providers from the auth config.
+fn list_providers(config: &super::AuthConfig) -> Vec<&'static str> {
+    let mut list: Vec<&str> = Vec::new();
+    if config.google_client_id.is_some() {
+        list.push("google");
+    }
+    if config.github_client_id.is_some() {
+        list.push("github");
+    }
+    list
+}
+
 /// GET /auth/providers — list configured OAuth providers.
 pub async fn providers(
     State(state): State<AuthState>,
 ) -> impl IntoResponse {
-    let mut list: Vec<&str> = Vec::new();
-    if state.auth.config.google_client_id.is_some() {
-        list.push("google");
-    }
-    if state.auth.config.github_client_id.is_some() {
-        list.push("github");
-    }
-    Json(serde_json::json!({ "providers": list }))
+    Json(serde_json::json!({ "providers": list_providers(&state.auth.config) }))
 }
 
 /// GET /auth/me — return current user info.
@@ -653,5 +663,124 @@ mod route_tests {
         assert_eq!(json["email"], "anon@example.com");
         assert!(json["name"].is_null());
         assert_eq!(json["provider"], "google");
+    }
+
+    #[test]
+    fn validate_registration_rejects_empty_email() {
+        let body = RegisterRequest {
+            email: "".to_string(),
+            password: "password123".to_string(),
+            name: None,
+        };
+        let err = validate_registration(&body).unwrap_err();
+        assert!(matches!(err, ApiError::ValidationError(_)));
+    }
+
+    #[test]
+    fn validate_registration_rejects_email_without_at() {
+        let body = RegisterRequest {
+            email: "notanemail".to_string(),
+            password: "password123".to_string(),
+            name: None,
+        };
+        let err = validate_registration(&body).unwrap_err();
+        assert!(matches!(err, ApiError::ValidationError(_)));
+    }
+
+    #[test]
+    fn validate_registration_rejects_short_password() {
+        let body = RegisterRequest {
+            email: "a@b.com".to_string(),
+            password: "short".to_string(),
+            name: None,
+        };
+        let err = validate_registration(&body).unwrap_err();
+        assert!(matches!(err, ApiError::ValidationError(_)));
+    }
+
+    #[test]
+    fn validate_registration_accepts_valid_input() {
+        let body = RegisterRequest {
+            email: "user@example.com".to_string(),
+            password: "password123".to_string(),
+            name: Some("Test".to_string()),
+        };
+        assert!(validate_registration(&body).is_ok());
+    }
+
+    #[test]
+    fn list_providers_empty_when_no_oauth() {
+        let config = crate::AuthConfig {
+            jwt_secret: "test".to_string(),
+            jwt_issuer: "test".to_string(),
+            jwt_expiry: 900,
+            refresh_expiry: 604800,
+            auth_mode: crate::AuthMode::Both,
+            google_client_id: None,
+            google_client_secret: None,
+            github_client_id: None,
+            github_client_secret: None,
+            oauth_redirect_url: None,
+            sidecar_shared_secret: None,
+        };
+        let list = list_providers(&config);
+        assert!(list.is_empty());
+    }
+
+    #[test]
+    fn list_providers_google_only() {
+        let config = crate::AuthConfig {
+            jwt_secret: "test".to_string(),
+            jwt_issuer: "test".to_string(),
+            jwt_expiry: 900,
+            refresh_expiry: 604800,
+            auth_mode: crate::AuthMode::Both,
+            google_client_id: Some("g-id".to_string()),
+            google_client_secret: Some("g-secret".to_string()),
+            github_client_id: None,
+            github_client_secret: None,
+            oauth_redirect_url: None,
+            sidecar_shared_secret: None,
+        };
+        let list = list_providers(&config);
+        assert_eq!(list, vec!["google"]);
+    }
+
+    #[test]
+    fn list_providers_github_only() {
+        let config = crate::AuthConfig {
+            jwt_secret: "test".to_string(),
+            jwt_issuer: "test".to_string(),
+            jwt_expiry: 900,
+            refresh_expiry: 604800,
+            auth_mode: crate::AuthMode::Both,
+            google_client_id: None,
+            google_client_secret: None,
+            github_client_id: Some("gh-id".to_string()),
+            github_client_secret: Some("gh-secret".to_string()),
+            oauth_redirect_url: None,
+            sidecar_shared_secret: None,
+        };
+        let list = list_providers(&config);
+        assert_eq!(list, vec!["github"]);
+    }
+
+    #[test]
+    fn list_providers_both_providers() {
+        let config = crate::AuthConfig {
+            jwt_secret: "test".to_string(),
+            jwt_issuer: "test".to_string(),
+            jwt_expiry: 900,
+            refresh_expiry: 604800,
+            auth_mode: crate::AuthMode::Both,
+            google_client_id: Some("g-id".to_string()),
+            google_client_secret: Some("g-secret".to_string()),
+            github_client_id: Some("gh-id".to_string()),
+            github_client_secret: Some("gh-secret".to_string()),
+            oauth_redirect_url: None,
+            sidecar_shared_secret: None,
+        };
+        let list = list_providers(&config);
+        assert_eq!(list, vec!["google", "github"]);
     }
 }

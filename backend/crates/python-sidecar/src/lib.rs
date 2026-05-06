@@ -25,6 +25,15 @@ pub struct PythonSidecar {
 }
 
 /// Validate a header value: reject CR, LF, and overlong values.
+const BACKOFF_BASE_MS: u64 = 100;
+const MAX_BACKOFF_MS: u64 = 30_000;
+
+/// Compute exponential backoff for retry attempt (1-indexed).
+fn backoff_for_attempt(attempt: u32) -> Duration {
+    let raw_ms = BACKOFF_BASE_MS.saturating_mul(2u64.saturating_pow(attempt.saturating_sub(1)));
+    Duration::from_millis(raw_ms.min(MAX_BACKOFF_MS))
+}
+
 fn validate_header_value(name: &str, value: &str) -> Result<(), SidecarError> {
     if value.contains('\r') || value.contains('\n') {
         return Err(SidecarError::InvalidInput(format!(
@@ -189,11 +198,7 @@ impl PythonSidecar {
 
         for attempt in 0..=self.max_retries {
             if attempt > 0 {
-                const BACKOFF_BASE_MS: u64 = 100;
-                const MAX_BACKOFF_MS: u64 = 30_000; // 30 seconds
-                let raw_ms =
-                    BACKOFF_BASE_MS.saturating_mul(2u64.saturating_pow(attempt.saturating_sub(1)));
-                let backoff = Duration::from_millis(raw_ms.min(MAX_BACKOFF_MS));
+                let backoff = backoff_for_attempt(attempt);
                 tokio::time::sleep(backoff).await;
             }
 
@@ -815,5 +820,48 @@ mod tests {
         let v = result.unwrap();
         assert_eq!(v["status"], "ok");
         assert!(v["trace_present"].as_bool().unwrap_or(false));
+    }
+
+    // ── Backoff calculation tests ───────────────────────────────────────
+
+    #[test]
+    fn backoff_attempt_1_is_base() {
+        let d = backoff_for_attempt(1);
+        assert_eq!(d, Duration::from_millis(100));
+    }
+
+    #[test]
+    fn backoff_attempt_2_doubles() {
+        let d = backoff_for_attempt(2);
+        assert_eq!(d, Duration::from_millis(200));
+    }
+
+    #[test]
+    fn backoff_attempt_9_is_25s() {
+        let d = backoff_for_attempt(9);
+        assert_eq!(d, Duration::from_millis(25600));
+    }
+
+    #[test]
+    fn backoff_attempt_10_saturates() {
+        let d = backoff_for_attempt(10);
+        assert_eq!(d, Duration::from_millis(MAX_BACKOFF_MS));
+    }
+
+    #[test]
+    fn backoff_attempt_3_is_400ms() {
+        let d = backoff_for_attempt(3);
+        assert_eq!(d, Duration::from_millis(400));
+    }
+
+    #[test]
+    fn backoff_saturates_at_max() {
+        for attempt in 9..=20 {
+            let d = backoff_for_attempt(attempt);
+            assert!(
+                d <= Duration::from_millis(MAX_BACKOFF_MS),
+                "attempt {attempt}: {d:?} exceeds max",
+            );
+        }
     }
 }

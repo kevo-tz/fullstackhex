@@ -1,7 +1,9 @@
-.PHONY: up down restart logs-backend logs-frontend test bench clean check-env setup setup-env help
+.PHONY: up down restart logs-backend logs-frontend test bench clean check-env sync-env setup setup-env help test-contract test-e2e test-e2e-shell
 .PHONY: verify-health check-prereqs preflight down-dev dev watch test-socket-ci
 .PHONY: migrate migrate-revert migrate-status
 .PHONY: rollback blue-green canary canary-promote canary-rollback
+.PHONY: logs-db logs-redis deploy-check prod-restart prod-up prod-down
+.PHONY: status run-dev check-cargo-watch status-sh
 
 # Default values (override with: make up POSTGRES_PASSWORD=mypassword)
 COMPOSE_DEV = docker compose -f compose/dev.yml --env-file .env
@@ -9,7 +11,7 @@ COMPOSE_PROD = docker compose -f compose/prod.yml --env-file .env
 COMPOSE_MON = docker compose -f compose/monitor.yml --env-file .env -p fullstackhex-monitor
 
 PYTHON_TEST_SOCK ?= /tmp/fullstackhex-test.sock
-PID_FILE = /tmp/fullstackhex-dev.pids
+PID_DIR = /tmp/fullstackhex-dev
 POST_START_DELAY ?= 2
 
 # PostgreSQL readiness tuning
@@ -28,10 +30,10 @@ START_DEPS = \
 	echo "PostgreSQL ready (or timeout — Rust will retry connections)"; \
 	echo "Starting Python sidecar..."; \
 	cd python-sidecar && set -a && . ../.env && set +a && uv run uvicorn app.main:app --uds $(PYTHON_SOCK) & \
-	echo $$! >> $(PID_FILE); \
+	echo $$! > $(PID_DIR)/python.pid; \
 	echo "Starting frontend..."; \
 	cd frontend && bun run dev & \
-	echo $$! >> $(PID_FILE)
+	echo $$! > $(PID_DIR)/frontend.pid
 
 # Help
 help:
@@ -52,7 +54,9 @@ help:
 	@echo "  up          - Start all development services (infra only)"
 	@echo "  dev         - Start full stack (infra + python + rust + frontend)"
 	@echo "  watch       - Start full stack with Rust hot reload (cargo watch)"
+	@echo "              Ctrl+C stops all. For persistent per-service startup, see README."
 	@echo "  down        - Stop all services"
+	@echo "  status      - Show which services are running (PID, port, health)"
 	@echo "  down-dev    - Stop full stack and infrastructure"
 	@echo "  restart     - Restart all services"
 	@echo ""
@@ -71,6 +75,9 @@ help:
 	@echo "  test-python     - Run Python tests only"
 	@echo "  test-frontend   - Run frontend tests only"
 	@echo "  test-socket-ci  - Run socket integration tests (CI mode)"
+	@echo "  test-contract   - Validate frontend health shape against running backend"
+	@echo "  test-e2e        - Run e2e auth tests (Bun)"
+	@echo "  test-e2e-shell  - Run full e2e shell test (curl + jq)"
 	@echo ""
 	@echo "  Example: make test  # runs cargo test + pytest + bun test"
 	@echo ""
@@ -78,7 +85,9 @@ help:
 	@echo "  bench           - Run performance benchmarks"
 	@echo "  health          - Check all services health"
 	@echo "  verify-health   - Poll health endpoints until all OK or timeout"
-	@echo "  check-env       - Validate .env has no CHANGE_ME placeholders"
+	@echo "  check-env       - Validate .env has all required keys and no CHANGE_ME placeholders"
+	@echo "  sync-env        - Compare .env against .env.example, show missing keys"
+	@echo "  sync-env-apply  - Append missing keys to .env (commented out)"
 	@echo "  check-prereqs   - Check required dev tools are installed"
 	@echo ""
 	@echo "Cleanup:"
@@ -118,19 +127,29 @@ migrate-status: ## Show database migration status
 
 # Services
 
-# check-env: validates .env exists and has no CHANGE_ME placeholders
+# check-env: validates .env exists, has no CHANGE_ME placeholders,
+# all required keys from .env.example are present, and no shell syntax errors.
 check-env:
-	@if [ ! -f .env ]; then \
-	  echo "ERROR: .env not found. Run: cp .env.example .env"; \
-	  exit 1; \
-	fi
-	@if grep -q "CHANGE_ME" .env 2>/dev/null; then \
-	  echo "ERROR: .env still contains CHANGE_ME placeholder values."; \
-	  echo "       Edit .env and replace all CHANGE_ME entries before continuing."; \
-	  grep -n "CHANGE_ME" .env; \
-	  exit 1; \
-	fi
-	@echo ".env looks good."
+	@./scripts/validate-env.sh
+
+# sync-env: compare .env against .env.example and report missing keys.
+# With --apply: append missing keys (commented out) to .env.
+sync-env:
+	@./scripts/sync-env.sh
+
+sync-env-apply:
+	@./scripts/sync-env.sh --apply
+
+# sqlx-prepare: generate sqlx offline query metadata for compile-time checking.
+# Requires a running PostgreSQL with DATABASE_URL set in .env.
+# CI runs sqlx-prepare-check to verify .sqlx/ is up to date.
+sqlx-prepare:
+	@echo "Generating sqlx offline query metadata..."
+	@cd backend && set -a && . ../.env && set +a && cargo sqlx prepare
+	@echo "sqlx metadata generated. Commit the changes to .sqlx/ if any."
+
+sqlx-prepare-check:
+	@cd backend && set -a && . ../.env && set +a && cargo sqlx prepare --check
 
 # check-prereqs: detect required dev tools and print install instructions
 check-prereqs:
@@ -222,11 +241,11 @@ verify-health:
 	  RUST_OK=0; \
 	  DB_OK=0; \
 	  PY_OK=0; \
-	  RUST_STATUS=$$(curl -sk --max-time 5 http://localhost:8001/health 2>/dev/null | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('status',''))" 2>/dev/null); \
+	  RUST_STATUS=$$(curl -sk --max-time 5 http://localhost:8001/health 2>/dev/null | grep -o '"status":"[^"]*"' | head -1 | sed 's/"status":"//;s/"//' 2>/dev/null); \
 	  if [ "$$RUST_STATUS" = "ok" ]; then RUST_OK=1; fi; \
-	  DB_STATUS=$$(curl -sk --max-time 5 http://localhost:8001/health/db 2>/dev/null | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('status',''))" 2>/dev/null); \
+	  DB_STATUS=$$(curl -sk --max-time 5 http://localhost:8001/health/db 2>/dev/null | grep -o '"status":"[^"]*"' | head -1 | sed 's/"status":"//;s/"//' 2>/dev/null); \
 	  if [ "$$DB_STATUS" = "ok" ]; then DB_OK=1; fi; \
-	  PY_STATUS=$$(curl -sk --max-time 5 http://localhost:8001/health/python 2>/dev/null | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('status',''))" 2>/dev/null); \
+	  PY_STATUS=$$(curl -sk --max-time 5 http://localhost:8001/health/python 2>/dev/null | grep -o '"status":"[^"]*"' | head -1 | sed 's/"status":"//;s/"//' 2>/dev/null); \
 	  if [ "$$PY_STATUS" = "ok" ]; then PY_OK=1; fi; \
 	  printf "."; \
 	  if [ $$RUST_OK -eq 1 ] && [ $$DB_OK -eq 1 ] && [ $$PY_OK -eq 1 ]; then \
@@ -237,14 +256,16 @@ verify-health:
 	  sleep 1; \
 	done
 
-# dev: full stack with prerequisite checks, preflight, and health verification
-dev: check-env check-prereqs preflight
-	@rm -f $(PID_FILE); \
+# run-dev: shared startup sequence used by dev and watch targets.
+# Set BACKEND_CMD before invoking (dev uses cargo run, watch uses cargo watch).
+run-dev: check-env check-prereqs preflight
+	@mkdir -p $(PID_DIR); \
+	rm -f $(PID_DIR)/*.pid; \
 	trap '$(MAKE) down-dev' INT TERM; \
 	$(START_DEPS); \
-	echo "Starting Rust backend..."; \
-	cd backend && set -a && . ../.env && set +a && cargo run -p api & \
-	echo $$! >> $(PID_FILE); \
+	echo "Starting Rust backend (nohup — survives terminal close)..."; \
+	cd backend && set -a && . ../.env && set +a && nohup $(BACKEND_CMD) > $(PID_DIR)/backend.log 2>&1 & \
+	echo $$! > $(PID_DIR)/backend.pid; \
 	sleep $(POST_START_DELAY); \
 	$(MAKE) verify-health; \
 	echo ""; \
@@ -252,39 +273,37 @@ dev: check-env check-prereqs preflight
 	echo "  All services healthy. Dashboard:"; \
 	echo "  → http://localhost:4321"; \
 	echo "=============================================="; \
-	echo "Press Ctrl+C to stop everything."; \
+	echo "Press Ctrl+C to stop Docker services (frontend + sidecar keep running)."; \
+	echo "Backend logs: $(PID_DIR)/backend.log"; \
 	wait
 
-watch: check-env check-prereqs preflight
-	@command -v cargo-watch >/dev/null 2>&1 || { echo "ERROR: cargo-watch not found. Install: cargo install cargo-watch"; exit 1; }; \
-	rm -f $(PID_FILE); \
-	trap '$(MAKE) down-dev' INT TERM; \
-	$(START_DEPS); \
-	echo "Starting Rust backend (watch mode)..."; \
-	cd backend && set -a && . ../.env && set +a && cargo watch -x 'run -p api' & \
-	echo $$! >> $(PID_FILE); \
-	sleep $(POST_START_DELAY); \
-	$(MAKE) verify-health; \
-	echo ""; \
-	echo "=============================================="; \
-	echo "  All services healthy. Dashboard:"; \
-	echo "  → http://localhost:4321"; \
-	echo "=============================================="; \
-	echo "Press Ctrl+C to stop everything."; \
-	wait
+dev: BACKEND_CMD = cargo run -p api
+dev: run-dev
+
+watch: BACKEND_CMD = cargo watch -x 'run -p api'
+watch: check-cargo-watch run-dev
+
+check-cargo-watch:
+	@command -v cargo-watch >/dev/null 2>&1 || { echo "ERROR: cargo-watch not found. Install: cargo install cargo-watch"; exit 1; }
 
 down-dev:
-	@if [ -f $(PID_FILE) ]; then \
-	  while read pid; do \
+	@for pidfile in $(PID_DIR)/*.pid; do \
+	  if [ -f "$$pidfile" ]; then \
+	    read pid < "$$pidfile" 2>/dev/null || true; \
 	    kill $$pid 2>/dev/null || true; \
-	  done < $(PID_FILE); \
-	  rm -f $(PID_FILE); \
-	fi
+	    rm -f "$$pidfile"; \
+	  fi; \
+	done
 	@pkill -x uvicorn 2>/dev/null || true
 	@pkill -x api 2>/dev/null || true
 	@pkill -x bun 2>/dev/null || true
+	# pkill above is a safety net for orphaned processes where PID files were lost
+	# (e.g., after a crash). Primary cleanup is via PID file loop above.
 	$(COMPOSE_DEV) down
 	@echo "All services stopped."
+
+status:
+	@./scripts/status.sh
 
 up: check-env
 	$(COMPOSE_DEV) up -d
@@ -352,6 +371,17 @@ test-socket-ci:
 	rm -f $(PYTHON_TEST_SOCK); \
 	exit $$R
 
+test-contract:
+	@./scripts/contract-test.sh
+
+test-e2e:
+	@echo "Running e2e auth tests..."
+	cd e2e && bun test
+
+test-e2e-shell:
+	@echo "Running e2e shell test..."
+	./tests/e2e.sh
+
 # Performance
 bench:
 	./scripts/bench.sh
@@ -404,7 +434,7 @@ deploy-check:
 	  if [ -z "$$RESP" ]; then \
 	    RESP=$$(curl -sk $$CURL_FLAGS "https://$(DEPLOY_HOST)/health" 2>/dev/null); \
 	  fi; \
-	  STATUS=$$(echo "$$RESP" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('status',''))" 2>/dev/null); \
+	  STATUS=$$(echo "$$RESP" | grep -o '"status":"[^"]*"' | head -1 | sed 's/"status":"//;s/"//' 2>/dev/null); \
 	  if [ "$$STATUS" = "ok" ]; then \
 	    echo ""; \
 	    echo "Remote health OK ($$ELAPSED s)"; \

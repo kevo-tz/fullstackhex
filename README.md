@@ -46,6 +46,14 @@ Dashboard at http://localhost:4321 — three green dots means everything is heal
 
 For infra-only (run backend/frontend manually): `make up`.
 
+`make dev` runs everything in the foreground — press Ctrl+C to stop all services.
+If you need services to survive terminal closure, start them individually:
+```bash
+make up                              # Docker services only
+cd backend && cargo run -p api       # Rust backend
+cd frontend && bun run dev           # Astro frontend
+```
+
 ### Production Deploy
 
 ```bash
@@ -70,6 +78,11 @@ See [docs/INFRASTRUCTURE.md](docs/INFRASTRUCTURE.md) for full production setup i
 | [docs/SETUP.md](docs/SETUP.md) | One-command init and tool install |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | System design, IPC, port mappings |
 | [docs/SERVICES.md](docs/SERVICES.md) | Crate layout, API endpoints, health checks |
+| [docs/AUTH.md](docs/AUTH.md) | JWT, OAuth, session, and CSRF configuration |
+| [docs/STORAGE.md](docs/STORAGE.md) | S3-compatible object storage reference |
+| [docs/REDIS.md](docs/REDIS.md) | Redis caching, rate limiting, session store |
+| [docs/DEPLOY.md](docs/DEPLOY.md) | Blue-green, canary, rollback, and deploy safety |
+| [docs/EXAMPLES.md](docs/EXAMPLES.md) | Copy-paste patterns for extending the stack |
 | [docs/INFRASTRUCTURE.md](docs/INFRASTRUCTURE.md) | Docker Compose reference, volumes, commands |
 | [docs/INITIALIZATION.md](docs/INITIALIZATION.md) | Portable template for new projects |
 | [docs/INDEX.md](docs/INDEX.md) | Full documentation index |

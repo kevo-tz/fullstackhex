@@ -105,7 +105,7 @@ EOF
 mkdir -p crates
 
 # Create individual crates
-for crate in api core db python-sidecar; do
+for crate in api auth cache db domain python-sidecar storage; do
     if [ ! -d "crates/$crate" ]; then
         echo "Creating crate: $crate"
         cargo new --lib --edition 2024 "crates/$crate"
@@ -201,7 +201,7 @@ uv --version        # Should show latest
 # Verify workspace
 cd backend
 cargo build --workspace
-ls crates/           # Should show: api core db python-sidecar
+ls crates/           # Should show: api auth cache db domain python-sidecar storage
 
 # Verify generated tests
 cargo test --workspace

@@ -113,6 +113,7 @@ fn build_router(state: Arc<AppState>) -> Router {
         .route("/health/redis", get(health_redis))
         .route("/health/storage", get(health_storage))
         .route("/health/python", get(health_python))
+        .route("/health/auth", get(health_auth))
         .route("/metrics", get(metrics_handler))
         .route("/metrics/python", get(metrics_python_proxy))
         .layer(middleware::from_fn(metrics::track_metrics))
@@ -132,6 +133,7 @@ fn build_router(state: Arc<AppState>) -> Router {
             .route("/login", axum::routing::post(auth::routes::login))
             .route("/logout", axum::routing::post(auth::routes::logout))
             .route("/refresh", axum::routing::post(auth::routes::refresh))
+            .route("/providers", axum::routing::get(auth::routes::providers))
             .route("/me", axum::routing::get(auth::routes::me))
             .route(
                 "/oauth/{provider}",
@@ -157,6 +159,22 @@ fn build_router(state: Arc<AppState>) -> Router {
             .route("/{key}", axum::routing::delete(storage::routes::delete))
             .route("/", axum::routing::get(storage::routes::list))
             .route("/presign", axum::routing::post(storage::routes::presign))
+            .route(
+                "/multipart/init",
+                axum::routing::post(storage::routes::init_multipart),
+            )
+            .route(
+                "/multipart/{key}/{upload_id}/part/{part_number}",
+                axum::routing::put(storage::routes::upload_part),
+            )
+            .route(
+                "/multipart/{key}/{upload_id}/complete",
+                axum::routing::post(storage::routes::complete_multipart),
+            )
+            .route(
+                "/multipart/{key}/{upload_id}",
+                axum::routing::delete(storage::routes::abort_multipart),
+            )
             .layer(DefaultBodyLimit::max(10 * 1024 * 1024)) // 10MB upload limit
             .with_state(storage_state);
         router = router.nest("/storage", storage_router);
@@ -191,6 +209,21 @@ async fn health() -> impl IntoResponse {
             "version": env!("CARGO_PKG_VERSION")
         })),
     )
+}
+
+async fn health_auth(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+    if state.auth.is_some() {
+        (StatusCode::OK, no_cache(), Json(json!({ "status": "ok" })))
+    } else {
+        (
+            StatusCode::OK,
+            no_cache(),
+            Json(json!({
+                "status": "disabled",
+                "fix": "JWT_SECRET not set or is CHANGE_ME — auth disabled. Set a secure JWT_SECRET in .env and restart."
+            })),
+        )
+    }
 }
 
 async fn health_db(State(state): State<Arc<AppState>>) -> impl IntoResponse {
@@ -298,7 +331,10 @@ async fn health_python(
     let result = if trace_id.is_empty() {
         state.sidecar.health().await
     } else {
-        state.sidecar.get_with_trace_id("/health", trace_id).await
+        state
+            .sidecar
+            .get_with_trace_id("/health", trace_id, None)
+            .await
     };
 
     match result {

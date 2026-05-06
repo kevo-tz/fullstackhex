@@ -113,3 +113,98 @@ impl AuthService {
         Some(Self::new(config))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn auth_config_from_env_missing_jwt_secret_returns_none() {
+        // Clean env and verify None
+        let old = std::env::var("JWT_SECRET").ok();
+        unsafe { std::env::remove_var("JWT_SECRET") };
+        assert!(AuthConfig::from_env().is_none());
+        if let Some(v) = old {
+            unsafe { std::env::set_var("JWT_SECRET", v) };
+        }
+    }
+
+    #[test]
+    fn auth_config_from_env_change_me_returns_none() {
+        let old = std::env::var("JWT_SECRET").ok();
+        unsafe { std::env::set_var("JWT_SECRET", "CHANGE_ME") };
+        assert!(AuthConfig::from_env().is_none());
+        if let Some(v) = old {
+            unsafe { std::env::set_var("JWT_SECRET", v) };
+        } else {
+            unsafe { std::env::remove_var("JWT_SECRET") };
+        }
+    }
+
+    #[test]
+    fn auth_config_from_env_valid_secret_returns_some() {
+        let old = std::env::var("JWT_SECRET").ok();
+        let old_mode = std::env::var("AUTH_MODE").ok();
+        unsafe {
+            std::env::set_var("JWT_SECRET", "test-secret-for-tests");
+            std::env::set_var("AUTH_MODE", "bearer");
+        }
+        let config = AuthConfig::from_env();
+        assert!(config.is_some());
+        let c = config.unwrap();
+        assert_eq!(c.jwt_secret, "test-secret-for-tests");
+        assert_eq!(c.auth_mode, AuthMode::Bearer);
+        assert_eq!(c.jwt_issuer, "fullstackhex"); // default
+        assert_eq!(c.jwt_expiry, 900);
+        assert_eq!(c.refresh_expiry, 604800);
+        // Restore
+        if let Some(v) = old {
+            unsafe { std::env::set_var("JWT_SECRET", v) };
+        } else {
+            unsafe { std::env::remove_var("JWT_SECRET") };
+        }
+        if let Some(v) = old_mode {
+            unsafe { std::env::set_var("AUTH_MODE", v) };
+        } else {
+            unsafe { std::env::remove_var("AUTH_MODE") };
+        }
+    }
+
+    #[test]
+    fn auth_service_new_creates_jwt_service() {
+        let config = AuthConfig {
+            jwt_secret: "my-secret".into(),
+            jwt_issuer: "my-issuer".into(),
+            jwt_expiry: 600,
+            refresh_expiry: 3600,
+            auth_mode: AuthMode::Both,
+            google_client_id: None,
+            google_client_secret: None,
+            github_client_id: None,
+            github_client_secret: None,
+            oauth_redirect_url: None,
+            sidecar_shared_secret: None,
+        };
+        let svc = AuthService::new(config);
+        let token = svc
+            .jwt
+            .create_token("u1", "test@test.com", None, "local")
+            .unwrap();
+        let claims = svc.jwt.validate_token(&token).unwrap();
+        assert_eq!(claims.iss, "my-issuer");
+        assert_eq!(claims.sub, "u1");
+    }
+
+    #[test]
+    fn auth_mode_display_and_debug() {
+        assert_eq!(format!("{:?}", AuthMode::Cookie), "Cookie");
+        assert_eq!(format!("{:?}", AuthMode::Bearer), "Bearer");
+        assert_eq!(format!("{:?}", AuthMode::Both), "Both");
+    }
+
+    #[test]
+    fn auth_mode_partial_eq() {
+        assert_eq!(AuthMode::Cookie, AuthMode::Cookie);
+        assert_ne!(AuthMode::Cookie, AuthMode::Bearer);
+    }
+}

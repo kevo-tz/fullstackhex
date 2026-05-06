@@ -51,10 +51,14 @@ check_postgres() {
         return 1
     fi
 
-    local pg_host="${POSTGRES_HOST:-localhost}"
-    local pg_port="${POSTGRES_PORT:-5432}"
-    local pg_user="${POSTGRES_USER:-app_user}"
-    local pg_db="${POSTGRES_DB:-app_database}"
+    local pg_host
+    pg_host="${POSTGRES_HOST:-localhost}"
+    local pg_port
+    pg_port="${POSTGRES_PORT:-5432}"
+    local pg_user
+    pg_user="${POSTGRES_USER:-app_user}"
+    local pg_db
+    pg_db="${POSTGRES_DB:-app_database}"
 
     if PGPASSWORD="${POSTGRES_PASSWORD:-}" psql -h "$pg_host" -p "$pg_port" -U "$pg_user" -d "$pg_db" -c "SELECT 1" > /dev/null 2>&1; then
         log_success "PostgreSQL is healthy"
@@ -73,8 +77,10 @@ check_redis() {
         return 1
     fi
 
-    local redis_host="${REDIS_HOST:-localhost}"
-    local redis_port="${REDIS_PORT:-6379}"
+    local redis_host
+    redis_host="${REDIS_HOST:-localhost}"
+    local redis_port
+    redis_port="${REDIS_PORT:-6379}"
 
     if redis-cli -h "$redis_host" -p "$redis_port" ping > /dev/null 2>&1; then
         log_success "Redis is healthy"
@@ -87,19 +93,25 @@ check_redis() {
 
 # Check service health with timeout
 check_service_http() {
-    local name="$1"
-    local url="$2"
-    local timeout="${3:-30}"
-    local verbose="${4:-false}"
+    local name
+    name="$1"
+    local url
+    url="$2"
+    local timeout
+    timeout="${3:-30}"
+    local verbose
+    verbose="${4:-false}"
     
-    local start_time=$(date +%s)
-    local end_time=$((start_time + timeout))
+    local start_time
+    start_time=$(date +%s)
+    local end_time
+    end_time=$((start_time + timeout))
     
     if [ "$verbose" = true ]; then
         log_info "Checking $name at $url..."
     fi
     
-    while [ $(date +%s) -lt $end_time ]; do
+    while [ "$(date +%s)" -lt "$end_time" ]; do
         if curl --silent --fail "$url" > /dev/null 2>&1; then
             log_success "$name is healthy"
             return 0
@@ -115,13 +127,15 @@ check_service_http() {
 get_repo_root() {
     local script_dir
     script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-    echo "$(cd "$script_dir/.." && pwd)"
+    cd "$script_dir/.." && pwd
 }
 
 # Validate required environment variables
 validate_env_vars() {
-    local required_vars=("$@")
-    local missing=0
+    local required_vars
+    required_vars=("$@")
+    local missing
+    missing=0
     
     for var in "${required_vars[@]}"; do
         if [ -z "${!var}" ]; then
@@ -135,7 +149,8 @@ validate_env_vars() {
 
 # Create directory if it doesn't exist
 ensure_dir() {
-    local dir="$1"
+    local dir
+    dir="$1"
     if [ ! -d "$dir" ]; then
         mkdir -p "$dir"
         log_success "Created directory: $dir"
@@ -167,7 +182,8 @@ log_dry_run() {
 
 # Safety: prompt for confirmation
 confirm_action() {
-    local prompt="${1:-Continue?}"
+    local prompt
+    prompt="${1:-Continue?}"
     local response
     
     if dry_run_mode; then
@@ -191,8 +207,10 @@ confirm_action() {
 
 # Safety: safe remove with backup
 safe_remove() {
-    local path="$1"
-    local backup_dir="${2:-.backup}"
+    local path
+    path="$1"
+    local backup_dir
+    backup_dir="${2:-.backup}"
     
     if [ -e "$path" ]; then
         log_dry_run "Would remove: $path"
@@ -212,9 +230,12 @@ safe_remove() {
 
 # Safety: safe copy with backup option
 safe_copy() {
-    local src="$1"
-    local dest="$2"
-    local backup="${3:-false}"
+    local src
+    src="$1"
+    local dest
+    dest="$2"
+    local backup
+    backup="${3:-false}"
     
     if [ ! -e "$src" ]; then
         log_error "Source does not exist: $src"
@@ -242,8 +263,10 @@ safe_copy() {
 
 # Safety: safe move
 safe_move() {
-    local src="$1"
-    local dest="$2"
+    local src
+    src="$1"
+    local dest
+    dest="$2"
     
     if [ ! -e "$src" ]; then
         log_error "Source does not exist: $src"
@@ -263,7 +286,8 @@ safe_move() {
 
 # Safety: check disk space
 check_disk_space() {
-    local required_kb="$1"
+    local required_kb
+    required_kb="$1"
     local available_kb
     
     available_kb=$(df -k . | awk 'NR==2 {print $4}')
@@ -279,7 +303,8 @@ check_disk_space() {
 
 # Safety: check write permissions
 check_write_permission() {
-    local path="$1"
+    local path
+    path="$1"
     
     if touch "$path.test" 2>/dev/null; then
         rm "$path.test"
@@ -301,7 +326,8 @@ test_mode() {
 
 # Mock command execution for testing
 mock_command() {
-    local cmd="$1"
+    local cmd
+    cmd="$1"
     shift
     
     if test_mode; then
@@ -316,10 +342,12 @@ mock_command() {
 MOCK_FILE_DIR="${MOCK_FILE_DIR:-}"
 
 mock_read_file() {
-    local file="$1"
+    local file
+    file="$1"
     
     if test_mode && [ -n "$MOCK_FILE_DIR" ]; then
-        local mock_file="$MOCK_FILE_DIR/$(basename "$file")"
+        local mock_file
+        mock_file="$MOCK_FILE_DIR/$(basename "$file")"
         if [ -f "$mock_file" ]; then
             log_info "[MOCK] Reading: $file -> $mock_file"
             cat "$mock_file"
@@ -331,11 +359,14 @@ mock_read_file() {
 }
 
 mock_write_file() {
-    local file="$1"
-    local content="$2"
+    local file
+    file="$1"
+    local content
+    content="$2"
     
     if test_mode && [ -n "$MOCK_FILE_DIR" ]; then
-        local mock_file="$MOCK_FILE_DIR/$(basename "$file")"
+        local mock_file
+        mock_file="$MOCK_FILE_DIR/$(basename "$file")"
         log_info "[MOCK] Writing: $file -> $mock_file"
         echo "$content" > "$mock_file"
         return 0
@@ -346,8 +377,10 @@ mock_write_file() {
 
 # Mock environment variable
 mock_env() {
-    local var="$1"
-    local value="$2"
+    local var
+    var="$1"
+    local value
+    value="$2"
     
     if test_mode; then
         log_info "[MOCK] Setting $var=$value"
@@ -360,13 +393,16 @@ mock_env() {
 MOCK_HTTP_RESPONSES="${MOCK_HTTP_RESPONSES:-}"
 
 mock_network_calls() {
-    local url="$1"
+    local url
+    url="$1"
 
     if test_mode && [ -n "$MOCK_HTTP_RESPONSES" ]; then
         local pair
         while IFS= read -r pair; do
-            local mock_url="${pair%%=*}"
-            local mock_response="${pair#*=}"
+            local mock_url
+            mock_url="${pair%%=*}"
+            local mock_response
+            mock_response="${pair#*=}"
             if [ "$mock_url" = "$url" ]; then
                 log_info "[MOCK] HTTP response for: $url"
                 echo "$mock_response"
@@ -382,9 +418,12 @@ mock_network_calls() {
 
 # Test assertion functions
 assert_equals() {
-    local expected="$1"
-    local actual="$2"
-    local message="${3:-Assertion failed}"
+    local expected
+    expected="$1"
+    local actual
+    actual="$2"
+    local message
+    message="${3:-Assertion failed}"
     
     if [ "$expected" = "$actual" ]; then
         log_success "[PASS] $message"
@@ -398,9 +437,12 @@ assert_equals() {
 }
 
 assert_contains() {
-    local haystack="$1"
-    local needle="$2"
-    local message="${3:-Assertion failed}"
+    local haystack
+    haystack="$1"
+    local needle
+    needle="$2"
+    local message
+    message="${3:-Assertion failed}"
     
     if echo "$haystack" | grep -q "$needle"; then
         log_success "[PASS] $message"
@@ -413,8 +455,10 @@ assert_contains() {
 }
 
 assert_file_exists() {
-    local file="$1"
-    local message="${2:-File should exist}"
+    local file
+    file="$1"
+    local message
+    message="${2:-File should exist}"
     
     if [ -f "$file" ]; then
         log_success "[PASS] $message"
@@ -427,8 +471,10 @@ assert_file_exists() {
 }
 
 assert_command_exists() {
-    local cmd="$1"
-    local message="${2:-Command should exist}"
+    local cmd
+    cmd="$1"
+    local message
+    message="${2:-Command should exist}"
     
     if command -v "$cmd" >/dev/null 2>&1; then
         log_success "[PASS] $message"

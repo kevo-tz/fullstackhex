@@ -1,4 +1,3 @@
--- +migrate Up
 CREATE TABLE users (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     email VARCHAR(255) UNIQUE NOT NULL,
@@ -11,6 +10,3 @@ CREATE TABLE users (
 );
 CREATE INDEX idx_users_email ON users(email);
 CREATE INDEX idx_users_provider ON users(provider, provider_id);
-
--- +migrate Down
-DROP TABLE IF EXISTS users;

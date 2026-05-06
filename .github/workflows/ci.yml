@@ -66,7 +66,7 @@ jobs:
           python-version: "3.14"
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v8.1.0
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b  # v8.1.0
 
       - name: Start Python sidecar for socket tests
         run: |
@@ -85,6 +85,12 @@ jobs:
           PYTHON_SIDECAR_SOCKET: /tmp/fullstackhex-python.sock
         run: cargo test --workspace
 
+      - name: cargo test (ignored — socket integration)
+        env:
+          DATABASE_URL: postgres://postgres:postgres@localhost:5432/testdb
+          PYTHON_SIDECAR_SOCKET: /tmp/fullstackhex-python.sock
+        run: cargo test -p python-sidecar -- --ignored
+
   python:
     name: python
     runs-on: ubuntu-latest
@@ -101,7 +107,7 @@ jobs:
           python-version: "3.14"
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v8.1.0
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b  # v8.1.0
 
       - name: Install dependencies
         run: uv sync --all-extras
@@ -131,7 +137,7 @@ jobs:
           node-version: "22"
 
       - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6  # v2
 
       - name: Cache Bun modules
         uses: actions/cache@v5
@@ -173,7 +179,7 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v8.1.0
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b  # v8.1.0
 
       - name: Setup Node.js 22
         uses: actions/setup-node@v6
@@ -181,7 +187,13 @@ jobs:
           node-version: "22"
 
       - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6  # v2
+
+      - name: Check sqlx offline metadata
+        working-directory: backend
+        run: |
+          cargo install sqlx-cli --no-default-features --features postgres
+          cargo sqlx prepare --workspace --check -- --all-features
 
       - name: Rust smoke
         working-directory: backend
@@ -196,6 +208,106 @@ jobs:
       - name: Frontend smoke
         working-directory: frontend
         run: bun test
+
+  e2e:
+    name: e2e
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: testdb
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+      redis:
+        image: redis:8-alpine
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 6379:6379
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6  # v2
+
+      - name: Cache Cargo registry and build
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            backend/target
+          key: ${{ runner.os }}-cargo-e2e-${{ hashFiles('backend/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-e2e-
+            ${{ runner.os }}-cargo-
+
+      - name: Build backend
+        working-directory: backend
+        run: cargo build -p api
+
+      - name: Start backend
+        env:
+          DATABASE_URL: postgres://postgres:postgres@localhost:5432/testdb
+          REDIS_URL: redis://localhost:6379
+          JWT_SECRET: e2e-test-jwt-secret-do-not-use-in-prod
+          AUTH_MODE: bearer
+          RUSTFS_ENDPOINT: ""
+          PYTHON_SIDECAR_SOCKET: ""
+        working-directory: backend
+        run: |
+          cargo run -p api &
+          for i in $(seq 1 30); do
+            curl -s http://localhost:8001/health && break
+            sleep 1
+          done
+          echo "Backend ready"
+
+      - name: Install frontend deps
+        working-directory: frontend
+        run: bun install --frozen-lockfile
+
+      - name: Start frontend
+        working-directory: frontend
+        env:
+          VITE_RUST_BACKEND_URL: http://localhost:8001
+        run: |
+          bun run build
+          bun run preview &
+          for i in $(seq 1 30); do
+            curl -s http://localhost:4321 && break
+            sleep 1
+          done
+          echo "Frontend ready"
+
+      - name: Run e2e tests
+        env:
+          VITE_RUST_BACKEND_URL: http://localhost:8001
+          FRONTEND_URL: http://localhost:4321
+        run: |
+          cd e2e
+          bun test
 
   infra:
     name: infra
@@ -242,10 +354,10 @@ jobs:
           done
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v4
+        uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd  # v4
 
       - name: Verify Dockerfile.rust builds
-        uses: docker/build-push-action@v7
+        uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f  # v7
         with:
           file: compose/Dockerfile.rust
           context: .
@@ -272,6 +384,11 @@ jobs:
           fetch-depth: 0
 
       - name: Setup Python 3.14
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.14"
+
+      - name: Install detect-secrets
         run: |
           python -m pip install --upgrade pip
           pip install detect-secrets==1.5.0 # pragma: allowlist secret
@@ -306,7 +423,7 @@ jobs:
           "
 
       - name: Run gitleaks scan
-        uses: gitleaks/gitleaks-action@v2
+        uses: gitleaks/gitleaks-action@dcedce43c6f43de0b836d1fe38946645c9c638dc  # v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # pragma: allowlist secret
           GITLEAKS_CONFIG: .github/gitleaks.toml

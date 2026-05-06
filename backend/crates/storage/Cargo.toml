@@ -20,8 +20,10 @@ sha2 = "0.10"
 hex = "0.4"
 chrono = "0.4"
 reqwest = { version = "0.11", features = ["stream"] }
+futures-util = "0.3"
 bytes = "1"
 url = "2"
+quick-xml = "0.37"
 domain = { path = "../domain" }
 auth = { path = "../auth" }
 

@@ -62,9 +62,7 @@ if ! grep -q "PYTHON_SIDECAR_SOCKET" .env 2>/dev/null; then
     log_dry_run "Would append PYTHON_SIDECAR_SOCKET=$socket_path to .env"
     if ! dry_run_mode; then
         mkdir -p "$socket_dir"
-        echo "" >> .env
-        echo "# Python Sidecar (Unix socket)" >> .env
-        echo "PYTHON_SIDECAR_SOCKET=$socket_path" >> .env
+        { echo ""; echo "# Python Sidecar (Unix socket)"; echo "PYTHON_SIDECAR_SOCKET=$socket_path"; } >> .env
         log_success "Added Unix socket config to .env"
     fi
     log_info "Socket path: $socket_path"
@@ -75,9 +73,7 @@ fi
 if ! grep -q "VITE_RUST_BACKEND_URL" .env 2>/dev/null; then
     log_dry_run "Would append VITE_RUST_BACKEND_URL to .env"
     if ! dry_run_mode; then
-        echo "" >> .env
-        echo "# Frontend → Rust backend" >> .env
-        echo "VITE_RUST_BACKEND_URL=http://localhost:8001" >> .env
+        { echo ""; echo "# Frontend → Rust backend"; echo "VITE_RUST_BACKEND_URL=http://localhost:8001"; } >> .env
         log_success "Added Rust backend URL to .env"
     fi
 else
@@ -87,9 +83,7 @@ fi
 if ! grep -q "ASTRO_PORT" .env 2>/dev/null; then
     log_dry_run "Would append ASTRO_PORT to .env"
     if ! dry_run_mode; then
-        echo "" >> .env
-        echo "# Astro dev server port" >> .env
-        echo "ASTRO_PORT=4321" >> .env
+        { echo ""; echo "# Astro dev server port"; echo "ASTRO_PORT=4321"; } >> .env
         log_success "Added Astro port to .env"
     fi
 else
@@ -99,9 +93,7 @@ fi
 if ! grep -q "PUBLIC_API_URL" .env 2>/dev/null; then
     log_dry_run "Would append PUBLIC_API_URL to .env"
     if ! dry_run_mode; then
-        echo "" >> .env
-        echo "# Public API URL for frontend" >> .env
-        echo "PUBLIC_API_URL=http://localhost:8001" >> .env
+        { echo ""; echo "# Public API URL for frontend"; echo "PUBLIC_API_URL=http://localhost:8001"; } >> .env
         log_success "Added public API URL to .env"
     fi
 else

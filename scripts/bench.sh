@@ -14,7 +14,8 @@ source "$SCRIPT_DIR/config.sh"
 
 # Check dependencies
 check_deps() {
-    local missing=0;
+    local missing
+    missing=0;
   
     if ! command -v ab &> /dev/null; then
         log_error "ab (Apache Bench) not found"
@@ -24,7 +25,8 @@ check_deps() {
         log_info "  macOS: ab is included with Apache (or brew install httpd)"
         missing=1
     else
-        local version=$(ab -V 2>&1 | head -1)
+        local version
+        version=$(ab -V 2>&1 | head -1)
         log_success "ab found: $version"
     fi
   
@@ -53,7 +55,8 @@ check_deps() {
 
 # Check if services are running
 check_services() {
-    local failed=0
+    local failed
+    failed=0
  
     log_info "Checking services..."
  
@@ -85,10 +88,14 @@ check_services() {
 
 # Benchmark function using ab
 benchmark() {
-    local name="$1"
-    local url="$2"
-    local expected_p50="$3"
-    local expected_p99="$4"
+    local name
+    name="$1"
+    local url
+    url="$2"
+    local expected_p50
+    expected_p50="$3"
+    local expected_p99
+    expected_p99="$4"
     
     log_info "Benchmark: $name"
     log_info "URL: $url"
@@ -96,12 +103,15 @@ benchmark() {
     echo "" >&2
 
     # Run ab and capture output
-    local output=$(ab -n "$BENCHLITE_REQUESTS" -c "$BENCHLITE_CONCURRENT" -r -k "$url" 2>&1)
+    local output
+    output=$(ab -n "$BENCHLITE_REQUESTS" -c "$BENCHLITE_CONCURRENT" -r -k "$url" 2>&1)
     
     # Parse p50 and p99 from "Percentage of requests served within a certain time" table
     # Format: "  50%    123" (ms)
-    local p50=$(echo "$output" | awk '/^ +50% / {print $2}' | head -1)
-    local p99=$(echo "$output" | awk '/^ +99% / {print $2}' | head -1)
+    local p50
+    p50=$(echo "$output" | awk '/^ +50% / {print $2}' | head -1)
+    local p99
+    p99=$(echo "$output" | awk '/^ +99% / {print $2}' | head -1)
     
     # If p50/p99 not found, try alternative format
     if [ -z "$p50" ]; then
@@ -114,7 +124,8 @@ benchmark() {
     # Fallback: use mean time if percentiles not available
     if [ -z "$p50" ] || [ -z "$p99" ]; then
         log_warning "Could not parse p50/p99 from ab output, using mean time"
-        local mean=$(echo "$output" | awk '/^Time per request:/ {print $4; exit}' | head -1)
+        local mean
+        mean=$(echo "$output" | awk '/^Time per request:/ {print $4; exit}' | head -1)
         p50=${p50:-$mean}
         p99=${p99:-$mean}
     fi
@@ -124,15 +135,22 @@ benchmark() {
     log_info "  p99: ${p99}ms (target: <${expected_p99}ms)"
     
     # Check against targets (convert to integers for comparison)
-    local p50_int=$(echo "$p50" | cut -d. -f1)
-    local p99_int=$(echo "$p99" | cut -d. -f1)
-    local expected_p50_int=$(echo "$expected_p50" | cut -d. -f1)
-    local expected_p99_int=$(echo "$expected_p99" | cut -d. -f1)
+    local p50_int
+    p50_int=$(echo "$p50" | cut -d. -f1)
+    local p99_int
+    p99_int=$(echo "$p99" | cut -d. -f1)
+    local expected_p50_int
+    expected_p50_int=$(echo "$expected_p50" | cut -d. -f1)
+    local expected_p99_int
+    expected_p99_int=$(echo "$expected_p99" | cut -d. -f1)
     
-    local passed=0
+    local passed
+    passed=0
     
-    local p50_passed=0
-    local p99_passed=0
+    local p50_passed
+    p50_passed=0
+    local p99_passed
+    p99_passed=0
     
     if [ -n "$p50_int" ] && [ "$p50_int" -lt "$expected_p50_int" ] 2>/dev/null; then
         log_success "p50 PASSED"
@@ -162,12 +180,15 @@ benchmark_frontend_ttfb() {
     log_info "URL: $FRONTEND_URL"
     echo "" >&2
 
-    local ttfb=$(curl -w "%{time_starttransfer}" -o /dev/null -s "$FRONTEND_URL")
-    local expected_s=$(echo "scale=3; $FRONTEND_TTFB_THRESHOLD / 1000" | bc)
+    local ttfb
+    ttfb=$(curl -w "%{time_starttransfer}" -o /dev/null -s "$FRONTEND_URL")
+    local expected_s
+    expected_s=$(echo "scale=3; $FRONTEND_TTFB_THRESHOLD / 1000" | bc)
     
     log_info "TTFB: ${ttfb}s (target: <${expected_s}s)"
     
-    local passed=$(echo "$ttfb < $expected_s" | bc -l 2>/dev/null || echo "0")
+    local passed
+    passed=$(echo "$ttfb < $expected_s" | bc -l 2>/dev/null || echo "0")
     
     # Return structured result for JSON output
     echo "{\"name\":\"Frontend TTFB\",\"url\":\"$FRONTEND_URL\",\"ttfb_s\":$ttfb,\"ttfb_target_s\":$expected_s,\"passed\":$passed}"
@@ -195,8 +216,10 @@ main() {
     fi
     
     # Check for JSON output flag
-    local JSON_OUTPUT=false
-    local COMPARE=false
+    local JSON_OUTPUT
+    JSON_OUTPUT=false
+    local COMPARE
+    COMPARE=false
     while [[ "$1" == --* ]]; do
         case "$1" in
             --json) JSON_OUTPUT=true; shift ;;
@@ -222,10 +245,13 @@ log_info "  Requests: $BENCHLITE_REQUESTS"
     fi
     
     # Initialize results for JSON output
-    local timestamp=$(get_timestamp)
-    local git_commit=$(get_git_commit)
+    local timestamp
+    timestamp=$(get_timestamp)
+    local git_commit
+    git_commit=$(get_git_commit)
     
-    local failed=0
+    local failed
+    failed=0
     
     # 1. /api/health p50/p99 latency
     local health_result
@@ -242,10 +268,13 @@ log_info "  Requests: $BENCHLITE_REQUESTS"
     # Baseline comparison (non-blocking warning)
     if [ "$COMPARE" = true ] && [ -f benches/baseline/baseline.json ]; then
         log_info "Comparing against baseline..."
-        local baseline_p99=$(jq -r '.benchmarks[0].result.p99_ms' benches/baseline/baseline.json 2>/dev/null || echo "0")
-        local current_p99=$(echo "$health_result" | jq -r '.p99_ms' 2>/dev/null || echo "0")
+        local baseline_p99
+        baseline_p99=$(jq -r '.benchmarks[0].result.p99_ms' benches/baseline/baseline.json 2>/dev/null || echo "0")
+        local current_p99
+        current_p99=$(echo "$health_result" | jq -r '.p99_ms' 2>/dev/null || echo "0")
         if [ -n "$baseline_p99" ] && [ -n "$current_p99" ] && [ "$baseline_p99" != "0" ]; then
-            local delta=$(echo "scale=1; (($current_p99 - $baseline_p99) / $baseline_p99) * 100" | bc -l 2>/dev/null || echo "0")
+            local delta
+            delta=$(echo "scale=1; (($current_p99 - $baseline_p99) / $baseline_p99) * 100" | bc -l 2>/dev/null || echo "0")
             if [ "${delta%.*}" -gt 20 ] 2>/dev/null; then
                 log_warning "p99 regression detected: ${delta}% slower than baseline (baseline: ${baseline_p99}ms, current: ${current_p99}ms)"
             else

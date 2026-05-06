@@ -11,6 +11,7 @@ use axum::response::{IntoResponse, Response};
 use hmac::{Hmac, Mac};
 use sha2::Sha256;
 use std::sync::Arc;
+use tracing;
 
 /// Authenticated user context extracted from the request.
 #[derive(Debug, Clone)]
@@ -128,7 +129,7 @@ fn extract_bearer(
 /// and validates CSRF for state-changing methods (POST/PUT/DELETE).
 fn extract_cookie(
     req: &axum::http::Request<axum::body::Body>,
-    auth_service: &AuthService,
+    _auth_service: &AuthService,
 ) -> Option<AuthUser> {
     // Read session cookie
     let session_id = req
@@ -176,13 +177,11 @@ fn extract_cookie(
         }
     }
 
-    // Redis session lookup is deferred — cookie auth mode is a planned feature.
-    // For now, return None so the request passes through unauthenticated.
-    // When Redis is available in the middleware context, add:
-    //   let redis = req.extensions().get::<Arc<cache::RedisClient>>()?;
-    //   let session = redis.session_get(session_id).await.ok()?;
-    //   Some(AuthUser { ... session_id: Some(session_id.to_string()) ... })
-    let _ = auth_service;
+    tracing::warn!(
+        "Cookie auth mode is not yet implemented — falling through. \
+         Only bearer and combined (bearer+cookie) modes are supported. \
+         Set AUTH_MODE=bearer or AUTH_MODE=both."
+    );
     None
 }
 

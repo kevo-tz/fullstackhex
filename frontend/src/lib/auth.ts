@@ -1,4 +1,5 @@
 const TOKEN_KEY = "fullstackhex_token";
+const REFRESH_KEY = "fullstackhex_refresh";
 const USER_KEY = "fullstackhex_user";
 
 export interface AuthUser {
@@ -10,6 +11,7 @@ export interface AuthUser {
 
 export interface AuthResponse {
   access_token: string;
+  refresh_token: string;
   token_type: string;
   expires_in: number;
   user: AuthUser;
@@ -18,6 +20,11 @@ export interface AuthResponse {
 export function getToken(): string | null {
   if (typeof window === "undefined") return null;
   return localStorage.getItem(TOKEN_KEY);
+}
+
+export function getRefreshToken(): string | null {
+  if (typeof window === "undefined") return null;
+  return localStorage.getItem(REFRESH_KEY);
 }
 
 export function getUser(): AuthUser | null {
@@ -37,13 +44,17 @@ export function isLoggedIn(): boolean {
 
 export function saveAuth(data: AuthResponse): void {
   localStorage.setItem(TOKEN_KEY, data.access_token);
+  localStorage.setItem(REFRESH_KEY, data.refresh_token);
   localStorage.setItem(USER_KEY, JSON.stringify(data.user));
 }
 
 export function clearAuth(): void {
   localStorage.removeItem(TOKEN_KEY);
+  localStorage.removeItem(REFRESH_KEY);
   localStorage.removeItem(USER_KEY);
 }
+
+let refreshing: Promise<AuthResponse | null> | null = null;
 
 async function api(path: string, options: RequestInit = {}): Promise<Response> {
   const token = getToken();
@@ -54,7 +65,16 @@ async function api(path: string, options: RequestInit = {}): Promise<Response> {
   if (token) {
     headers["Authorization"] = `Bearer ${token}`;
   }
-  return fetch(`/api${path}`, { ...options, headers });
+  const res = await fetch(`/api${path}`, { ...options, headers });
+  if (res.status === 401 && token) {
+    const refreshed = await refreshToken();
+    if (refreshed) {
+      headers["Authorization"] = `Bearer ${refreshed.access_token}`;
+      return fetch(`/api${path}`, { ...options, headers });
+    }
+    clearAuth();
+  }
+  return res;
 }
 
 export async function login(email: string, password: string): Promise<AuthResponse> {
@@ -98,8 +118,34 @@ export async function logout(): Promise<void> {
 }
 
 export async function refreshToken(): Promise<AuthResponse | null> {
-  // Refresh token would need to be stored separately. For now, skip.
-  return null;
+  const token = getRefreshToken();
+  if (!token) return null;
+
+  if (refreshing) return refreshing;
+
+  refreshing = (async () => {
+    try {
+      const res = await fetch("/api/auth/refresh", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ refresh_token: token }),
+      });
+      if (!res.ok) {
+        clearAuth();
+        return null;
+      }
+      const data: AuthResponse = await res.json();
+      saveAuth(data);
+      return data;
+    } catch {
+      clearAuth();
+      return null;
+    } finally {
+      refreshing = null;
+    }
+  })();
+
+  return refreshing;
 }
 
 export async function fetchMe(): Promise<AuthUser | null> {

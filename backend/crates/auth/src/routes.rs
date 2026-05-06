@@ -83,6 +83,7 @@ pub struct TokenResponse {
     pub access_token: String,
     pub token_type: String,
     pub expires_in: u64,
+    pub refresh_token: String,
     pub user: UserInfo,
 }
 
@@ -167,6 +168,7 @@ pub async fn register(
 
     let response = TokenResponse {
         access_token,
+        refresh_token,
         token_type: "Bearer".to_string(),
         expires_in: state.auth.config.jwt_expiry,
         user: UserInfo {
@@ -177,7 +179,7 @@ pub async fn register(
         },
     };
 
-    Ok((StatusCode::CREATED, Json(response)))
+    Ok(Json(response))
 }
 
 /// POST /auth/login — authenticate with email/password, return JWT.
@@ -270,6 +272,7 @@ pub async fn login(
 
     let response = TokenResponse {
         access_token,
+        refresh_token,
         token_type: "Bearer".to_string(),
         expires_in: state.auth.config.jwt_expiry,
         user: UserInfo {
@@ -366,6 +369,7 @@ pub async fn refresh(
 
     let response = TokenResponse {
         access_token,
+        refresh_token: new_refresh_token,
         token_type: "Bearer".to_string(),
         expires_in: state.auth.config.jwt_expiry,
         user: UserInfo {
@@ -536,6 +540,7 @@ pub async fn oauth_callback(
 
     let response = TokenResponse {
         access_token,
+        refresh_token,
         token_type: "Bearer".to_string(),
         expires_in: state.auth.config.jwt_expiry,
         user: UserInfo {

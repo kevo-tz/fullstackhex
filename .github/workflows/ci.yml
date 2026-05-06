@@ -203,6 +203,102 @@ jobs:
         working-directory: frontend
         run: bun test
 
+  e2e:
+    name: e2e
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: testdb
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+      redis:
+        image: redis:8-alpine
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 6379:6379
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Cache Cargo registry and build
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            backend/target
+          key: ${{ runner.os }}-cargo-e2e-${{ hashFiles('backend/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-e2e-
+            ${{ runner.os }}-cargo-
+
+      - name: Start backend
+        env:
+          DATABASE_URL: postgres://postgres:postgres@localhost:5432/testdb
+          REDIS_URL: redis://localhost:6379
+          JWT_SECRET: e2e-test-jwt-secret-do-not-use-in-prod
+          AUTH_MODE: bearer
+          RUSTFS_ENDPOINT: ""
+          PYTHON_SIDECAR_SOCKET: ""
+        working-directory: backend
+        run: |
+          cargo run -p api &
+          for i in $(seq 1 30); do
+            curl -s http://localhost:8001/health && break
+            sleep 1
+          done
+          echo "Backend ready"
+
+      - name: Install frontend deps
+        working-directory: frontend
+        run: bun install --frozen-lockfile
+
+      - name: Start frontend
+        working-directory: frontend
+        env:
+          VITE_RUST_BACKEND_URL: http://localhost:8001
+        run: |
+          bun run build
+          bun run preview &
+          for i in $(seq 1 30); do
+            curl -s http://localhost:4321 && break
+            sleep 1
+          done
+          echo "Frontend ready"
+
+      - name: Run e2e tests
+        env:
+          VITE_RUST_BACKEND_URL: http://localhost:8001
+          FRONTEND_URL: http://localhost:4321
+        run: |
+          cd e2e
+          bun test
+
   infra:
     name: infra
     runs-on: ubuntu-latest

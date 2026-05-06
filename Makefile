@@ -1,4 +1,4 @@
-.PHONY: up down restart logs-backend logs-frontend test bench clean check-env sync-env setup setup-env help test-contract
+.PHONY: up down restart logs-backend logs-frontend test bench clean check-env sync-env setup setup-env help test-contract test-e2e test-e2e-shell
 .PHONY: verify-health check-prereqs preflight down-dev dev watch test-socket-ci
 .PHONY: migrate migrate-revert migrate-status
 .PHONY: rollback blue-green canary canary-promote canary-rollback
@@ -76,6 +76,8 @@ help:
 	@echo "  test-frontend   - Run frontend tests only"
 	@echo "  test-socket-ci  - Run socket integration tests (CI mode)"
 	@echo "  test-contract   - Validate frontend health shape against running backend"
+	@echo "  test-e2e        - Run e2e auth tests (Bun)"
+	@echo "  test-e2e-shell  - Run full e2e shell test (curl + jq)"
 	@echo ""
 	@echo "  Example: make test  # runs cargo test + pytest + bun test"
 	@echo ""
@@ -371,6 +373,14 @@ test-socket-ci:
 
 test-contract:
 	@./scripts/contract-test.sh
+
+test-e2e:
+	@echo "Running e2e auth tests..."
+	cd e2e && bun test
+
+test-e2e-shell:
+	@echo "Running e2e shell test..."
+	./tests/e2e.sh
 
 # Performance
 bench:

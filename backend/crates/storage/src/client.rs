@@ -29,7 +29,8 @@ pub struct ObjectInfo {
     pub last_modified: String,
 }
 
-/// Upload a file to the storage bucket (streaming).
+/// Upload a file to the storage bucket with buffered body.
+/// Prefer [`upload_streaming`] for large payloads.
 pub async fn upload(
     client: &reqwest::Client,
     config: &super::StorageConfig,
@@ -62,7 +63,43 @@ pub async fn upload(
     Ok(())
 }
 
-/// Download a file from the storage bucket.
+/// Upload a file to the storage bucket with a streaming body.
+/// Uses `UNSIGNED-PAYLOAD` to avoid buffering the entire payload for SigV4.
+pub async fn upload_streaming(
+    client: &reqwest::Client,
+    config: &super::StorageConfig,
+    key: &str,
+    content_type: &str,
+    body: reqwest::Body,
+) -> Result<(), ApiError> {
+    let url = build_object_url(&config.endpoint, &config.bucket, key)
+        .map_err(|e| ApiError::InternalError(format!("Invalid URL: {e}")))?;
+    let url_str = url.to_string();
+    let signed = sign_request_unsigned(config, "PUT", &url_str, content_type)?;
+    let req = client
+        .put(url.as_str())
+        .body(body)
+        .header("Content-Type", content_type)
+        .header("Host", &signed.host)
+        .header("X-Amz-Date", &signed.amz_date)
+        .header("X-Amz-Content-Sha256", "UNSIGNED-PAYLOAD")
+        .header("Authorization", &signed.authorization);
+    let resp = req
+        .send()
+        .await
+        .map_err(|e| ApiError::ServiceUnavailable(format!("Upload failed: {e}")))?;
+    if !resp.status().is_success() {
+        let status = resp.status();
+        let body_text = resp.text().await.unwrap_or_default();
+        return Err(ApiError::ServiceUnavailable(format!(
+            "Upload failed: HTTP {status}: {body_text}"
+        )));
+    }
+    Ok(())
+}
+
+/// Download a file from the storage bucket into memory.
+/// Prefer [`download_streaming`] for large objects.
 pub async fn download(
     client: &reqwest::Client,
     config: &super::StorageConfig,
@@ -97,6 +134,32 @@ pub async fn download(
         ));
     }
     Ok(bytes.to_vec())
+}
+
+/// Download a file from the storage bucket, returning a streaming response.
+/// The caller is responsible for reading the body before the response lifetime ends.
+pub async fn download_streaming(
+    client: &reqwest::Client,
+    config: &super::StorageConfig,
+    key: &str,
+) -> Result<reqwest::Response, ApiError> {
+    let url = build_object_url(&config.endpoint, &config.bucket, key)
+        .map_err(|e| ApiError::InternalError(format!("Invalid URL: {e}")))?;
+    let url_str = url.to_string();
+    let signed = sign_request_unsigned(config, "GET", &url_str, "")?;
+    let resp = client
+        .get(url.as_str())
+        .header("Host", &signed.host)
+        .header("X-Amz-Date", &signed.amz_date)
+        .header("X-Amz-Content-Sha256", "UNSIGNED-PAYLOAD")
+        .header("Authorization", &signed.authorization)
+        .send()
+        .await
+        .map_err(|e| ApiError::ServiceUnavailable(format!("Download failed: {e}")))?;
+    if !resp.status().is_success() {
+        return Err(ApiError::NotFound(format!("Object not found: {key}")));
+    }
+    Ok(resp)
 }
 
 /// Delete a file from the storage bucket.
@@ -192,6 +255,17 @@ pub struct SignedRequest {
     pub authorization: String,
 }
 
+/// Sign a request with AWS SigV4 using `UNSIGNED-PAYLOAD` as the content hash.
+/// Use for streaming requests where the full body hash is not known ahead of time.
+pub fn sign_request_unsigned(
+    config: &super::StorageConfig,
+    method: &str,
+    url: &str,
+    content_type: &str,
+) -> Result<SignedRequest, ApiError> {
+    sign_request_inner(config, method, url, content_type, "UNSIGNED-PAYLOAD".to_string())
+}
+
 /// Sign a request with AWS SigV4.
 pub fn sign_request(
     config: &super::StorageConfig,
@@ -200,9 +274,18 @@ pub fn sign_request(
     content_type: &str,
     body: &[u8],
 ) -> Result<SignedRequest, ApiError> {
+    sign_request_inner(config, method, url, content_type, sha256_hex(body))
+}
+
+fn sign_request_inner(
+    config: &super::StorageConfig,
+    method: &str,
+    url: &str,
+    content_type: &str,
+    payload_hash: String,
+) -> Result<SignedRequest, ApiError> {
     let amz_date = chrono::Utc::now().format("%Y%m%dT%H%M%SZ").to_string();
     let date_stamp = amz_date[..8].to_string();
-    let payload_hash = sha256_hex(body);
 
     let parsed =
         url::Url::parse(url).map_err(|e| ApiError::InternalError(format!("Invalid URL: {e}")))?;

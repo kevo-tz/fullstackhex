@@ -8,10 +8,12 @@
 
 use auth::middleware::AuthUser;
 use axum::Json;
+use axum::body::Body;
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use domain::error::ApiError;
+use futures_util::StreamExt;
 use serde::{Deserialize, Serialize};
 
 /// Shared state for storage routes.
@@ -43,39 +45,55 @@ pub struct ListQuery {
     pub prefix: Option<String>,
 }
 
-/// PUT /storage/{key} — upload file.
+/// PUT /storage/{key} — upload a file with streaming body.
 pub async fn upload(
     State(state): State<StorageState>,
     auth_user: AuthUser,
     Path(key): Path<String>,
-    body: axum::body::Bytes,
+    body: Body,
 ) -> Result<impl IntoResponse, ApiError> {
     let key = user_key(&auth_user.user_id, &key);
-    super::client::upload(
+    let stream = body.into_data_stream();
+    let reqwest_body = reqwest::Body::wrap_stream(stream);
+    super::client::upload_streaming(
         &state.client,
         &state.config,
         &key,
-        body.to_vec(),
         "application/octet-stream",
+        reqwest_body,
     )
     .await?;
 
     Ok(StatusCode::CREATED)
 }
 
-/// GET /storage/{key} — download file.
+/// GET /storage/{key} — download a file with streaming body.
 pub async fn download(
     State(state): State<StorageState>,
     auth_user: AuthUser,
     Path(key): Path<String>,
 ) -> Result<impl IntoResponse, ApiError> {
     let key = user_key(&auth_user.user_id, &key);
-    let data = super::client::download(&state.client, &state.config, &key).await?;
+    let resp = super::client::download_streaming(&state.client, &state.config, &key).await?;
+
+    let content_type = resp
+        .headers()
+        .get(reqwest::header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("application/octet-stream")
+        .to_string();
+
+    let stream = resp.bytes_stream().map(|r| {
+        r.map_err(|e| {
+            axum::Error::new(std::io::Error::new(std::io::ErrorKind::Other, e))
+        })
+    });
+    let body = Body::from_stream(stream);
 
     Ok((
         StatusCode::OK,
-        [(axum::http::header::CONTENT_TYPE, "application/octet-stream")],
-        data,
+        [(axum::http::header::CONTENT_TYPE, content_type)],
+        body,
     ))
 }
 

@@ -85,6 +85,12 @@ jobs:
           PYTHON_SIDECAR_SOCKET: /tmp/fullstackhex-python.sock
         run: cargo test --workspace
 
+      - name: cargo test (ignored — socket integration)
+        env:
+          DATABASE_URL: postgres://postgres:postgres@localhost:5432/testdb
+          PYTHON_SIDECAR_SOCKET: /tmp/fullstackhex-python.sock
+        run: cargo test -p python-sidecar -- --ignored
+
   python:
     name: python
     runs-on: ubuntu-latest

@@ -379,6 +379,20 @@ pub async fn refresh(
     Ok(Json(response))
 }
 
+/// GET /auth/providers — list configured OAuth providers.
+pub async fn providers(
+    State(state): State<AuthState>,
+) -> impl IntoResponse {
+    let mut list: Vec<&str> = Vec::new();
+    if state.auth.config.google_client_id.is_some() {
+        list.push("google");
+    }
+    if state.auth.config.github_client_id.is_some() {
+        list.push("github");
+    }
+    Json(serde_json::json!({ "providers": list }))
+}
+
 /// GET /auth/me — return current user info.
 pub async fn me(auth_user: AuthUser) -> impl IntoResponse {
     Json(serde_json::json!({

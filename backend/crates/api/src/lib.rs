@@ -133,6 +133,7 @@ fn build_router(state: Arc<AppState>) -> Router {
             .route("/login", axum::routing::post(auth::routes::login))
             .route("/logout", axum::routing::post(auth::routes::logout))
             .route("/refresh", axum::routing::post(auth::routes::refresh))
+            .route("/providers", axum::routing::get(auth::routes::providers))
             .route("/me", axum::routing::get(auth::routes::me))
             .route(
                 "/oauth/{provider}",

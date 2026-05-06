@@ -51,7 +51,8 @@ log_info "Checking and installing dependencies..."
 # Check and install Rust
 install_rust() {
     if command -v rustc &> /dev/null; then
-        local version=$(rustc --version)
+        local version
+        version=$(rustc --version)
         log_success "Rust already installed: $version"
     else
         log_dry_run "Would install Rust via rustup"
@@ -71,7 +72,8 @@ install_rust() {
 # Check and install Bun
 install_bun() {
     if command -v bun &> /dev/null; then
-        local version=$(bun --version)
+        local version
+        version=$(bun --version)
         log_success "Bun already installed: v$version"
         if ! dry_run_mode; then
             bun upgrade
@@ -95,7 +97,8 @@ install_bun() {
     # Detect active shell and its rc file
     local shell_name
     shell_name=$(basename "${SHELL:-/bin/sh}")
-    local rc_file=""
+    local rc_file
+    rc_file=""
     case "$shell_name" in
         bash)
             rc_file="$HOME/.bashrc"
@@ -124,9 +127,9 @@ install_bun() {
                 echo '' >> "$rc_file"
                 echo '# Added by FullStackHex install.sh' >> "$rc_file"
                 if [[ "$shell_name" = "fish" ]]; then
-                    echo 'set -gx PATH "$HOME/.bun/bin" $PATH' >> "$rc_file"
+                    echo "set -gx PATH \"$HOME/.bun/bin\" \$PATH" >> "$rc_file"
                 else
-                    echo 'export PATH="$HOME/.bun/bin:$PATH"' >> "$rc_file"
+                    echo "export PATH=\"$HOME/.bun/bin:\$PATH\"" >> "$rc_file"
                 fi
                 log_success "Added Bun to PATH in $rc_file"
             fi
@@ -155,9 +158,12 @@ check_python() {
     fi
 
     if command -v python3 &> /dev/null; then
-        local version=$(python3 --version 2>&1)
-        local major=$(python3 -c 'import sys; print(sys.version_info.major)')
-        local minor=$(python3 -c 'import sys; print(sys.version_info.minor)')
+        local version
+        version=$(python3 --version 2>&1)
+        local major
+        major=$(python3 -c 'import sys; print(sys.version_info.major)')
+        local minor
+        minor=$(python3 -c 'import sys; print(sys.version_info.minor)')
 
         # Accept Python >= 3.14, including future major versions (e.g., 4.x).
         if (( major > 3 )) || (( major == 3 && minor >= 14 )); then
@@ -177,7 +183,8 @@ check_python() {
 # Check Docker (don't auto-install)
 check_docker() {
     if command -v docker &> /dev/null; then
-        local version=$(docker --version)
+        local version
+        version=$(docker --version)
         log_success "Docker already installed: $version"
     else
         log_error "Docker not found - please install manually"
@@ -196,7 +203,8 @@ check_docker() {
 # Check and install uv (Python package manager)
 install_uv() {
     if command -v uv &> /dev/null; then
-        local version=$(uv --version)
+        local version
+        version=$(uv --version)
         log_success "uv already installed: $version"
     else
         log_dry_run "Would install uv via astral.sh installer"
@@ -222,7 +230,7 @@ install_bun
 
 if [ "$SKIP_PYTHON" != true ]; then
     check_python
-    if [ $? -eq 0 ]; then
+    if check_python; then
         install_uv
     fi
 fi

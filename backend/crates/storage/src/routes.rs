@@ -85,7 +85,7 @@ pub async fn download(
 
     let stream = resp.bytes_stream().map(|r| {
         r.map_err(|e| {
-            axum::Error::new(std::io::Error::new(std::io::ErrorKind::Other, e))
+            axum::Error::new(std::io::Error::other(e))
         })
     });
     let body = Body::from_stream(stream);

@@ -158,6 +158,22 @@ fn build_router(state: Arc<AppState>) -> Router {
             .route("/{key}", axum::routing::delete(storage::routes::delete))
             .route("/", axum::routing::get(storage::routes::list))
             .route("/presign", axum::routing::post(storage::routes::presign))
+            .route(
+                "/multipart/init",
+                axum::routing::post(storage::routes::init_multipart),
+            )
+            .route(
+                "/multipart/{key}/{upload_id}/part/{part_number}",
+                axum::routing::put(storage::routes::upload_part),
+            )
+            .route(
+                "/multipart/{key}/{upload_id}/complete",
+                axum::routing::post(storage::routes::complete_multipart),
+            )
+            .route(
+                "/multipart/{key}/{upload_id}",
+                axum::routing::delete(storage::routes::abort_multipart),
+            )
             .layer(DefaultBodyLimit::max(10 * 1024 * 1024)) // 10MB upload limit
             .with_state(storage_state);
         router = router.nest("/storage", storage_router);

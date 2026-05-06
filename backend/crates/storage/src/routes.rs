@@ -146,6 +146,95 @@ pub async fn presign(
     }))
 }
 
+// ── Multipart upload handlers ──────────────────────────────────────────
+
+/// Request body for initiating a multipart upload.
+#[derive(Debug, Deserialize)]
+pub struct MultipartInitRequest {
+    pub key: String,
+    pub content_type: Option<String>,
+}
+
+/// Request body for completing a multipart upload.
+#[derive(Debug, Deserialize)]
+pub struct MultipartCompleteRequest {
+    pub parts: Vec<super::client::PartInfo>,
+}
+
+/// POST /storage/multipart/init — initiate a multipart upload.
+pub async fn init_multipart(
+    State(state): State<StorageState>,
+    auth_user: AuthUser,
+    Json(body): Json<MultipartInitRequest>,
+) -> Result<impl IntoResponse, ApiError> {
+    let key = user_key(&auth_user.user_id, &body.key);
+    let content_type = body.content_type.as_deref().unwrap_or("application/octet-stream");
+    let upload = super::client::create_multipart_upload(
+        &state.client,
+        &state.config,
+        &key,
+        content_type,
+    )
+    .await?;
+    Ok((StatusCode::CREATED, Json(upload)))
+}
+
+/// PUT /storage/multipart/{key}/{upload_id}/part/{part_number} — upload a part.
+pub async fn upload_part(
+    State(state): State<StorageState>,
+    auth_user: AuthUser,
+    Path((key, upload_id, part_number)): Path<(String, String, u32)>,
+    body: axum::body::Bytes,
+) -> Result<impl IntoResponse, ApiError> {
+    let key = user_key(&auth_user.user_id, &key);
+    let part = super::client::upload_part(
+        &state.client,
+        &state.config,
+        &key,
+        &upload_id,
+        part_number,
+        body.to_vec(),
+    )
+    .await?;
+    Ok((StatusCode::OK, Json(part)))
+}
+
+/// POST /storage/multipart/{key}/{upload_id}/complete — complete a multipart upload.
+pub async fn complete_multipart(
+    State(state): State<StorageState>,
+    auth_user: AuthUser,
+    Path((key, upload_id)): Path<(String, String)>,
+    Json(body): Json<MultipartCompleteRequest>,
+) -> Result<impl IntoResponse, ApiError> {
+    let key = user_key(&auth_user.user_id, &key);
+    super::client::complete_multipart_upload(
+        &state.client,
+        &state.config,
+        &key,
+        &upload_id,
+        &body.parts,
+    )
+    .await?;
+    Ok(StatusCode::OK)
+}
+
+/// DELETE /storage/multipart/{key}/{upload_id} — abort a multipart upload.
+pub async fn abort_multipart(
+    State(state): State<StorageState>,
+    auth_user: AuthUser,
+    Path((key, upload_id)): Path<(String, String)>,
+) -> Result<impl IntoResponse, ApiError> {
+    let key = user_key(&auth_user.user_id, &key);
+    super::client::abort_multipart_upload(
+        &state.client,
+        &state.config,
+        &key,
+        &upload_id,
+    )
+    .await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
 /// Prefix a storage key with the user's namespace.
 fn user_key(user_id: &str, key: &str) -> String {
     format!("users/{}/{}", user_id, key)

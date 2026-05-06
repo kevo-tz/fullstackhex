@@ -247,6 +247,206 @@ pub fn presigned_url(
     Ok(url.to_string())
 }
 
+// ── Multipart upload ──────────────────────────────────────────────────────
+
+/// Result from initiating a multipart upload.
+#[derive(Debug, Clone, Serialize)]
+pub struct MultipartUpload {
+    pub upload_id: String,
+    pub key: String,
+}
+
+/// Part info returned from `upload_part`.
+#[derive(Debug, Clone, Serialize, serde::Deserialize)]
+pub struct PartInfo {
+    pub part_number: u32,
+    pub etag: String,
+}
+
+/// Initiate a multipart upload. Returns the upload ID.
+pub async fn create_multipart_upload(
+    client: &reqwest::Client,
+    config: &super::StorageConfig,
+    key: &str,
+    content_type: &str,
+) -> Result<MultipartUpload, ApiError> {
+    let url = build_object_url(&config.endpoint, &config.bucket, key)
+        .map_err(|e| ApiError::InternalError(format!("Invalid URL: {e}")))?;
+    let url_str = format!("{}?uploads", url);
+    let signed = sign_request_unsigned(config, "POST", &url_str, content_type)?;
+
+    let mut req = client
+        .post(&url_str)
+        .header("Host", &signed.host)
+        .header("X-Amz-Date", &signed.amz_date)
+        .header("X-Amz-Content-Sha256", "UNSIGNED-PAYLOAD")
+        .header("Authorization", &signed.authorization);
+    if !content_type.is_empty() {
+        req = req.header("Content-Type", content_type);
+    }
+
+    let resp = req.send().await.map_err(|e| {
+        ApiError::ServiceUnavailable(format!("Multipart init failed: {e}"))
+    })?;
+
+    let status = resp.status();
+    if !status.is_success() {
+        let body = resp.text().await.unwrap_or_default();
+        return Err(ApiError::ServiceUnavailable(format!(
+            "Multipart init failed: HTTP {status}: {body}"
+        )));
+    }
+
+    // Parse XML for UploadId
+    let body = resp.text().await.map_err(|e| {
+        ApiError::InternalError(format!("Failed to read init response: {e}"))
+    })?;
+    let upload_id = body
+        .split("<UploadId>")
+        .nth(1)
+        .and_then(|s| s.split("</UploadId>").next())
+        .ok_or_else(|| {
+            ApiError::InternalError(format!("Missing UploadId in response: {body}"))
+        })?;
+
+    Ok(MultipartUpload {
+        upload_id: upload_id.to_string(),
+        key: key.to_string(),
+    })
+}
+
+/// Upload a single part of a multipart upload. Returns the ETag.
+pub async fn upload_part(
+    client: &reqwest::Client,
+    config: &super::StorageConfig,
+    key: &str,
+    upload_id: &str,
+    part_number: u32,
+    body: Vec<u8>,
+) -> Result<PartInfo, ApiError> {
+    let base = build_object_url(&config.endpoint, &config.bucket, key)
+        .map_err(|e| ApiError::InternalError(format!("Invalid URL: {e}")))?;
+    let url_str = format!(
+        "{}?partNumber={}&uploadId={}",
+        base, part_number, upload_id
+    );
+    let signed = sign_request(config, "PUT", &url_str, "", &body)?;
+
+    let resp = client
+        .put(&url_str)
+        .body(body)
+        .header("Host", &signed.host)
+        .header("X-Amz-Date", &signed.amz_date)
+        .header("X-Amz-Content-Sha256", &signed.payload_hash)
+        .header("Authorization", &signed.authorization)
+        .send()
+        .await
+        .map_err(|e| ApiError::ServiceUnavailable(format!("Part upload failed: {e}")))?;
+
+    let status = resp.status();
+    if !status.is_success() {
+        let body = resp.text().await.unwrap_or_default();
+        return Err(ApiError::ServiceUnavailable(format!(
+            "Part upload failed: HTTP {status}: {body}"
+        )));
+    }
+
+    let etag = resp
+        .headers()
+        .get("ETag")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("")
+        .trim_matches('"')
+        .to_string();
+
+    Ok(PartInfo {
+        part_number,
+        etag,
+    })
+}
+
+/// Complete a multipart upload by providing all parts with their ETags.
+pub async fn complete_multipart_upload(
+    client: &reqwest::Client,
+    config: &super::StorageConfig,
+    key: &str,
+    upload_id: &str,
+    parts: &[PartInfo],
+) -> Result<(), ApiError> {
+    let base = build_object_url(&config.endpoint, &config.bucket, key)
+        .map_err(|e| ApiError::InternalError(format!("Invalid URL: {e}")))?;
+    let url_str = format!("{}?uploadId={}", base, upload_id);
+
+    // Build the XML body
+    let mut xml = String::from(
+        "<CompleteMultipartUpload xmlns=\"http://s3.amazonaws.com/doc/2006-03-01/\">",
+    );
+    for p in parts {
+        xml.push_str(&format!(
+            "<Part><PartNumber>{}</PartNumber><ETag>\"{}\"</ETag></Part>",
+            p.part_number, p.etag
+        ));
+    }
+    xml.push_str("</CompleteMultipartUpload>");
+
+    let signed = sign_request(config, "POST", &url_str, "application/xml", xml.as_bytes())?;
+
+    let resp = client
+        .post(&url_str)
+        .body(xml.clone())
+        .header("Content-Type", "application/xml")
+        .header("Host", &signed.host)
+        .header("X-Amz-Date", &signed.amz_date)
+        .header("X-Amz-Content-Sha256", &signed.payload_hash)
+        .header("Authorization", &signed.authorization)
+        .send()
+        .await
+        .map_err(|e| ApiError::ServiceUnavailable(format!("Multipart complete failed: {e}")))?;
+
+    let status = resp.status();
+    if !status.is_success() {
+        let body = resp.text().await.unwrap_or_default();
+        return Err(ApiError::ServiceUnavailable(format!(
+            "Multipart complete failed: HTTP {status}: {body}"
+        )));
+    }
+
+    Ok(())
+}
+
+/// Abort a multipart upload, cleaning up any uploaded parts.
+pub async fn abort_multipart_upload(
+    client: &reqwest::Client,
+    config: &super::StorageConfig,
+    key: &str,
+    upload_id: &str,
+) -> Result<(), ApiError> {
+    let base = build_object_url(&config.endpoint, &config.bucket, key)
+        .map_err(|e| ApiError::InternalError(format!("Invalid URL: {e}")))?;
+    let url_str = format!("{}?uploadId={}", base, upload_id);
+    let signed = sign_request_unsigned(config, "DELETE", &url_str, "")?;
+
+    let resp = client
+        .delete(&url_str)
+        .header("Host", &signed.host)
+        .header("X-Amz-Date", &signed.amz_date)
+        .header("X-Amz-Content-Sha256", "UNSIGNED-PAYLOAD")
+        .header("Authorization", &signed.authorization)
+        .send()
+        .await
+        .map_err(|e| ApiError::ServiceUnavailable(format!("Multipart abort failed: {e}")))?;
+
+    let status = resp.status();
+    if !status.is_success() && status != 204 {
+        let body = resp.text().await.unwrap_or_default();
+        return Err(ApiError::ServiceUnavailable(format!(
+            "Multipart abort failed: HTTP {status}: {body}"
+        )));
+    }
+
+    Ok(())
+}
+
 /// Signed request components.
 pub struct SignedRequest {
     pub host: String,

@@ -11,26 +11,20 @@ Multipart upload APIs: init, upload part, complete, abort. Routes at `POST /stor
 ### ✅ S10. End-to-end shell test [P2] [L]
 Full user journey shell test (`tests/e2e.sh`): health → register → login → /auth/me → upload → download → delete → dashboard. `make test-e2e-shell` target.
 
-## Icebox
+## Icebox (all done ✅)
 
-### S9. bats-core tests for deploy scripts [P2] [M]
-**What:** Deploy safety scripts are shell scripts with no automated tests.
-**Fix:** Add `tests/deploy/` with bats-core tests. Mock docker compose, nginx, scp, `.deploy-state` file.
-**Files:** `tests/deploy/`, `scripts/deploy-*.sh`
-**Trigger:** CI starts running deploy scripts
+### ✅ S9. bats-core tests for deploy scripts [P2] [M]
+`tests/deploy/deploy_scripts.bats` — 18 bats tests covering rollback, blue-green, canary, verify scripts. Mocks ssh, scp, rsync, docker, nginx, flock.
 
-### Run ignored socket tests in CI [P2] [M]
-**What:** Start test FastAPI instance as CI background step so `#[ignore]` socket integration tests run automatically.
-**Why not now:** Socket tests pass on native Linux but fail on WSL2 due to Unix socket quirks. May be flaky in CI.
-**Files:** `python-sidecar/src/lib.rs`, `integration_health_route.rs`
-**Trigger:** WSL2 CI support or native Linux CI runner
+### ✅ Run ignored socket tests in CI [P2] [M]
+CI rust job now runs `cargo test -p python-sidecar -- --ignored` with Python sidecar running on Unix socket.
 
-### Add inline Rust doc examples [P2] [S]
-**What:** `///` doc comments on `PythonSidecar::get()`, `PythonSidecar::health()`, and `db::health_check` with usage examples.
-**Why not now:** Doc examples can rot if not compiled. Low priority for solo dev.
-**Trigger:** First external contributor or user request
+### ✅ Add inline Rust doc examples [P2] [S]
+`///` doc examples on `PythonSidecar::get()`, `PythonSidecar::health()`, and `db::health_check`. `cargo test --doc` passes.
 
-### Add concrete examples to docs [P2] [S]
-**What:** New `docs/EXAMPLES.md` with copy-paste code blocks showing how to extend the template.
-**Why not now:** Examples must be maintained as API evolves. Templates change quickly in v0.x.
-**Trigger:** First external contributor or stable v1.0 API
+### ✅ Add concrete examples to docs [P2] [S]
+`docs/EXAMPLES.md` — copy-paste code blocks for new routes, pages, migrations, storage ops, cache, Grafana panels, sidecar calls, e2e tests, and CI checks.
+
+---
+
+All items shipped. No remaining TODOs.

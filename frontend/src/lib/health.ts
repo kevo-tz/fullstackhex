@@ -2,12 +2,6 @@ function jsonLog(obj: Record<string, unknown>): void {
   console.log(JSON.stringify(obj));
 }
 
-export interface DiagnosticEntry {
-  service: string;
-  status: string;
-  fix: string | null;
-}
-
 export function isFullOutage(data: Record<string, unknown>): boolean {
   const services = ["rust", "db", "redis", "storage", "python", "auth"];
   for (const svc of services) {
@@ -17,13 +11,13 @@ export function isFullOutage(data: Record<string, unknown>): boolean {
   return true;
 }
 
-export function getDiagnostics(data: Record<string, unknown>): DiagnosticEntry[] {
+export function getDiagnostics(data: Record<string, unknown>): { service: string; status: string; fix: string | null }[] {
   const services = ["rust", "db", "redis", "storage", "python", "auth"];
   const labels: Record<string, string> = {
     rust: "Rust API", db: "PostgreSQL", redis: "Redis",
     storage: "RustFS Storage", python: "Python sidecar", auth: "Auth",
   };
-  const result: DiagnosticEntry[] = [];
+  const result: { service: string; status: string; fix: string | null }[] = [];
   for (const svc of services) {
     const entry = data[svc] as Record<string, unknown> | undefined;
     if (!entry || entry.status === "ok") continue;

@@ -1,0 +1,137 @@
+---
+export interface Props {
+  mode: "login" | "register";
+}
+const { mode } = Astro.props;
+const isLogin = mode === "login";
+const title = isLogin ? "Sign in" : "Create account";
+const action = isLogin ? "Sign in" : "Create account";
+const altLink = isLogin ? "/register" : "/login";
+const altText = isLogin ? "Need an account? Register" : "Already have an account? Sign in";
+---
+
+<header style="margin-bottom:2rem;text-align:center">
+  <h1 style="font-size:1.5rem;font-weight:700;color:#f8fafc">{title}</h1>
+</header>
+
+<div class="card" style="max-width:400px;margin:0 auto">
+  <div class="error-msg" id="auth-error"></div>
+
+  <form id="auth-form" method="post" data-is-login={isLogin}>
+    {
+      !isLogin && (
+        <div class="form-group">
+          <label for="name">Name</label>
+          <input id="name" name="name" type="text" placeholder="Your name (optional)" autocomplete="name" />
+        </div>
+      )
+    }
+    <div class="form-group">
+      <label for="email">Email</label>
+      <input id="email" name="email" type="email" placeholder="you@example.com" required autocomplete="email" />
+    </div>
+    <div class="form-group">
+      <label for="password">Password</label>
+      <input id="password" name="password" type="password" placeholder="Min 8 characters" required minlength="8" autocomplete={isLogin ? "current-password" : "new-password"} />
+    </div>
+    <button type="submit" class="btn" id="submit-btn">{action}</button>
+  </form>
+
+  <!-- OAuth providers — dynamically loaded -->
+  <div id="oauth-section" style="display:none">
+    <div class="divider">or continue with</div>
+    <div id="oauth-buttons"></div>
+  </div>
+</div>
+
+<div class="form-footer">
+  <a href={altLink}>{altText}</a>
+</div>
+
+<script>
+  const form = document.getElementById("auth-form") as HTMLFormElement;
+  const isLogin = form.dataset.isLogin === "true";
+  const error = document.getElementById("auth-error") as HTMLDivElement;
+  const btn = document.getElementById("submit-btn") as HTMLButtonElement;
+  const oauthSection = document.getElementById("oauth-section") as HTMLDivElement;
+  const oauthButtons = document.getElementById("oauth-buttons") as HTMLDivElement;
+
+  let cachedProviders: string[] | null = null;
+
+  async function loadProviders(): Promise<string[]> {
+    if (cachedProviders) return cachedProviders;
+    try {
+      const res = await fetch("/api/auth/providers");
+      if (!res.ok) return [];
+      const data = await res.json();
+      cachedProviders = data.providers ?? [];
+      return cachedProviders ?? [];
+    } catch {
+      return [];
+    }
+  }
+
+  async function renderOAuth() {
+    const providers = await loadProviders();
+    if (providers.length === 0) {
+      oauthSection.style.display = "none";
+      return;
+    }
+    oauthSection.style.display = "block";
+    oauthButtons.innerHTML = providers
+      .map(p => `<a href="/api/auth/oauth/${p}" class="btn btn-oauth">${p[0].toUpperCase() + p.slice(1)}</a>`)
+      .join("");
+  }
+
+  renderOAuth();
+
+  function showError(msg: string) {
+    error.textContent = msg;
+    error.classList.add("visible");
+  }
+  function hideError() {
+    error.textContent = "";
+    error.classList.remove("visible");
+  }
+
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    hideError();
+    btn.disabled = true;
+    btn.textContent = "…";
+
+    const body: Record<string, string> = {};
+    const email = (document.getElementById("email") as HTMLInputElement).value;
+    const password = (document.getElementById("password") as HTMLInputElement).value;
+    body.email = email;
+    body.password = password;
+    if (!isLogin) {
+      const name = (document.getElementById("name") as HTMLInputElement).value;
+      if (name) body.name = name;
+    }
+
+    try {
+      const endpoint = isLogin ? "/api/auth/login" : "/api/auth/register";
+      const res = await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || `Request failed (${res.status})`);
+      }
+
+      const data = await res.json();
+      localStorage.setItem("fullstackhex_token", data.access_token);
+      localStorage.setItem("fullstackhex_user", JSON.stringify(data.user));
+      window.location.href = "/";
+    } catch (err) {
+      showError(err instanceof Error ? err.message : "Something went wrong");
+    } finally {
+      btn.disabled = false;
+      btn.textContent = "{action}";
+    }
+  });
+</script>

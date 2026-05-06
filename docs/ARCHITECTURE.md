@@ -26,9 +26,12 @@
 │                                                        │
 │  Workspace Crates:                                    │
 │  ├── api/          HTTP routes, middleware            │
-│  ├── core/         Business logic                    │
+│  ├── auth/         JWT + OAuth + CSRF authentication │
+│  ├── cache/        Redis caching, rate limiting      │
 │  ├── db/           sqlx + PostgreSQL                 │
-│  └── python-sidecar/ Sidecar manager                │
+│  ├── domain/       Business logic and shared types   │
+│  ├── python-sidecar/ Sidecar manager                 │
+│  └── storage/      S3-compatible object storage      │
 │                        │                              │
 │                        │ Unix domain socket            │
 │                        ▼                              │
@@ -71,6 +74,9 @@
 | Rust workspace | Modular crates, clear boundaries |
 | Unix domain socket | Fast IPC on Linux/macOS, no TCP overhead |
 | Latest versions | Predictable initialization via scripts |
+| Auth in Rust crate | JWT, OAuth, session logic lives in the backend, not scattered |
+| Redis for sessions | Session store outside PostgreSQL reduces load on the primary db |
+| S3-compatible storage | Portable across RustFS, MinIO, AWS S3, Cloudflare R2 |
 
 ## Data Flow
 
@@ -117,9 +123,12 @@ backend/
 ├── Cargo.toml              # Workspace root
 ├── crates/
 │   ├── api/               # HTTP API layer (Axum routes)
-│   ├── core/              # Business logic
+│   ├── auth/              # JWT + OAuth + CSRF authentication
+│   ├── cache/             # Redis caching, rate limiting, sessions
 │   ├── db/                # Database layer (sqlx)
-│   └── python-sidecar/    # Sidecar process manager
+│   ├── domain/            # Business logic and shared types
+│   ├── python-sidecar/    # Sidecar process manager
+│   └── storage/           # S3-compatible object storage
 └── target/
 ```
 

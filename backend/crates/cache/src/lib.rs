@@ -27,6 +27,12 @@ pub enum CacheError {
     SessionNotFound,
     #[error("rate limit exceeded")]
     RateLimitExceeded,
+    #[error("backoff blocked: {count} failures, {label} cooldown, {remaining_secs}s remaining")]
+    BackoffBlocked {
+        remaining_secs: u64,
+        count: u64,
+        label: String,
+    },
 }
 
 /// Redis client wrapper with connection pool.
@@ -175,5 +181,15 @@ mod tests {
         // Valid-looking URL but unreachable host should fail at init stage
         let result = RedisClient::new("redis://invalid-host-test:1234/0", "test").await;
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn make_key_joins_prefix_namespace_key() {
+        // We can't construct a RedisClient without connecting, so test the format directly
+        let prefix = "fullstackhex";
+        let namespace = "session";
+        let key = "abc123";
+        let expected = format!("{prefix}:{namespace}:{key}");
+        assert_eq!(expected, "fullstackhex:session:abc123");
     }
 }

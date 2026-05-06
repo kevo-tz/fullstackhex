@@ -15,7 +15,7 @@ ssh "${USER}@${TARGET}" "cp ${NGINX_CONF} ${NGINX_CONF}.bak"
 
 # Restore full primary nginx config from template (no suffix = primary)
 NGINX_TEMPLATE="nginx/upstream.conf.template"
-sed 's/\$upstream_suffix//g' "${NGINX_TEMPLATE}" > /tmp/promote-nginx.conf
+sed "s/\$upstream_suffix//g" "${NGINX_TEMPLATE}" > /tmp/promote-nginx.conf
 
 scp /tmp/promote-nginx.conf "${USER}@${TARGET}:${NGINX_CONF}"
 

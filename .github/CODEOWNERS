@@ -1,0 +1,6 @@
+# Protect CI/CD workflows from unauthorized changes
+.github/workflows/ @kevo-tz
+
+# Protect security config
+.github/.secrets.baseline @kevo-tz
+.github/gitleaks.toml @kevo-tz

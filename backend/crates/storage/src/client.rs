@@ -29,7 +29,8 @@ pub struct ObjectInfo {
     pub last_modified: String,
 }
 
-/// Upload a file to the storage bucket (streaming).
+/// Upload a file to the storage bucket with buffered body.
+/// Prefer [`upload_streaming`] for large payloads.
 pub async fn upload(
     client: &reqwest::Client,
     config: &super::StorageConfig,
@@ -62,7 +63,43 @@ pub async fn upload(
     Ok(())
 }
 
-/// Download a file from the storage bucket.
+/// Upload a file to the storage bucket with a streaming body.
+/// Uses `UNSIGNED-PAYLOAD` to avoid buffering the entire payload for SigV4.
+pub async fn upload_streaming(
+    client: &reqwest::Client,
+    config: &super::StorageConfig,
+    key: &str,
+    content_type: &str,
+    body: reqwest::Body,
+) -> Result<(), ApiError> {
+    let url = build_object_url(&config.endpoint, &config.bucket, key)
+        .map_err(|e| ApiError::InternalError(format!("Invalid URL: {e}")))?;
+    let url_str = url.to_string();
+    let signed = sign_request_unsigned(config, "PUT", &url_str, content_type)?;
+    let req = client
+        .put(url.as_str())
+        .body(body)
+        .header("Content-Type", content_type)
+        .header("Host", &signed.host)
+        .header("X-Amz-Date", &signed.amz_date)
+        .header("X-Amz-Content-Sha256", "UNSIGNED-PAYLOAD")
+        .header("Authorization", &signed.authorization);
+    let resp = req
+        .send()
+        .await
+        .map_err(|e| ApiError::ServiceUnavailable(format!("Upload failed: {e}")))?;
+    if !resp.status().is_success() {
+        let status = resp.status();
+        let body_text = resp.text().await.unwrap_or_default();
+        return Err(ApiError::ServiceUnavailable(format!(
+            "Upload failed: HTTP {status}: {body_text}"
+        )));
+    }
+    Ok(())
+}
+
+/// Download a file from the storage bucket into memory.
+/// Prefer [`download_streaming`] for large objects.
 pub async fn download(
     client: &reqwest::Client,
     config: &super::StorageConfig,
@@ -97,6 +134,32 @@ pub async fn download(
         ));
     }
     Ok(bytes.to_vec())
+}
+
+/// Download a file from the storage bucket, returning a streaming response.
+/// The caller is responsible for reading the body before the response lifetime ends.
+pub async fn download_streaming(
+    client: &reqwest::Client,
+    config: &super::StorageConfig,
+    key: &str,
+) -> Result<reqwest::Response, ApiError> {
+    let url = build_object_url(&config.endpoint, &config.bucket, key)
+        .map_err(|e| ApiError::InternalError(format!("Invalid URL: {e}")))?;
+    let url_str = url.to_string();
+    let signed = sign_request_unsigned(config, "GET", &url_str, "")?;
+    let resp = client
+        .get(url.as_str())
+        .header("Host", &signed.host)
+        .header("X-Amz-Date", &signed.amz_date)
+        .header("X-Amz-Content-Sha256", "UNSIGNED-PAYLOAD")
+        .header("Authorization", &signed.authorization)
+        .send()
+        .await
+        .map_err(|e| ApiError::ServiceUnavailable(format!("Download failed: {e}")))?;
+    if !resp.status().is_success() {
+        return Err(ApiError::NotFound(format!("Object not found: {key}")));
+    }
+    Ok(resp)
 }
 
 /// Delete a file from the storage bucket.
@@ -184,12 +247,251 @@ pub fn presigned_url(
     Ok(url.to_string())
 }
 
+// ── Multipart upload ──────────────────────────────────────────────────────
+
+/// Result from initiating a multipart upload.
+#[derive(Debug, Clone, Serialize)]
+pub struct MultipartUpload {
+    pub upload_id: String,
+    pub key: String,
+}
+
+/// Part info returned from `upload_part`.
+#[derive(Debug, Clone, Serialize, serde::Deserialize)]
+pub struct PartInfo {
+    pub part_number: u32,
+    pub etag: String,
+}
+
+/// Initiate a multipart upload. Returns the upload ID.
+pub async fn create_multipart_upload(
+    client: &reqwest::Client,
+    config: &super::StorageConfig,
+    key: &str,
+    content_type: &str,
+) -> Result<MultipartUpload, ApiError> {
+    let url = build_object_url(&config.endpoint, &config.bucket, key)
+        .map_err(|e| ApiError::InternalError(format!("Invalid URL: {e}")))?;
+    let url_str = format!("{}?uploads", url);
+    let signed = sign_request_unsigned(config, "POST", &url_str, content_type)?;
+
+    let mut req = client
+        .post(&url_str)
+        .header("Host", &signed.host)
+        .header("X-Amz-Date", &signed.amz_date)
+        .header("X-Amz-Content-Sha256", "UNSIGNED-PAYLOAD")
+        .header("Authorization", &signed.authorization);
+    if !content_type.is_empty() {
+        req = req.header("Content-Type", content_type);
+    }
+
+    let resp = req
+        .send()
+        .await
+        .map_err(|e| ApiError::ServiceUnavailable(format!("Multipart init failed: {e}")))?;
+
+    let status = resp.status();
+    if !status.is_success() {
+        let body = resp.text().await.unwrap_or_default();
+        return Err(ApiError::ServiceUnavailable(format!(
+            "Multipart init failed: HTTP {status}: {body}"
+        )));
+    }
+
+    // Parse XML for UploadId
+    let body = resp
+        .text()
+        .await
+        .map_err(|e| ApiError::InternalError(format!("Failed to read init response: {e}")))?;
+    use quick_xml::Reader;
+    use quick_xml::events::Event;
+    let mut reader = Reader::from_str(&body);
+    let mut upload_id = None;
+    let mut buf = Vec::new();
+    loop {
+        match reader.read_event_into(&mut buf) {
+            Ok(Event::Start(ref e)) if e.name().as_ref() == b"UploadId" => {
+                upload_id = Some(reader.read_text(e.name()).map_err(|e| {
+                    ApiError::InternalError(format!("Failed to read UploadId text: {e}"))
+                })?);
+            }
+            Ok(Event::Eof) => break,
+            Ok(Event::Start(ref e)) if e.name().as_ref() == b"Key" => {
+                // Read key text but don't store — just consume it
+                let _ = reader.read_text(e.name());
+            }
+            Err(e) => {
+                return Err(ApiError::InternalError(format!(
+                    "XML parse error: {e} body={body}"
+                )));
+            }
+            _ => {}
+        }
+        buf.clear();
+    }
+    let upload_id = upload_id
+        .ok_or_else(|| ApiError::InternalError(format!("Missing UploadId in response: {body}")))?
+        .to_string();
+
+    Ok(MultipartUpload {
+        upload_id,
+        key: key.to_string(),
+    })
+}
+
+/// Upload a single part of a multipart upload. Returns the ETag.
+pub async fn upload_part(
+    client: &reqwest::Client,
+    config: &super::StorageConfig,
+    key: &str,
+    upload_id: &str,
+    part_number: u32,
+    body: Vec<u8>,
+) -> Result<PartInfo, ApiError> {
+    let base = build_object_url(&config.endpoint, &config.bucket, key)
+        .map_err(|e| ApiError::InternalError(format!("Invalid URL: {e}")))?;
+    let url_str = format!("{}?partNumber={}&uploadId={}", base, part_number, upload_id);
+    let signed = sign_request(config, "PUT", &url_str, "", &body)?;
+
+    let resp = client
+        .put(&url_str)
+        .body(body)
+        .header("Host", &signed.host)
+        .header("X-Amz-Date", &signed.amz_date)
+        .header("X-Amz-Content-Sha256", &signed.payload_hash)
+        .header("Authorization", &signed.authorization)
+        .send()
+        .await
+        .map_err(|e| ApiError::ServiceUnavailable(format!("Part upload failed: {e}")))?;
+
+    let status = resp.status();
+    if !status.is_success() {
+        let body = resp.text().await.unwrap_or_default();
+        return Err(ApiError::ServiceUnavailable(format!(
+            "Part upload failed: HTTP {status}: {body}"
+        )));
+    }
+
+    let etag = resp
+        .headers()
+        .get("ETag")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("")
+        .trim_matches('"')
+        .to_string();
+
+    Ok(PartInfo { part_number, etag })
+}
+
+/// Build the XML body for completing a multipart upload.
+fn build_complete_multipart_xml(parts: &[PartInfo]) -> String {
+    let mut xml =
+        String::from("<CompleteMultipartUpload xmlns=\"http://s3.amazonaws.com/doc/2006-03-01/\">");
+    for p in parts {
+        xml.push_str(&format!(
+            "<Part><PartNumber>{}</PartNumber><ETag>\"{}\"</ETag></Part>",
+            p.part_number, p.etag
+        ));
+    }
+    xml.push_str("</CompleteMultipartUpload>");
+    xml
+}
+
+/// Complete a multipart upload by providing all parts with their ETags.
+pub async fn complete_multipart_upload(
+    client: &reqwest::Client,
+    config: &super::StorageConfig,
+    key: &str,
+    upload_id: &str,
+    parts: &[PartInfo],
+) -> Result<(), ApiError> {
+    let base = build_object_url(&config.endpoint, &config.bucket, key)
+        .map_err(|e| ApiError::InternalError(format!("Invalid URL: {e}")))?;
+    let url_str = format!("{}?uploadId={}", base, upload_id);
+
+    let xml = build_complete_multipart_xml(parts);
+
+    let signed = sign_request(config, "POST", &url_str, "application/xml", xml.as_bytes())?;
+
+    let resp = client
+        .post(&url_str)
+        .body(xml.clone())
+        .header("Content-Type", "application/xml")
+        .header("Host", &signed.host)
+        .header("X-Amz-Date", &signed.amz_date)
+        .header("X-Amz-Content-Sha256", &signed.payload_hash)
+        .header("Authorization", &signed.authorization)
+        .send()
+        .await
+        .map_err(|e| ApiError::ServiceUnavailable(format!("Multipart complete failed: {e}")))?;
+
+    let status = resp.status();
+    if !status.is_success() {
+        let body = resp.text().await.unwrap_or_default();
+        return Err(ApiError::ServiceUnavailable(format!(
+            "Multipart complete failed: HTTP {status}: {body}"
+        )));
+    }
+
+    Ok(())
+}
+
+/// Abort a multipart upload, cleaning up any uploaded parts.
+pub async fn abort_multipart_upload(
+    client: &reqwest::Client,
+    config: &super::StorageConfig,
+    key: &str,
+    upload_id: &str,
+) -> Result<(), ApiError> {
+    let base = build_object_url(&config.endpoint, &config.bucket, key)
+        .map_err(|e| ApiError::InternalError(format!("Invalid URL: {e}")))?;
+    let url_str = format!("{}?uploadId={}", base, upload_id);
+    let signed = sign_request_unsigned(config, "DELETE", &url_str, "")?;
+
+    let resp = client
+        .delete(&url_str)
+        .header("Host", &signed.host)
+        .header("X-Amz-Date", &signed.amz_date)
+        .header("X-Amz-Content-Sha256", "UNSIGNED-PAYLOAD")
+        .header("Authorization", &signed.authorization)
+        .send()
+        .await
+        .map_err(|e| ApiError::ServiceUnavailable(format!("Multipart abort failed: {e}")))?;
+
+    let status = resp.status();
+    if !status.is_success() && status != 204 {
+        let body = resp.text().await.unwrap_or_default();
+        return Err(ApiError::ServiceUnavailable(format!(
+            "Multipart abort failed: HTTP {status}: {body}"
+        )));
+    }
+
+    Ok(())
+}
+
 /// Signed request components.
 pub struct SignedRequest {
     pub host: String,
     pub amz_date: String,
     pub payload_hash: String,
     pub authorization: String,
+}
+
+/// Sign a request with AWS SigV4 using `UNSIGNED-PAYLOAD` as the content hash.
+/// Use for streaming requests where the full body hash is not known ahead of time.
+pub fn sign_request_unsigned(
+    config: &super::StorageConfig,
+    method: &str,
+    url: &str,
+    content_type: &str,
+) -> Result<SignedRequest, ApiError> {
+    sign_request_inner(
+        config,
+        method,
+        url,
+        content_type,
+        "UNSIGNED-PAYLOAD".to_string(),
+    )
 }
 
 /// Sign a request with AWS SigV4.
@@ -200,9 +502,18 @@ pub fn sign_request(
     content_type: &str,
     body: &[u8],
 ) -> Result<SignedRequest, ApiError> {
+    sign_request_inner(config, method, url, content_type, sha256_hex(body))
+}
+
+fn sign_request_inner(
+    config: &super::StorageConfig,
+    method: &str,
+    url: &str,
+    content_type: &str,
+    payload_hash: String,
+) -> Result<SignedRequest, ApiError> {
     let amz_date = chrono::Utc::now().format("%Y%m%dT%H%M%SZ").to_string();
     let date_stamp = amz_date[..8].to_string();
-    let payload_hash = sha256_hex(body);
 
     let parsed =
         url::Url::parse(url).map_err(|e| ApiError::InternalError(format!("Invalid URL: {e}")))?;
@@ -428,5 +739,81 @@ mod tests {
     #[test]
     fn hex_zero_bytes() {
         assert_eq!(hex(&[0x00, 0x01, 0xff]), "0001ff");
+    }
+
+    // ── build_object_url tests ──────────────────────────────────────────
+
+    #[test]
+    fn build_object_url_regular_key() {
+        let url = build_object_url("http://localhost:9000", "bucket", "file.txt").unwrap();
+        assert_eq!(url.to_string(), "http://localhost:9000/bucket/file.txt");
+    }
+
+    #[test]
+    fn build_object_url_empty_key_gets_trailing_slash() {
+        let url = build_object_url("http://localhost:9000", "bucket", "").unwrap();
+        assert_eq!(url.to_string(), "http://localhost:9000/bucket/");
+    }
+
+    #[test]
+    fn build_object_url_nested_key() {
+        let url = build_object_url("http://localhost:9000", "bucket", "a/b/c.txt").unwrap();
+        assert_eq!(url.to_string(), "http://localhost:9000/bucket/a/b/c.txt");
+    }
+
+    #[test]
+    fn build_object_url_invalid_endpoint_fails() {
+        let result = build_object_url("not a valid url", "bucket", "key");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn build_object_url_trailing_slash_on_endpoint() {
+        let url = build_object_url("http://localhost:9000/", "bucket", "file.txt").unwrap();
+        assert_eq!(url.to_string(), "http://localhost:9000/bucket/file.txt");
+    }
+
+    // ── Multipart XML body tests ────────────────────────────────────────
+
+    #[test]
+    fn complete_multipart_xml_single_part() {
+        let parts = [PartInfo {
+            part_number: 1,
+            etag: "abc123".to_string(),
+        }];
+        let xml = build_complete_multipart_xml(&parts);
+        assert!(xml.contains("<PartNumber>1</PartNumber>"));
+        assert!(xml.contains("<ETag>\"abc123\"</ETag>"));
+        assert!(xml.starts_with("<CompleteMultipartUpload"));
+        assert!(xml.ends_with("</CompleteMultipartUpload>"));
+    }
+
+    #[test]
+    fn complete_multipart_xml_multiple_parts() {
+        let parts = [
+            PartInfo {
+                part_number: 1,
+                etag: "etag1".to_string(),
+            },
+            PartInfo {
+                part_number: 2,
+                etag: "etag2".to_string(),
+            },
+        ];
+        let xml = build_complete_multipart_xml(&parts);
+        assert!(xml.contains("<PartNumber>1</PartNumber>"));
+        assert!(xml.contains("<PartNumber>2</PartNumber>"));
+        assert!(xml.contains("<ETag>\"etag1\"</ETag>"));
+        assert!(xml.contains("<ETag>\"etag2\"</ETag>"));
+    }
+
+    #[test]
+    fn complete_multipart_xml_empty_parts() {
+        let parts: [PartInfo; 0] = [];
+        let xml = build_complete_multipart_xml(&parts);
+        assert!(xml.starts_with("<CompleteMultipartUpload"));
+        assert!(xml.ends_with("</CompleteMultipartUpload>"));
+        // No <Part> elements when empty
+        assert!(!xml.contains("<Part>"));
     }
 }

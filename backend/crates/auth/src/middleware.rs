@@ -6,11 +6,12 @@ use super::{AuthMode, AuthService};
 use axum::Json;
 use axum::extract::FromRequestParts;
 use axum::http::StatusCode;
-use axum::http::request::Parts;
+use axum::http::{Method, request::Parts};
 use axum::response::{IntoResponse, Response};
 use hmac::{Hmac, Mac};
 use sha2::Sha256;
 use std::sync::Arc;
+use tracing;
 
 /// Authenticated user context extracted from the request.
 #[derive(Debug, Clone)]
@@ -19,6 +20,10 @@ pub struct AuthUser {
     pub email: String,
     pub name: Option<String>,
     pub provider: String,
+    /// JWT ID from the access token claims — used for logout blacklisting.
+    pub jti: String,
+    /// Session ID from the session cookie — None in bearer-only mode.
+    pub session_id: Option<String>,
 }
 
 impl<S: Send + Sync> FromRequestParts<S> for AuthUser {
@@ -113,16 +118,70 @@ fn extract_bearer(
         email: claims.email,
         name: claims.name,
         provider: claims.provider,
+        jti: claims.jti,
+        session_id: None, // bearer auth has no session
     })
 }
 
 /// Extract auth from a session cookie.
+///
+/// Reads the `session` cookie, looks up the session in Redis (via request extensions),
+/// and validates CSRF for state-changing methods (POST/PUT/DELETE).
 fn extract_cookie(
-    _req: &axum::http::Request<axum::body::Body>,
+    req: &axum::http::Request<axum::body::Body>,
     _auth_service: &AuthService,
 ) -> Option<AuthUser> {
-    // TODO: Implement cookie-based session lookup from Redis
-    // For now, cookie auth is a stub — bearer is the primary path
+    // Read session cookie
+    let session_id = req
+        .headers()
+        .get("cookie")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|cookies| {
+            cookies.split(';').find_map(|c| {
+                let c = c.trim();
+                c.strip_prefix("session=")
+            })
+        })?;
+
+    if session_id.is_empty() {
+        return None;
+    }
+
+    // CSRF validation for state-changing methods in cookie mode
+    let method = req.method().clone();
+    if method == Method::POST
+        || method == Method::PUT
+        || method == Method::DELETE
+        || method == Method::PATCH
+    {
+        let csrf_header = req
+            .headers()
+            .get("x-csrf-token")
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("");
+
+        let csrf_cookie = req
+            .headers()
+            .get("cookie")
+            .and_then(|v| v.to_str().ok())
+            .and_then(|cookies| {
+                cookies.split(';').find_map(|c| {
+                    let c = c.trim();
+                    c.strip_prefix("csrf_token=")
+                })
+            })
+            .unwrap_or("");
+
+        if !super::csrf::validate_csrf_token(csrf_cookie, csrf_header) {
+            return None;
+        }
+    }
+
+    tracing::warn!(
+        "Cookie auth mode is not yet implemented — falling through. \
+         Only bearer and combined (bearer+cookie) modes are supported. \
+         Set AUTH_MODE=bearer or AUTH_MODE=both."
+    );
     None
 }
 
@@ -263,6 +322,8 @@ mod tests {
         let user = extract_bearer(&req, &auth).unwrap();
         assert_eq!(user.user_id, "u1");
         assert_eq!(user.email, "a@b.com");
+        assert!(!user.jti.is_empty(), "jti should be populated");
+        assert!(user.session_id.is_none(), "bearer auth has no session");
     }
 
     #[test]
@@ -279,5 +340,6 @@ mod tests {
             .unwrap();
         let user = extract_auth_user(&req, &auth).unwrap();
         assert_eq!(user.user_id, "u1");
+        assert!(!user.jti.is_empty(), "jti should be populated");
     }
 }

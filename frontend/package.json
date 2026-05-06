@@ -1,7 +1,7 @@
 {
   "name": "frontend",
   "type": "module",
-  "version": "0.6.0.0",
+  "version": "0.9.0.0",
   "engines": {
     "node": ">=22.12.0"
   },
@@ -22,12 +22,29 @@
   },
   "devDependencies": {
     "@astrojs/check": "^0.9.9",
-    "@testing-library/dom": "^10.4.1",
+    "knip": "^6.11.0",
     "@types/node": "^25.6.0",
     "@vitest/coverage-v8": "^4.1.5",
     "bun-types": "^1.3.13",
     "jsdom": "^29.1.1",
     "typescript": "^6.0.3",
     "vitest": "^4.1.5"
+  },
+  "knip": {
+    "$schema": "https://unpkg.com/knip@6/schema.json",
+    "entry": [
+      "src/**/*.ts",
+      "src/**/*.astro",
+      "src/lib/health.ts",
+      "tests/**/*.ts"
+    ],
+    "project": [
+      "src/**/*.ts",
+      "src/**/*.astro",
+      "tests/**/*.ts"
+    ],
+    "ignoreDependencies": [
+      "tailwindcss"
+    ]
   }
 }

@@ -8,10 +8,12 @@
 
 use auth::middleware::AuthUser;
 use axum::Json;
+use axum::body::Body;
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use domain::error::ApiError;
+use futures_util::StreamExt;
 use serde::{Deserialize, Serialize};
 
 /// Shared state for storage routes.
@@ -43,39 +45,53 @@ pub struct ListQuery {
     pub prefix: Option<String>,
 }
 
-/// PUT /storage/{key} — upload file.
+/// PUT /storage/{key} — upload a file with streaming body.
 pub async fn upload(
     State(state): State<StorageState>,
     auth_user: AuthUser,
     Path(key): Path<String>,
-    body: axum::body::Bytes,
+    body: Body,
 ) -> Result<impl IntoResponse, ApiError> {
     let key = user_key(&auth_user.user_id, &key);
-    super::client::upload(
+    let stream = body.into_data_stream();
+    let reqwest_body = reqwest::Body::wrap_stream(stream);
+    super::client::upload_streaming(
         &state.client,
         &state.config,
         &key,
-        body.to_vec(),
         "application/octet-stream",
+        reqwest_body,
     )
     .await?;
 
     Ok(StatusCode::CREATED)
 }
 
-/// GET /storage/{key} — download file.
+/// GET /storage/{key} — download a file with streaming body.
 pub async fn download(
     State(state): State<StorageState>,
     auth_user: AuthUser,
     Path(key): Path<String>,
 ) -> Result<impl IntoResponse, ApiError> {
     let key = user_key(&auth_user.user_id, &key);
-    let data = super::client::download(&state.client, &state.config, &key).await?;
+    let resp = super::client::download_streaming(&state.client, &state.config, &key).await?;
+
+    let content_type = resp
+        .headers()
+        .get(reqwest::header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("application/octet-stream")
+        .to_string();
+
+    let stream = resp
+        .bytes_stream()
+        .map(|r| r.map_err(|e| axum::Error::new(std::io::Error::other(e))));
+    let body = Body::from_stream(stream);
 
     Ok((
         StatusCode::OK,
-        [(axum::http::header::CONTENT_TYPE, "application/octet-stream")],
-        data,
+        [(axum::http::header::CONTENT_TYPE, content_type)],
+        body,
     ))
 }
 
@@ -128,6 +144,88 @@ pub async fn presign(
     }))
 }
 
+// ── Multipart upload handlers ──────────────────────────────────────────
+
+/// Request body for initiating a multipart upload.
+#[derive(Debug, Deserialize)]
+pub struct MultipartInitRequest {
+    pub key: String,
+    pub content_type: Option<String>,
+}
+
+/// Request body for completing a multipart upload.
+#[derive(Debug, Deserialize)]
+pub struct MultipartCompleteRequest {
+    pub parts: Vec<super::client::PartInfo>,
+}
+
+/// POST /storage/multipart/init — initiate a multipart upload.
+pub async fn init_multipart(
+    State(state): State<StorageState>,
+    auth_user: AuthUser,
+    Json(body): Json<MultipartInitRequest>,
+) -> Result<impl IntoResponse, ApiError> {
+    let key = user_key(&auth_user.user_id, &body.key);
+    let content_type = body
+        .content_type
+        .as_deref()
+        .unwrap_or("application/octet-stream");
+    let upload =
+        super::client::create_multipart_upload(&state.client, &state.config, &key, content_type)
+            .await?;
+    Ok((StatusCode::CREATED, Json(upload)))
+}
+
+/// PUT /storage/multipart/{key}/{upload_id}/part/{part_number} — upload a part.
+pub async fn upload_part(
+    State(state): State<StorageState>,
+    auth_user: AuthUser,
+    Path((key, upload_id, part_number)): Path<(String, String, u32)>,
+    body: axum::body::Bytes,
+) -> Result<impl IntoResponse, ApiError> {
+    let key = user_key(&auth_user.user_id, &key);
+    let part = super::client::upload_part(
+        &state.client,
+        &state.config,
+        &key,
+        &upload_id,
+        part_number,
+        body.to_vec(),
+    )
+    .await?;
+    Ok((StatusCode::OK, Json(part)))
+}
+
+/// POST /storage/multipart/{key}/{upload_id}/complete — complete a multipart upload.
+pub async fn complete_multipart(
+    State(state): State<StorageState>,
+    auth_user: AuthUser,
+    Path((key, upload_id)): Path<(String, String)>,
+    Json(body): Json<MultipartCompleteRequest>,
+) -> Result<impl IntoResponse, ApiError> {
+    let key = user_key(&auth_user.user_id, &key);
+    super::client::complete_multipart_upload(
+        &state.client,
+        &state.config,
+        &key,
+        &upload_id,
+        &body.parts,
+    )
+    .await?;
+    Ok(StatusCode::OK)
+}
+
+/// DELETE /storage/multipart/{key}/{upload_id} — abort a multipart upload.
+pub async fn abort_multipart(
+    State(state): State<StorageState>,
+    auth_user: AuthUser,
+    Path((key, upload_id)): Path<(String, String)>,
+) -> Result<impl IntoResponse, ApiError> {
+    let key = user_key(&auth_user.user_id, &key);
+    super::client::abort_multipart_upload(&state.client, &state.config, &key, &upload_id).await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
 /// Prefix a storage key with the user's namespace.
 fn user_key(user_id: &str, key: &str) -> String {
     format!("users/{}/{}", user_id, key)
@@ -170,6 +268,8 @@ mod tests {
             email: "test@example.com".to_string(),
             name: None,
             provider: "local".to_string(),
+            jti: "test-jti-1".to_string(),
+            session_id: None,
         };
 
         let body = PresignRequest {
@@ -216,6 +316,8 @@ mod tests {
             email: "test@example.com".to_string(),
             name: None,
             provider: "local".to_string(),
+            jti: "test-jti-2".to_string(),
+            session_id: None,
         };
 
         let body = PresignRequest {

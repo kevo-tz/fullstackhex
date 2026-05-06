@@ -2,6 +2,70 @@ function jsonLog(obj: Record<string, unknown>): void {
   console.log(JSON.stringify(obj));
 }
 
+export function isFullOutage(data: Record<string, unknown>): boolean {
+  const services = ["rust", "db", "redis", "storage", "python", "auth"];
+  for (const svc of services) {
+    const entry = data[svc] as Record<string, unknown> | undefined;
+    if (!entry || entry.status === "ok") return false;
+  }
+  return true;
+}
+
+export function getDiagnostics(data: Record<string, unknown>): { service: string; status: string; fix: string | null }[] {
+  const services = ["rust", "db", "redis", "storage", "python", "auth"];
+  const labels: Record<string, string> = {
+    rust: "Rust API", db: "PostgreSQL", redis: "Redis",
+    storage: "RustFS Storage", python: "Python sidecar", auth: "Auth",
+  };
+  const result: { service: string; status: string; fix: string | null }[] = [];
+  for (const svc of services) {
+    const entry = data[svc] as Record<string, unknown> | undefined;
+    if (!entry || entry.status === "ok") continue;
+    result.push({
+      service: labels[svc] || svc,
+      status: String(entry.status),
+      fix: (entry.fix as string) || (entry.error as string) || null,
+    });
+  }
+  return result;
+}
+
+export function createRetryController(
+  onRetry: () => void,
+  maxDelay = 30000,
+  initialDelay = 1000,
+): { start: () => void; cancel: () => void; reset: () => void } {
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  let delay = initialDelay;
+
+  function schedule() {
+    timer = setTimeout(() => {
+      onRetry();
+      if (delay < maxDelay) delay = Math.min(delay * 2, maxDelay);
+      schedule();
+    }, delay);
+  }
+
+  function doCancel() {
+    if (timer !== null) {
+      clearTimeout(timer);
+      timer = null;
+    }
+  }
+
+  function doReset() {
+    doCancel();
+    delay = initialDelay;
+  }
+
+  function doStart() {
+    doCancel();
+    schedule();
+  }
+
+  return { start: doStart, cancel: doCancel, reset: doReset };
+}
+
 async function handleService(
   fetchImpl: typeof fetch,
   url: string,
@@ -53,12 +117,13 @@ export async function aggregateHealth(
     trace_id: traceId,
   });
 
-  const [rustResult, dbResult, redisResult, storageResult, pythonResult] = await Promise.all([
+  const [rustResult, dbResult, redisResult, storageResult, pythonResult, authResult] = await Promise.all([
     handleService(fetchImpl, `${apiBase}/health`, "rust", "api", "error", traceId),
     handleService(fetchImpl, `${apiBase}/health/db`, "db", "db", "error", traceId),
     handleService(fetchImpl, `${apiBase}/health/redis`, "redis", "redis", "unavailable", traceId),
     handleService(fetchImpl, `${apiBase}/health/storage`, "storage", "storage", "unavailable", traceId),
     handleService(fetchImpl, `${apiBase}/health/python`, "python", "python", "unavailable", traceId),
+    handleService(fetchImpl, `${apiBase}/health/auth`, "auth", "auth", "disabled", traceId),
   ]);
 
   const durationMs = Math.round(performance.now() - start);
@@ -77,5 +142,6 @@ export async function aggregateHealth(
     redis: redisResult,
     storage: storageResult,
     python: pythonResult,
+    auth: authResult,
   };
 }

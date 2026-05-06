@@ -8,6 +8,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+export SCRIPT_DIR
 LOCK_FILE="/tmp/fullstackhex-deploy.lock"
 COMPOSE_FILE="compose/prod.yml"
 CANARY_WEIGHT="${CANARY_WEIGHT:-10}"

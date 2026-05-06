@@ -39,3 +39,14 @@ Key routing rules:
 - Ship/deploy/PR → invoke /ship or /land-and-deploy
 - Save progress → invoke /context-save
 - Resume context → invoke /context-restore
+
+## Health Stack
+
+- typecheck: cd frontend && tsc --noEmit
+- lint: cd backend && cargo clippy -- -D warnings
+- test: cd backend && cargo test
+- test: cd frontend && vitest run
+- test: cd frontend && bun test
+- test: cd python-sidecar && pytest
+- deadcode: cd frontend && npx knip
+- shell: shellcheck -x scripts/*.sh tests/*.sh

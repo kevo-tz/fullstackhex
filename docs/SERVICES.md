@@ -27,9 +27,12 @@ backend/
 ├── Cargo.toml              # Workspace root
 ├── crates/
 │   ├── api/               # HTTP API layer (Axum routes)
-│   ├── core/              # Business logic
+│   ├── auth/              # JWT + OAuth + CSRF authentication
+│   ├── cache/             # Redis caching, rate limiting, sessions
 │   ├── db/                # Database layer (sqlx)
-│   └── python-sidecar/    # Sidecar process manager
+│   ├── domain/            # Business logic and shared types
+│   ├── python-sidecar/    # Sidecar process manager
+│   └── storage/           # S3-compatible object storage
 └── target/
 ```
 

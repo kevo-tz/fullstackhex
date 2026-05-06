@@ -175,16 +175,22 @@ bun outdated               # Check for outdated packages
 
 ## Workflow File Structure
 
-The CI workflow (`.github/workflows/ci.yml`) runs five jobs: `rust`, `python`, `frontend`, `smoke` (cross-layer), and `security`.
+The CI workflow (`.github/workflows/ci.yml`) runs six jobs: `rust`, `python`, `frontend`, `smoke` (cross-layer), `e2e` (full-stack end-to-end with real services), and `security`.
 
 All source files, configs, and tests ship in the repo. CI jobs check out the repo and run directly — no scaffolding step required.
 
+The `smoke` job also runs `cargo sqlx prepare --check` to verify offline metadata is up to date.
+
+The `e2e` job starts a full backend (Rust with PostgreSQL + Redis) and frontend, then runs the Bun-based e2e tests in `e2e/`. It uses a dedicated `JWT_SECRET` and runs with `AUTH_MODE=bearer`.
+
 ```yaml
 jobs:
-  rust:    # fmt + clippy + cargo test
+  rust:    # fmt + clippy + cargo test (including socket integration)
   python:  # ruff + pytest
-  frontend: # lint + typecheck + bun test + build
-  smoke:   # cross-layer test run (Rust + Python + Frontend together)
+  frontend: # lint + typecheck + bun test + vitest + build
+  smoke:   # cross-layer test run + sqlx offline check
+  e2e:     # full-stack e2e with backend + frontend + real services
+  infra:   # compose validation, Docker builds, performance check
   security: # detect-secrets + gitleaks
 ```
 

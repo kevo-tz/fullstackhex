@@ -336,7 +336,7 @@ const { title } = Astro.props;
         const elMobile = document.getElementById("auth-nav-mobile");
         const user = localStorage.getItem(USER_KEY);
 
-        function userHtml() {
+        function userHtml(user: string) {
           try {
             const u = JSON.parse(user);
             return `<span class="user-menu">${u.email}</span>
@@ -348,8 +348,8 @@ const { title } = Astro.props;
         }
         const guestHtml = `<a href="/login">login</a>`;
 
-        if (el) el.innerHTML = user ? userHtml() : guestHtml;
-        if (elMobile) elMobile.innerHTML = user ? userHtml() : guestHtml;
+        if (el) el.innerHTML = user ? userHtml(user) : guestHtml;
+        if (elMobile) elMobile.innerHTML = user ? userHtml(user) : guestHtml;
 
         document.getElementById("nav-logout")?.addEventListener("click", logout);
         document.getElementById("nav-logout-mobile")?.addEventListener("click", logout);
@@ -380,14 +380,15 @@ const { title } = Astro.props;
       var navMenu = document.getElementById("nav-menu");
 
       hamburger?.addEventListener("click", function() {
-        var open = hamburger.getAttribute("aria-expanded") === "true";
-        hamburger.setAttribute("aria-expanded", String(!open));
+        var self = hamburger!;
+        var open = self.getAttribute("aria-expanded") === "true";
+        self.setAttribute("aria-expanded", String(!open));
         if (navMenu) navMenu.setAttribute("aria-hidden", String(open));
       });
 
       document.addEventListener("keydown", function(e) {
         if (e.key === "Escape" && hamburger?.getAttribute("aria-expanded") === "true") {
-          hamburger.setAttribute("aria-expanded", "false");
+          hamburger?.setAttribute("aria-expanded", "false");
           if (navMenu) navMenu.setAttribute("aria-hidden", "true");
         }
       });

@@ -263,6 +263,10 @@ jobs:
             ${{ runner.os }}-cargo-e2e-
             ${{ runner.os }}-cargo-
 
+      - name: Build backend
+        working-directory: backend
+        run: cargo build -p api
+
       - name: Start backend
         env:
           DATABASE_URL: postgres://postgres:postgres@localhost:5432/testdb

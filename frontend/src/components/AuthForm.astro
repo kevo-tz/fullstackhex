@@ -17,7 +17,7 @@ const altText = isLogin ? "Need an account? Register" : "Already have an account
 <div class="card" style="max-width:400px;margin:0 auto">
   <div class="error-msg" id="auth-error"></div>
 
-  <form id="auth-form" method="post">
+  <form id="auth-form" method="post" data-is-login={isLogin}>
     {
       !isLogin && (
         <div class="form-group">
@@ -50,6 +50,7 @@ const altText = isLogin ? "Need an account? Register" : "Already have an account
 
 <script>
   const form = document.getElementById("auth-form") as HTMLFormElement;
+  const isLogin = form.dataset.isLogin === "true";
   const error = document.getElementById("auth-error") as HTMLDivElement;
   const btn = document.getElementById("submit-btn") as HTMLButtonElement;
   const oauthSection = document.getElementById("oauth-section") as HTMLDivElement;
@@ -64,7 +65,7 @@ const altText = isLogin ? "Need an account? Register" : "Already have an account
       if (!res.ok) return [];
       const data = await res.json();
       cachedProviders = data.providers ?? [];
-      return cachedProviders;
+      return cachedProviders ?? [];
     } catch {
       return [];
     }

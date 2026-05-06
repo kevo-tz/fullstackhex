@@ -27,6 +27,27 @@ pub async fn run_migrations(pool: &PgPool) -> Result<(), DbError> {
 ///
 /// Takes an optional pool reference. Returns `Err(NotConfigured)` if `None`.
 /// Uses a timeout around the query to prevent hanging on a slow or unresponsive database.
+///
+/// # Example
+///
+/// ```no_run
+/// use sqlx::postgres::PgPoolOptions;
+/// use std::time::Duration;
+///
+/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+/// let pool = PgPoolOptions::new()
+///     .max_connections(5)
+///     .connect("postgres://user:pass@localhost/db")
+///     .await?;
+///
+/// match db::health_check(Some(&pool)).await {
+///     Ok(()) => println!("Database healthy"),
+///     Err(db::DbError::NotConfigured) => eprintln!("No database configured"),
+///     Err(e) => eprintln!("Database error: {e}"),
+/// }
+/// # Ok(())
+/// # }
+/// ```
 pub async fn health_check(pool: Option<&PgPool>) -> Result<(), DbError> {
     const QUERY_TIMEOUT: Duration = Duration::from_secs(3);
     let pool = pool.ok_or(DbError::NotConfigured)?;

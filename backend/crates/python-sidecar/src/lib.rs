@@ -91,6 +91,26 @@ impl PythonSidecar {
     /// Checks socket existence before connecting.
     /// Retries connection failures up to `max_retries` with backoff.
     /// Generates a UUIDv4 trace_id and sends it as an x-trace-id header.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use python_sidecar::PythonSidecar;
+    /// use std::time::Duration;
+    ///
+    /// # async fn example() {
+    /// let sidecar = PythonSidecar::new(
+    ///     "/tmp/fullstackhex-python.sock",
+    ///     Duration::from_secs(5),
+    ///     3,
+    /// );
+    ///
+    /// match sidecar.get("/health").await {
+    ///     Ok(json) => println!("Health response: {json}"),
+    ///     Err(e) => eprintln!("Sidecar error: {e}"),
+    /// }
+    /// # }
+    /// ```
     pub async fn get(&self, path: &str) -> Result<serde_json::Value, SidecarError> {
         self.get_with_trace_id(path, &uuid::Uuid::new_v4().to_string(), None)
             .await
@@ -313,6 +333,26 @@ impl PythonSidecar {
     }
 
     /// Convenience: GET /health from the sidecar.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use python_sidecar::PythonSidecar;
+    /// use std::time::Duration;
+    ///
+    /// # async fn example() {
+    /// let sidecar = PythonSidecar::new(
+    ///     "/tmp/fullstackhex-python.sock",
+    ///     Duration::from_secs(5),
+    ///     3,
+    /// );
+    ///
+    /// match sidecar.health().await {
+    ///     Ok(json) => println!("Sidecar healthy: {json}"),
+    ///     Err(e) => eprintln!("Sidecar unhealthy: {e}"),
+    /// }
+    /// # }
+    /// ```
     pub async fn health(&self) -> Result<serde_json::Value, SidecarError> {
         let trace_id = uuid::Uuid::new_v4().to_string();
         tracing::info!(%trace_id, target = "python_sidecar", "health check");

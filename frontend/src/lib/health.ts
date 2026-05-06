@@ -2,6 +2,76 @@ function jsonLog(obj: Record<string, unknown>): void {
   console.log(JSON.stringify(obj));
 }
 
+export interface DiagnosticEntry {
+  service: string;
+  status: string;
+  fix: string | null;
+}
+
+export function isFullOutage(data: Record<string, unknown>): boolean {
+  const services = ["rust", "db", "redis", "storage", "python", "auth"];
+  for (const svc of services) {
+    const entry = data[svc] as Record<string, unknown> | undefined;
+    if (!entry || entry.status === "ok") return false;
+  }
+  return true;
+}
+
+export function getDiagnostics(data: Record<string, unknown>): DiagnosticEntry[] {
+  const services = ["rust", "db", "redis", "storage", "python", "auth"];
+  const labels: Record<string, string> = {
+    rust: "Rust API", db: "PostgreSQL", redis: "Redis",
+    storage: "RustFS Storage", python: "Python sidecar", auth: "Auth",
+  };
+  const result: DiagnosticEntry[] = [];
+  for (const svc of services) {
+    const entry = data[svc] as Record<string, unknown> | undefined;
+    if (!entry || entry.status === "ok") continue;
+    result.push({
+      service: labels[svc] || svc,
+      status: String(entry.status),
+      fix: (entry.fix as string) || (entry.error as string) || null,
+    });
+  }
+  return result;
+}
+
+export function createRetryController(
+  onRetry: () => void,
+  maxDelay = 30000,
+  initialDelay = 1000,
+): { start: () => void; cancel: () => void; reset: () => void } {
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  let delay = initialDelay;
+
+  function schedule() {
+    timer = setTimeout(() => {
+      onRetry();
+      if (delay < maxDelay) delay = Math.min(delay * 2, maxDelay);
+      schedule();
+    }, delay);
+  }
+
+  function doCancel() {
+    if (timer !== null) {
+      clearTimeout(timer);
+      timer = null;
+    }
+  }
+
+  function doReset() {
+    doCancel();
+    delay = initialDelay;
+  }
+
+  function doStart() {
+    doCancel();
+    schedule();
+  }
+
+  return { start: doStart, cancel: doCancel, reset: doReset };
+}
+
 async function handleService(
   fetchImpl: typeof fetch,
   url: string,

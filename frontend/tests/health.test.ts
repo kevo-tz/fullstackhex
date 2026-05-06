@@ -1,5 +1,5 @@
 import { describe, expect, test, mock } from "bun:test";
-import { aggregateHealth } from "../src/lib/health";
+import { aggregateHealth, isFullOutage, getDiagnostics, createRetryController } from "../src/lib/health";
 
 function makeResponse(json: () => Promise<unknown>): Response {
   return {
@@ -68,6 +68,112 @@ describe("aggregateHealth", () => {
     expect((result.rust as Record<string, unknown>).status).toBe("ok");
     expect((result.db as Record<string, unknown>).status).toBe("error");
     expect((result.python as Record<string, unknown>).status).toBe("unavailable");
+  });
+
+  describe("diagnostics", () => {
+    test("isFullOutage true when all 6 are error", () => {
+      const data: Record<string, unknown> = {};
+      for (const svc of ["rust", "db", "redis", "storage", "python", "auth"]) {
+        data[svc] = { status: "error" };
+      }
+      expect(isFullOutage(data)).toBe(true);
+    });
+
+    test("isFullOutage false when some are ok", () => {
+      const data: Record<string, unknown> = {
+        rust: { status: "ok" },
+        db: { status: "error" },
+        redis: { status: "unavailable" },
+        storage: { status: "error" },
+        python: { status: "error" },
+        auth: { status: "disabled" },
+      };
+      expect(isFullOutage(data)).toBe(false);
+    });
+
+    test("isFullOutage false when all ok", () => {
+      const data: Record<string, unknown> = {};
+      for (const svc of ["rust", "db", "redis", "storage", "python", "auth"]) {
+        data[svc] = { status: "ok" };
+      }
+      expect(isFullOutage(data)).toBe(false);
+    });
+
+    test("getDiagnostics extracts fix fields", () => {
+      const data: Record<string, unknown> = {
+        rust: { status: "ok" },
+        db: { status: "error", fix: "make up-postgres" },
+        redis: { status: "ok" },
+        storage: { status: "error", error: "S3 timeout" },
+        python: { status: "unavailable", fix: "check sidecar logs" },
+        auth: { status: "ok" },
+      };
+      const diag = getDiagnostics(data);
+      expect(diag).toHaveLength(3);
+      expect(diag[0].fix).toBe("make up-postgres");
+      expect(diag[1].fix).toBe("S3 timeout");
+      expect(diag[2].fix).toBe("check sidecar logs");
+    });
+
+    test("getDiagnostics uses error field when fix absent", () => {
+      const data: Record<string, unknown> = {
+        rust: { status: "error", error: "connection refused" },
+        db: { status: "ok" },
+        redis: { status: "ok" },
+        storage: { status: "ok" },
+        python: { status: "ok" },
+        auth: { status: "ok" },
+      };
+      const diag = getDiagnostics(data);
+      expect(diag).toHaveLength(1);
+      expect(diag[0].fix).toBe("connection refused");
+    });
+
+    test("getDiagnostics returns null fix when neither field present", () => {
+      const data: Record<string, unknown> = {
+        rust: { status: "error" },
+        db: { status: "ok" },
+        redis: { status: "ok" },
+        storage: { status: "ok" },
+        python: { status: "ok" },
+        auth: { status: "ok" },
+      };
+      const diag = getDiagnostics(data);
+      expect(diag).toHaveLength(1);
+      expect(diag[0].fix).toBeNull();
+    });
+
+    test("createRetryController starts timer and calls callback", async () => {
+      const calls: number[] = [];
+      const ctrl = createRetryController(() => { calls.push(Date.now()); }, 50000, 50);
+      expect(calls.length).toBe(0);
+      ctrl.start();
+      await new Promise((r) => setTimeout(r, 80));
+      expect(calls.length).toBe(1);
+      ctrl.cancel();
+    });
+
+    test("createRetryController cancel stops further calls", async () => {
+      const calls: number[] = [];
+      const ctrl = createRetryController(() => { calls.push(Date.now()); }, 50000, 50);
+      ctrl.start();
+      await new Promise((r) => setTimeout(r, 20));
+      ctrl.cancel();
+      await new Promise((r) => setTimeout(r, 100));
+      expect(calls.length).toBe(0);
+    });
+
+    test("createRetryController reset clears and restarts delay", async () => {
+      const calls: number[] = [];
+      const ctrl = createRetryController(() => { calls.push(Date.now()); }, 50000, 50);
+      ctrl.start();
+      await new Promise((r) => setTimeout(r, 80));
+      expect(calls.length).toBe(1);
+      ctrl.reset();
+      await new Promise((r) => setTimeout(r, 40));
+      // After reset, timer was cancelled — no more calls within 40ms
+      expect(calls.length).toBe(1);
+    });
   });
 
   test("x-trace-id header is sent in each fetch call", async () => {

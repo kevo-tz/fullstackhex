@@ -1,32 +1,15 @@
 # TODOS
 
-## Next — Phase 3 (3 items)
+## Later (all done ✅)
 
-Dependency graph:
-```
-A8 (e2e tests) ──→ S10 (e2e shell)
-S7 (multipart) ──→ S10 (e2e shell)
-```
+### ✅ A8. Add `make test-e2e` [P1] [L]
+Bun-based e2e auth tests (`e2e/auth.test.ts`), `make test-e2e` target, CI e2e job with postgres+redis services.
 
-**Parallel batch:** A8 + S7 (files independent)
-**Sequential:** S10 (needs A8 e2e infra + S7 multipart route)
+### ✅ S7. Multipart upload for files > 5MB [P2] [L]
+Multipart upload APIs: init, upload part, complete, abort. Routes at `POST /storage/multipart/init`, etc.
 
-## Later
-
-### A8. Add `make test-e2e` [P1] [L]
-**What:** Test suites run in isolation. No verification that backend + frontend + database work together. /qa found auth 500 only by manual curl.
-**Fix:** Add Playwright or Bun-based e2e test: start services, register user, login, hit `/auth/me`, verify dashboard. Run in CI on every PR.
-**Files:** `e2e/`, `.github/workflows/e2e.yml`, `package.json`
-
-### S7. Multipart upload for files > 5MB [P2] [L]
-**What:** No multipart upload implementation exists. Spec specified multipart for files larger than 5MB.
-**Fix:** Implement S3 multipart: initiate upload, stream parts, complete upload. Add `POST /storage/multipart` route.
-**Files:** `backend/crates/storage/src/client.rs`, `backend/crates/storage/src/routes.rs`
-
-### S10. End-to-end shell test [P2] [L]
-**What:** No automated e2e test covers full user journey.
-**Fix:** Add `tests/e2e.sh`: start stack, register user, login, access protected route, upload file, run deploy, verify health, run rollback.
-**Files:** `tests/e2e.sh`
+### ✅ S10. End-to-end shell test [P2] [L]
+Full user journey shell test (`tests/e2e.sh`): health → register → login → /auth/me → upload → download → delete → dashboard. `make test-e2e-shell` target.
 
 ## Icebox
 

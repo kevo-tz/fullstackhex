@@ -39,6 +39,12 @@ Located at: `monitoring/grafana/dashboards/overview.json`
 4. **Error Rate (%)** - Percentage of 5xx responses
 5. **System Metrics** - CPU and Memory usage
 
+### Auth Dashboard
+
+Located at: `monitoring/grafana/dashboards/auth.json`
+
+**Panels included:** Login success/failure rates, registration activity, token issuance and refresh counts, active sessions.
+
 ### Database Dashboard
 
 Located at: `monitoring/grafana/dashboards/database.json`
@@ -187,7 +193,7 @@ In production, the `/metrics` endpoint is restricted to the internal Docker netw
 3. **`/metrics` endpoint** renders all metrics in Prometheus text format
 4. **`/metrics/python` endpoint** proxies Python sidecar metrics over the Unix socket
 5. **Prometheus** scrapes both endpoints every 5-15s
-6. **Grafana** displays the data via 5 pre-configured dashboards
+6. **Grafana** displays the data via 6 pre-configured dashboards
 
 ### Route label normalization
 

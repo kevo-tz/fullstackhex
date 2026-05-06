@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.9.0.0] - 2026-05-06
+
+### Added
+- **Frontend auth UI**: login and register pages with form validation, responsive nav with hamburger menu, theme system with dark/light mode toggle
+- **OAuth provider discovery**: dynamic detection of configured OAuth providers — login page shows Google and GitHub buttons only when env vars are set
+- **Diagnostic panel**: auto-retry with backoff on degraded services, connectivity outage recovery, and visual status indicators for each service card
+- **E2E auth tests**: Bun-based end-to-end test suite in `e2e/auth.test.ts` covering register, login, refresh, logout, protected routes, and error handling
+- **Grafana auth dashboard**: `monitoring/grafana/dashboards/auth.json` with login success/failure rates, registration activity, token issuance and refresh counts, active sessions
+- **Deploy script tests**: bats-core test suite (`tests/deploy/deploy_scripts.bats`) covering blue-green, canary, rollback, lock contention, and cleanup
+- **E2E shell test framework**: `tests/e2e.sh` for full-stack integration testing with service health polling and isolated test runs
+- **Theme vitest tests**: `frontend/tests/vitest/theme.vitest.ts` covering theme toggle, localStorage persistence, and system preference detection
+- **CI e2e job**: new GitHub Actions job that starts backend + frontend with real PostgreSQL and Redis, runs the Bun-based e2e suite
+- **SQLx offline check**: CI now verifies `cargo sqlx prepare --check` to catch stale offline metadata
+- **Socket integration tests**: CI runs `cargo test -- --ignored` for Python sidecar socket integration
+
+### Fixed
+- **Cookie auth mode**: added `tracing::warn!` when `AUTH_MODE=cookie` is unsupported by the current configuration — no silent fallback
+- **S3 multipart XML parsing**: switched from `serde_xml_rs` to `quick-xml` for reliable parsing of S3 multipart upload responses
+- **Refresh token in auth response**: backend now returns `refresh_token` in login and register responses; frontend wired up for auto-refresh
+
+### Changed
+- **Environment validation**: `scripts/validate-env.sh` validates `.env` against `.env.example` for missing keys, `CHANGE_ME` placeholders, and shell syntax errors — wired into `make dev`, `make up`, `make watch`
+- **Makefile DRY**: extracted shared `run-dev` target from near-duplicate `dev`/`watch` targets; replaced `python3` JSON parsing with `grep`/`sed`; added missing `.PHONY` declarations
+- **`.env.example` quoting**: `REDIS_SAVE="900 1 300 10 60 10000"` quoted to prevent shell parse errors on `source`
+
+---
+
 ## [0.8.0.0] - 2026-05-05
 
 ### Added
@@ -31,9 +58,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Frontend health aggregation**: updated to include Redis and Storage service cards in the dashboard
 - **API test suite**: expanded from ~80 to ~140 tests across auth, cache, storage, domain, and Python sidecar crates
 - **Project structure**: `crates/core/` renamed to `crates/domain/` to avoid Rust built-in namespace conflict
-- **Environment validation**: `scripts/validate-env.sh` validates `.env` against `.env.example` for missing keys, `CHANGE_ME` placeholders, and shell syntax errors — wired into `make dev`, `make up`, `make watch` (v0.9)
-- **Makefile DRY**: extracted shared `run-dev` target from near-duplicate `dev`/`watch` targets; replaced `python3` JSON parsing with `grep`/`sed`; added missing `.PHONY` declarations (v0.9)
-- **`.env.example` quoting**: `REDIS_SAVE="900 1 300 10 60 10000"` quoted to prevent shell parse errors on `source` (v0.9)
 
 ---
 

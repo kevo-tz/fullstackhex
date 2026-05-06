@@ -52,6 +52,7 @@ The monitoring stack is defined in `compose/monitor.yml` and is designed to run 
 - Prometheus config: `monitoring/prometheus.yml`
 - Grafana datasource provisioning: `monitoring/grafana/provisioning/datasources/prometheus.yml`
 - Grafana dashboard provisioning: `monitoring/grafana/provisioning/dashboards/dashboards.yml`
+- Auth dashboard: `monitoring/grafana/dashboards/auth.json`
 - Starter dashboard: `monitoring/grafana/dashboards/overview.json`
 
 Use the monitoring-specific environment values in `.env` or `.env.prod.example`:

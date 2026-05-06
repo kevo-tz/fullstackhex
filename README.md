@@ -78,6 +78,11 @@ See [docs/INFRASTRUCTURE.md](docs/INFRASTRUCTURE.md) for full production setup i
 | [docs/SETUP.md](docs/SETUP.md) | One-command init and tool install |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | System design, IPC, port mappings |
 | [docs/SERVICES.md](docs/SERVICES.md) | Crate layout, API endpoints, health checks |
+| [docs/AUTH.md](docs/AUTH.md) | JWT, OAuth, session, and CSRF configuration |
+| [docs/STORAGE.md](docs/STORAGE.md) | S3-compatible object storage reference |
+| [docs/REDIS.md](docs/REDIS.md) | Redis caching, rate limiting, session store |
+| [docs/DEPLOY.md](docs/DEPLOY.md) | Blue-green, canary, rollback, and deploy safety |
+| [docs/EXAMPLES.md](docs/EXAMPLES.md) | Copy-paste patterns for extending the stack |
 | [docs/INFRASTRUCTURE.md](docs/INFRASTRUCTURE.md) | Docker Compose reference, volumes, commands |
 | [docs/INITIALIZATION.md](docs/INITIALIZATION.md) | Portable template for new projects |
 | [docs/INDEX.md](docs/INDEX.md) | Full documentation index |

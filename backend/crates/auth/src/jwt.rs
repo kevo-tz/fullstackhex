@@ -142,4 +142,35 @@ mod tests {
         let c2 = svc.validate_token(&token2).unwrap();
         assert_ne!(c1.jti, c2.jti, "each token should have a unique JTI");
     }
+
+    #[test]
+    fn jwt_service_new_stores_config() {
+        let svc = JwtService::new("secret".into(), "issuer".into(), 1800);
+        let token = svc.create_token("u1", "a@b.com", None, "local").unwrap();
+        let claims = svc.validate_token(&token).unwrap();
+        assert_eq!(claims.iss, "issuer");
+    }
+
+    #[test]
+    fn malformed_token_three_parts_missing() {
+        let svc = test_service();
+        // A token with only two parts (missing signature)
+        let result = svc.validate_token("header.payload");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn empty_token_fails() {
+        let svc = test_service();
+        assert!(svc.validate_token("").is_err());
+    }
+
+    #[test]
+    fn tampered_token_fails() {
+        let svc = test_service();
+        let token = svc.create_token("u1", "a@b.com", None, "local").unwrap();
+        // Append garbage to the token
+        let tampered = token + "x";
+        assert!(svc.validate_token(&tampered).is_err());
+    }
 }

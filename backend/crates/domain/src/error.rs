@@ -163,4 +163,50 @@ mod tests {
         let resp = err.into_response();
         assert_eq!(resp.status(), StatusCode::INTERNAL_SERVER_ERROR);
     }
+
+    #[test]
+    fn cache_error_not_configured_converts_to_service_unavailable() {
+        let err = ApiError::from(cache::CacheError::NotConfigured);
+        assert!(matches!(err, ApiError::ServiceUnavailable(_)));
+    }
+
+    #[test]
+    fn cache_error_connection_failed_converts_to_service_unavailable() {
+        let err = ApiError::from(cache::CacheError::ConnectionFailed("timeout".into()));
+        assert!(matches!(err, ApiError::ServiceUnavailable(_)));
+    }
+
+    #[test]
+    fn cache_error_rate_limit_converts_to_429() {
+        let err = ApiError::from(cache::CacheError::RateLimitExceeded);
+        assert!(matches!(err, ApiError::RateLimited(_)));
+    }
+
+    #[test]
+    fn cache_error_backoff_blocked_converts_to_rate_limited() {
+        let err = ApiError::from(cache::CacheError::BackoffBlocked {
+            remaining_secs: 42,
+            count: 5,
+            label: "60s".into(),
+        });
+        assert!(matches!(err, ApiError::RateLimited(_)));
+    }
+
+    #[test]
+    fn cache_error_session_not_found_converts_to_unauthorized() {
+        let err = ApiError::from(cache::CacheError::SessionNotFound);
+        assert!(matches!(err, ApiError::Unauthorized(_)));
+    }
+
+    #[test]
+    fn db_error_not_configured_converts_to_service_unavailable() {
+        let err = ApiError::from(db::DbError::NotConfigured);
+        assert!(matches!(err, ApiError::ServiceUnavailable(_)));
+    }
+
+    #[test]
+    fn db_error_pool_timeout_converts_to_service_unavailable() {
+        let err = ApiError::from(db::DbError::PoolTimeout(std::time::Duration::from_secs(3)));
+        assert!(matches!(err, ApiError::ServiceUnavailable(_)));
+    }
 }

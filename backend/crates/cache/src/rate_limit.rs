@@ -201,3 +201,32 @@ fn backoff_params(count: u64) -> (u64, &'static str) {
         (60, "tracking") // Track below threshold with 60s TTL
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn backoff_below_threshold() {
+        assert_eq!(backoff_params(0), (60, "tracking"));
+        assert_eq!(backoff_params(4), (60, "tracking"));
+    }
+
+    #[test]
+    fn backoff_level_1() {
+        assert_eq!(backoff_params(5), (60, "60s"));
+        assert_eq!(backoff_params(9), (60, "60s"));
+    }
+
+    #[test]
+    fn backoff_level_2() {
+        assert_eq!(backoff_params(10), (300, "5min"));
+        assert_eq!(backoff_params(19), (300, "5min"));
+    }
+
+    #[test]
+    fn backoff_level_3() {
+        assert_eq!(backoff_params(20), (1800, "30min"));
+        assert_eq!(backoff_params(200), (1800, "30min"));
+    }
+}

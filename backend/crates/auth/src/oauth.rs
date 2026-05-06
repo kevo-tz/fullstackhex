@@ -286,4 +286,74 @@ mod tests {
         assert!(svc.is_configured(&OAuthProvider::Google));
         assert!(!svc.is_configured(&OAuthProvider::GitHub));
     }
+
+    #[test]
+    fn oauth_service_github_configured() {
+        let svc = OAuthService::new(
+            None,
+            None,
+            Some("gh-id".to_string()),
+            Some("gh-secret".to_string()),
+        );
+        assert!(svc.is_configured(&OAuthProvider::GitHub));
+        assert!(!svc.is_configured(&OAuthProvider::Google));
+    }
+
+    #[test]
+    fn get_redirect_url_google_builds_correct_url() {
+        let svc = OAuthService::new(
+            Some("google-id".to_string()),
+            Some("google-secret".to_string()),
+            None,
+            None,
+        );
+        let (url, _csrf) = svc
+            .get_redirect_url(&OAuthProvider::Google, "http://localhost:8001/auth/oauth/google/callback")
+            .unwrap();
+        assert!(url.starts_with("https://accounts.google.com/o/oauth2/v2/auth"));
+        assert!(url.contains("client_id=google-id"));
+        assert!(url.contains("scope=email"));
+        assert!(url.contains("redirect_uri"));
+    }
+
+    #[test]
+    fn get_redirect_url_github_builds_correct_url() {
+        let svc = OAuthService::new(
+            None,
+            None,
+            Some("gh-id".to_string()),
+            Some("gh-secret".to_string()),
+        );
+        let (url, _csrf) = svc
+            .get_redirect_url(&OAuthProvider::GitHub, "http://localhost:8001/auth/oauth/github/callback")
+            .unwrap();
+        assert!(url.starts_with("https://github.com/login/oauth/authorize"));
+        assert!(url.contains("client_id=gh-id"));
+        assert!(url.contains("scope=user%3Aemail"));
+        assert!(url.contains("redirect_uri"));
+    }
+
+    #[test]
+    fn get_redirect_url_unconfigured_provider() {
+        let svc = OAuthService::new(None, None, None, None);
+        let err = svc
+            .get_redirect_url(&OAuthProvider::Google, "http://localhost/cb")
+            .unwrap_err();
+        assert!(matches!(err, ApiError::ServiceUnavailable(_)));
+    }
+
+    #[test]
+    fn oauth_user_info_serialization() {
+        let info = OAuthUserInfo {
+            provider: OAuthProvider::Google,
+            provider_id: "12345".to_string(),
+            email: "test@example.com".to_string(),
+            name: Some("Test User".to_string()),
+        };
+        let json = serde_json::to_string(&info).unwrap();
+        let decoded: OAuthUserInfo = serde_json::from_str(&json).unwrap();
+        assert_eq!(decoded.provider, OAuthProvider::Google);
+        assert_eq!(decoded.email, "test@example.com");
+        assert_eq!(decoded.name.unwrap(), "Test User");
+    }
 }

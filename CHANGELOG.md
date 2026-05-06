@@ -26,9 +26,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Cookie auth mode**: added `tracing::warn!` when `AUTH_MODE=cookie` is unsupported by the current configuration — no silent fallback
 - **S3 multipart XML parsing**: switched from `serde_xml_rs` to `quick-xml` for reliable parsing of S3 multipart upload responses
 - **Refresh token in auth response**: backend now returns `refresh_token` in login and register responses; frontend wired up for auto-refresh
+- **CSO supply chain findings**: resolved critical security audit findings including hardcoded credentials, npm token leakage in `.env.example`, and API key exposure in Grafana dashboard configs
+- **Shellcheck SC2155**: fixed `local var=$(cmd)` pattern across 4 scripts — `local` declaration and assignment now on separate lines to prevent exit code masking
+- **Duplicate email registration**: DB UNIQUE constraint prevents duplicates but error now returns meaningful message instead of generic "Internal server error"
 
 ### Changed
 - **Environment validation**: `scripts/validate-env.sh` validates `.env` against `.env.example` for missing keys, `CHANGE_ME` placeholders, and shell syntax errors — wired into `make dev`, `make up`, `make watch`
+- **Test coverage**: added 22 new tests across auth routes (`register`/`login`/`providers` validation), storage client (`build_object_url` edge cases, multipart XML body), and python-sidecar (`backoff_for_attempt` boundary cases) — coverage improved from 55% to 64%
+- **Project documentation**: updated AUTH.md, REDIS.md, STORAGE.md, DEPLOY.md, ARCHITECTURE.md, INDEX.md, EXAMPLES.md, INFRASTRUCTURE.md, MONITORING.md, SERVICES.md, CI.md for v0.9.0.0
 - **Makefile DRY**: extracted shared `run-dev` target from near-duplicate `dev`/`watch` targets; replaced `python3` JSON parsing with `grep`/`sed`; added missing `.PHONY` declarations
 - **`.env.example` quoting**: `REDIS_SAVE="900 1 300 10 60 10000"` quoted to prevent shell parse errors on `source`
 

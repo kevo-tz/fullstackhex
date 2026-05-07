@@ -134,7 +134,121 @@ impl RedisClient {
         if result.is_empty() {
             Ok(None)
         } else {
-            Ok(Some(result))
+            let value: String = serde_json::from_str(&result)
+                .map_err(|e| CacheError::SerializationFailed(e.to_string()))?;
+            Ok(Some(value))
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde::{Deserialize, Serialize};
+
+    #[derive(Debug, Serialize, Deserialize, PartialEq)]
+    struct TestValue {
+        id: u64,
+        name: String,
+    }
+
+    #[test]
+    fn cache_set_serializes_value() {
+        let val = TestValue {
+            id: 42,
+            name: "test".to_string(),
+        };
+        let json = serde_json::to_string(&val).unwrap();
+        assert!(json.contains("\"id\":42"));
+        assert!(json.contains("\"name\":\"test\""));
+    }
+
+    #[test]
+    fn cache_get_deserializes_value() {
+        let json = r#"{"id":1,"name":"hello"}"#;
+        let val: TestValue = serde_json::from_str(json).unwrap();
+        assert_eq!(val.id, 1);
+        assert_eq!(val.name, "hello");
+    }
+
+    #[test]
+    fn cache_get_deserializes_none_on_empty() {
+        let result: Option<TestValue> = None;
+        assert!(result.is_none());
+    }
+
+    #[tokio::test]
+    #[ignore = "requires running Redis"]
+    async fn integration_cache_get_hit() {
+        let client = RedisClient::new("redis://127.0.0.1:6379/9", "test")
+            .await
+            .expect("redis connect");
+        client
+            .cache_set("test_ns", "hit_key", &"hit_value", Duration::from_secs(60))
+            .await
+            .unwrap();
+        let result: Option<String> = client.cache_get("test_ns", "hit_key").await.unwrap();
+        assert_eq!(result, Some("hit_value".to_string()));
+        client.cache_delete("test_ns", "hit_key").await.unwrap();
+    }
+
+    #[tokio::test]
+    #[ignore = "requires running Redis"]
+    async fn integration_cache_get_miss() {
+        let client = RedisClient::new("redis://127.0.0.1:6379/9", "test")
+            .await
+            .expect("redis connect");
+        let result: Option<String> = client.cache_get("test_ns", "nonexistent").await.unwrap();
+        assert!(result.is_none());
+    }
+
+    #[tokio::test]
+    #[ignore = "requires running Redis"]
+    async fn integration_cache_delete() {
+        let client = RedisClient::new("redis://127.0.0.1:6379/9", "test")
+            .await
+            .expect("redis connect");
+        client
+            .cache_set("test_ns", "del_key", &"to_delete", Duration::from_secs(60))
+            .await
+            .unwrap();
+        client.cache_delete("test_ns", "del_key").await.unwrap();
+        let result: Option<String> = client.cache_get("test_ns", "del_key").await.unwrap();
+        assert!(result.is_none());
+    }
+
+    #[tokio::test]
+    #[ignore = "requires running Redis"]
+    async fn integration_cache_invalidate_pattern() {
+        let client = RedisClient::new("redis://127.0.0.1:6379/9", "test")
+            .await
+            .expect("redis connect");
+        client
+            .cache_set("pat", "k1", &1u64, Duration::from_secs(60))
+            .await
+            .unwrap();
+        client
+            .cache_set("pat", "k2", &2u64, Duration::from_secs(60))
+            .await
+            .unwrap();
+        let count = client.cache_invalidate_pattern("pat", "*").await.unwrap();
+        assert_eq!(count, 2);
+    }
+
+    #[tokio::test]
+    #[ignore = "requires running Redis"]
+    async fn integration_refresh_token_rotate() {
+        let client = RedisClient::new("redis://127.0.0.1:6379/9", "test")
+            .await
+            .expect("redis connect");
+        let token = "rotate-test-token";
+        client
+            .cache_set("refresh", token, &"user-123", Duration::from_secs(60))
+            .await
+            .unwrap();
+        let result = client.refresh_token_rotate(token).await.unwrap();
+        assert_eq!(result, Some("user-123".to_string()));
+        let second = client.refresh_token_rotate(token).await.unwrap();
+        assert!(second.is_none(), "second read after rotate should be None");
     }
 }

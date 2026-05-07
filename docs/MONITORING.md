@@ -43,7 +43,7 @@ Located at: `monitoring/grafana/dashboards/overview.json`
 
 Located at: `monitoring/grafana/dashboards/auth.json`
 
-**Panels included:** Login success/failure rates, registration activity, token issuance and refresh counts, active sessions.
+**Panels included:** Login success/failure rates, registration activity, token issuance and refresh counts, active sessions, custom auth request rate (`auth_requests_total`), auth error rate by type (`auth_errors_total`), auth p50/p99 latency (`auth_latency_seconds`), auth errors cumulative, OAuth callbacks by provider.
 
 ### Database Dashboard
 
@@ -89,6 +89,10 @@ If the dashboard isn't auto-loaded:
 | `http_requests_total` | Counter | `method`, `route`, `status` | Total HTTP requests |
 | `http_request_duration_seconds` | Histogram | `method`, `route` | Request latency (seconds) |
 | `db_pool_connections` | Gauge | `state` (`idle` / `used`) | DB connection pool size |
+| `auth_requests_total` | Counter | `method`, `path` | Auth request count by endpoint |
+| `auth_latency_seconds` | Histogram | `method`, `path` | Auth request latency (custom buckets 1ms–5s) |
+| `auth_errors_total` | Counter | `error_type`, `status` | Auth errors by type and HTTP status |
+| `token_refresh_total` | Counter | `status` | Token refresh events |
 
 ### Application Metrics (from Python Sidecar)
 
@@ -189,11 +193,16 @@ In production, the `/metrics` endpoint is restricted to the internal Docker netw
 1. **Tower middleware** (`backend/crates/api/src/metrics.rs::track_metrics`) records every request:
    - `http_requests_total` counter with `method`, `route`, `status` labels
    - `http_request_duration_seconds` histogram with custom buckets
-2. **Background task** updates `db_pool_connections` gauge every 15s
-3. **`/metrics` endpoint** renders all metrics in Prometheus text format
-4. **`/metrics/python` endpoint** proxies Python sidecar metrics over the Unix socket
-5. **Prometheus** scrapes both endpoints every 5-15s
-6. **Grafana** displays the data via 6 pre-configured dashboards
+2. **Auth middleware** (`backend/crates/auth/src/metrics.rs::track_auth_metrics`) records auth-specific metrics on auth routes:
+   - `auth_requests_total` counter with `method`, `path` labels
+   - `auth_latency_seconds` histogram with custom buckets (1ms–5s)
+   - `auth_errors_total` counter with `error_type`, `status` labels on 4xx/5xx
+   - `token_refresh_total` counter with `status` label
+3. **Background task** updates `db_pool_connections` gauge every 15s
+4. **`/metrics` endpoint** renders all metrics in Prometheus text format
+5. **`/metrics/python` endpoint** proxies Python sidecar metrics over the Unix socket
+6. **Prometheus** scrapes both endpoints every 5-15s
+7. **Grafana** displays the data via 6 pre-configured dashboards
 
 ### Route label normalization
 

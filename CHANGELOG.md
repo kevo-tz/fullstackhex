@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.10.0.0] - 2026-05-07
+
+### Added
+- **Dashboard auth-gated page**: SSR auth guard at `/dashboard` — redirects to `/login` if unauthenticated
+- **Client-side token refresh**: fetch interceptor in `Layout.astro` — auto-refreshes on 401, retries original request
+- **Auth Grafana dashboard panels**: 6 new panels — Custom Auth Request Rate, Auth Error Rate by Type, Auth p50/p99 Latency (custom), Auth Errors Cumulative, OAuth Callbacks by Provider
+- **Auth metrics**: auth request count, latency, and error rates tracked — `auth_requests_total`, `auth_latency_seconds`, `auth_errors_total` now available in Grafana
+- **S3 multipart integration tests**: 5 wiremock-based tests for init/failure/upload 2 parts + complete/abort/abort nonexistent
+- **Storage coverage tests**: 11 wiremock integration tests for upload/download/streaming/delete/list
+- **Cache tests**: 5 unit tests + 5 `#[ignore]` integration tests for `cache::cache`, 2 `#[ignore]` for `cache::pubsub`
+- **Auth password tests**: 2 tests for empty password round-trip and invalid hash error
+- **Auth gating vitest tests**: `auth-form.vitest.ts` (30 tests), `auth-gating.vitest.ts` (dashboard SSR guard + client-side gating + token refresh interceptor)
+- **ETag XML escaping**: defensive `quick_xml::escape::escape()` in multipart `CompleteMultipartUpload` XML body
+- **`token_refresh_total` counter**: new metric for monitoring token refresh success rates in Grafana
+- **Auth latency histogram buckets**: more precise auth latency tracking with custom buckets (1ms–5s)
+
+### Changed
+- **Auth form redirect**: login now redirects to `/dashboard` instead of `/`
+- **Dashboard nav**: brand link points to `/dashboard` for authenticated users
+
 ## [0.9.0.0] - 2026-05-06
 
 ### Added

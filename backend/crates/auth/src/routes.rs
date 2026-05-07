@@ -554,6 +554,8 @@ pub async fn oauth_callback(
         )
         .await?;
 
+    metrics::counter!("oauth_callbacks_total", "provider" => provider.to_string()).increment(1);
+
     let response = TokenResponse {
         access_token,
         refresh_token,

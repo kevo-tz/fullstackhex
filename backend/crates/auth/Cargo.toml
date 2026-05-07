@@ -25,6 +25,7 @@ hex = "0.4"
 rand = "0.8"
 reqwest = { version = "0.11", features = ["json"] }
 cache = { path = "../cache" }
+metrics = { workspace = true }
 db = { path = "../db" }
 domain = { path = "../domain" }
 

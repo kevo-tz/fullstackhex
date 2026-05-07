@@ -343,13 +343,16 @@ pub struct RefreshRequest {
 pub async fn refresh(
     State(state): State<AuthState>,
     Json(body): Json<RefreshRequest>,
-) -> Result<impl IntoResponse, ApiError> {
+) -> Result<Json<TokenResponse>, ApiError> {
     // Atomically read and delete the refresh token (prevents token family leak)
     let user_id = state
         .redis
         .refresh_token_rotate(&body.refresh_token)
         .await?
-        .ok_or_else(|| ApiError::Unauthorized("Invalid or expired refresh token".to_string()))?;
+        .ok_or_else(|| {
+            metrics::counter!("token_refresh_total", "status" => "failure").increment(1);
+            ApiError::Unauthorized("Invalid or expired refresh token".to_string())
+        })?;
 
     // Get user info
     let user: Option<(String, String, Option<String>, String)> =
@@ -366,7 +369,8 @@ pub async fn refresh(
     let access_token = state
         .auth
         .jwt
-        .create_token(&user_id, &email, name.as_deref(), &provider)?;
+        .create_token(&user_id, &email, name.as_deref(), &provider)
+        .map_err(|_| ApiError::InternalError("Failed to create token".to_string()))?;
 
     // Create new refresh token
     let new_refresh_token = uuid::Uuid::new_v4().to_string();
@@ -382,7 +386,7 @@ pub async fn refresh(
 
     metrics::counter!("token_refresh_total", "status" => "success").increment(1);
 
-    let response = TokenResponse {
+    Ok(Json(TokenResponse {
         access_token,
         refresh_token: new_refresh_token,
         token_type: "Bearer".to_string(),
@@ -393,9 +397,7 @@ pub async fn refresh(
             name,
             provider,
         },
-    };
-
-    Ok(Json(response))
+    }))
 }
 
 /// List configured OAuth providers from the auth config.

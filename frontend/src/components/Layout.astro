@@ -367,14 +367,16 @@ const { title } = Astro.props;
         document.cookie = "fullstackhex_refresh_token=; path=/; max-age=0";
         window.location.href = "/login";
       }
-      window.logout = logout;
+      (window as any).logout = logout;
 
-      const origFetch = window.fetch;
-      window.fetch = async function(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+      let isRefreshing = false;
+      const origFetch = window.fetch.bind(window);
+      window.fetch = (async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
         const res = await origFetch(input, init);
-        if (res.status === 401) {
+        if (res.status === 401 && !isRefreshing) {
           const refreshToken = localStorage.getItem(REFRESH_KEY);
           if (refreshToken) {
+            isRefreshing = true;
             try {
               const refreshRes = await origFetch("/api/auth/refresh", {
                 method: "POST",
@@ -385,13 +387,14 @@ const { title } = Astro.props;
                 const data = await refreshRes.json();
                 localStorage.setItem(TOKEN_KEY, data.access_token);
                 if (data.refresh_token) localStorage.setItem(REFRESH_KEY, data.refresh_token);
+                isRefreshing = false;
                 const newInit: RequestInit = { ...init };
                 const newHeaders = new Headers(init?.headers);
                 newHeaders.set("Authorization", `Bearer ${data.access_token}`);
                 newInit.headers = newHeaders;
                 return origFetch(input, newInit);
               }
-              // Refresh rejected — session expired or revoked
+              isRefreshing = false;
               localStorage.removeItem(TOKEN_KEY);
               localStorage.removeItem(USER_KEY);
               localStorage.removeItem(REFRESH_KEY);
@@ -399,11 +402,14 @@ const { title } = Astro.props;
               document.cookie = "fullstackhex_refresh_token=; path=/; max-age=0";
               window.location.href = "/login";
               return res;
-            } catch { console.warn("Token refresh request failed"); }
+            } catch {
+              isRefreshing = false;
+              console.warn("Token refresh request failed");
+            }
           }
         }
         return res;
-      };
+      }) as typeof fetch;
 
       updateNav();
 

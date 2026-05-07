@@ -152,7 +152,7 @@ describe("Token refresh interceptor", () => {
   }
 
   beforeEach(() => {
-    origFetch = vi.fn();
+    origFetch = vi.fn() as unknown as typeof globalThis.fetch;
     backend = origFetch as unknown as ReturnType<typeof vi.fn>;
     localStorage.clear();
   });

@@ -851,16 +851,15 @@ mod tests {
 
         Mock::given(method("POST"))
             .and(path("/test-bucket/big-file.dat"))
-            .respond_with(
-                ResponseTemplate::new(200)
-                    .set_body_raw(init_xml, "application/xml"),
-            )
+            .respond_with(ResponseTemplate::new(200).set_body_raw(init_xml, "application/xml"))
             .expect(1)
             .mount(&mock_server)
             .await;
 
         let client = reqwest::Client::new();
-        let result = create_multipart_upload(&client, &config, "big-file.dat", "application/octet-stream").await;
+        let result =
+            create_multipart_upload(&client, &config, "big-file.dat", "application/octet-stream")
+                .await;
 
         assert!(result.is_ok(), "init failed: {:?}", result.err());
         let multipart = result.unwrap();
@@ -879,7 +878,10 @@ mod tests {
 
         Mock::given(method("POST"))
             .and(path("/test-bucket/big-file.dat"))
-            .respond_with(ResponseTemplate::new(403).set_body_string("<Error><Code>AccessDenied</Code></Error>"))
+            .respond_with(
+                ResponseTemplate::new(403)
+                    .set_body_string("<Error><Code>AccessDenied</Code></Error>"),
+            )
             .mount(&mock_server)
             .await;
 
@@ -908,10 +910,7 @@ mod tests {
         Mock::given(method("POST"))
             .and(path("/test-bucket/big-file.dat"))
             .and(query_param("uploadId", "uid-456"))
-            .respond_with(
-                ResponseTemplate::new(200)
-                    .set_body_raw(complete_xml, "application/xml"),
-            )
+            .respond_with(ResponseTemplate::new(200).set_body_raw(complete_xml, "application/xml"))
             .expect(1)
             .mount(&mock_server)
             .await;
@@ -926,17 +925,15 @@ mod tests {
         Mock::given(method("POST"))
             .and(path("/test-bucket/big-file.dat"))
             .and(query_param("uploads", ""))
-            .respond_with(
-                ResponseTemplate::new(200)
-                    .set_body_raw(init_xml, "application/xml"),
-            )
+            .respond_with(ResponseTemplate::new(200).set_body_raw(init_xml, "application/xml"))
             .mount(&mock_server)
             .await;
 
         let client = reqwest::Client::new();
-        let multipart = create_multipart_upload(&client, &config, "big-file.dat", "application/octet-stream")
-            .await
-            .expect("init failed");
+        let multipart =
+            create_multipart_upload(&client, &config, "big-file.dat", "application/octet-stream")
+                .await
+                .expect("init failed");
         assert_eq!(multipart.upload_id, "uid-456");
 
         // Upload part 1
@@ -944,16 +941,21 @@ mod tests {
             .and(path("/test-bucket/big-file.dat"))
             .and(query_param("partNumber", "1"))
             .and(query_param("uploadId", "uid-456"))
-            .respond_with(
-                ResponseTemplate::new(200).insert_header("ETag", "\"etag-part-1\""),
-            )
+            .respond_with(ResponseTemplate::new(200).insert_header("ETag", "\"etag-part-1\""))
             .expect(1)
             .mount(&mock_server)
             .await;
 
-        let part1 = upload_part(&client, &config, "big-file.dat", "uid-456", 1, b"part one data".to_vec())
-            .await
-            .expect("part 1 failed");
+        let part1 = upload_part(
+            &client,
+            &config,
+            "big-file.dat",
+            "uid-456",
+            1,
+            b"part one data".to_vec(),
+        )
+        .await
+        .expect("part 1 failed");
         assert_eq!(part1.part_number, 1);
         assert_eq!(part1.etag, "etag-part-1");
 
@@ -962,21 +964,28 @@ mod tests {
             .and(path("/test-bucket/big-file.dat"))
             .and(query_param("partNumber", "2"))
             .and(query_param("uploadId", "uid-456"))
-            .respond_with(
-                ResponseTemplate::new(200).insert_header("ETag", "\"etag-part-2\""),
-            )
+            .respond_with(ResponseTemplate::new(200).insert_header("ETag", "\"etag-part-2\""))
             .expect(1)
             .mount(&mock_server)
             .await;
 
-        let part2 = upload_part(&client, &config, "big-file.dat", "uid-456", 2, b"part two data".to_vec())
-            .await
-            .expect("part 2 failed");
+        let part2 = upload_part(
+            &client,
+            &config,
+            "big-file.dat",
+            "uid-456",
+            2,
+            b"part two data".to_vec(),
+        )
+        .await
+        .expect("part 2 failed");
         assert_eq!(part2.part_number, 2);
         assert_eq!(part2.etag, "etag-part-2");
 
         // Complete the multipart upload
-        let result = complete_multipart_upload(&client, &config, "big-file.dat", "uid-456", &[part1, part2]).await;
+        let result =
+            complete_multipart_upload(&client, &config, "big-file.dat", "uid-456", &[part1, part2])
+                .await;
         assert!(result.is_ok(), "complete failed: {:?}", result.err());
     }
 
@@ -998,17 +1007,15 @@ mod tests {
 
         Mock::given(method("POST"))
             .and(path("/test-bucket/big-file.dat"))
-            .respond_with(
-                ResponseTemplate::new(200)
-                    .set_body_raw(init_xml, "application/xml"),
-            )
+            .respond_with(ResponseTemplate::new(200).set_body_raw(init_xml, "application/xml"))
             .mount(&mock_server)
             .await;
 
         let client = reqwest::Client::new();
-        let multipart = create_multipart_upload(&client, &config, "big-file.dat", "application/octet-stream")
-            .await
-            .expect("init failed");
+        let multipart =
+            create_multipart_upload(&client, &config, "big-file.dat", "application/octet-stream")
+                .await
+                .expect("init failed");
         assert_eq!(multipart.upload_id, "uid-abort-789");
 
         // Upload part 1
@@ -1016,15 +1023,20 @@ mod tests {
             .and(path("/test-bucket/big-file.dat"))
             .and(query_param("partNumber", "1"))
             .and(query_param("uploadId", "uid-abort-789"))
-            .respond_with(
-                ResponseTemplate::new(200).insert_header("ETag", "\"etag-abort-1\""),
-            )
+            .respond_with(ResponseTemplate::new(200).insert_header("ETag", "\"etag-abort-1\""))
             .mount(&mock_server)
             .await;
 
-        let _part1 = upload_part(&client, &config, "big-file.dat", "uid-abort-789", 1, b"data".to_vec())
-            .await
-            .expect("part 1 failed");
+        let _part1 = upload_part(
+            &client,
+            &config,
+            "big-file.dat",
+            "uid-abort-789",
+            1,
+            b"data".to_vec(),
+        )
+        .await
+        .expect("part 1 failed");
 
         // Abort before completing
         Mock::given(method("DELETE"))
@@ -1035,7 +1047,8 @@ mod tests {
             .mount(&mock_server)
             .await;
 
-        let result = abort_multipart_upload(&client, &config, "big-file.dat", "uid-abort-789").await;
+        let result =
+            abort_multipart_upload(&client, &config, "big-file.dat", "uid-abort-789").await;
         assert!(result.is_ok(), "abort failed: {:?}", result.err());
     }
 
@@ -1057,7 +1070,8 @@ mod tests {
             .await;
 
         let client = reqwest::Client::new();
-        let result = abort_multipart_upload(&client, &config, "big-file.dat", "no-such-upload").await;
+        let result =
+            abort_multipart_upload(&client, &config, "big-file.dat", "no-such-upload").await;
         assert!(result.is_err());
     }
 
@@ -1080,7 +1094,14 @@ mod tests {
             .await;
 
         let client = reqwest::Client::new();
-        let result = upload(&client, &config, "file.txt", b"hello".to_vec(), "text/plain").await;
+        let result = upload(
+            &client,
+            &config,
+            "file.txt",
+            b"hello".to_vec(),
+            "text/plain",
+        )
+        .await;
         assert!(result.is_ok(), "upload failed: {:?}", result.err());
     }
 
@@ -1100,7 +1121,14 @@ mod tests {
             .await;
 
         let client = reqwest::Client::new();
-        let result = upload(&client, &config, "missing.txt", b"data".to_vec(), "text/plain").await;
+        let result = upload(
+            &client,
+            &config,
+            "missing.txt",
+            b"data".to_vec(),
+            "text/plain",
+        )
+        .await;
         assert!(result.is_err());
     }
 
@@ -1164,8 +1192,19 @@ mod tests {
 
         let client = reqwest::Client::new();
         let body = reqwest::Body::from("streaming data");
-        let result = upload_streaming(&client, &config, "stream.dat", "application/octet-stream", body).await;
-        assert!(result.is_ok(), "streaming upload failed: {:?}", result.err());
+        let result = upload_streaming(
+            &client,
+            &config,
+            "stream.dat",
+            "application/octet-stream",
+            body,
+        )
+        .await;
+        assert!(
+            result.is_ok(),
+            "streaming upload failed: {:?}",
+            result.err()
+        );
     }
 
     #[tokio::test]
@@ -1186,7 +1225,11 @@ mod tests {
 
         let client = reqwest::Client::new();
         let result = download_streaming(&client, &config, "stream-out.dat").await;
-        assert!(result.is_ok(), "streaming download failed: {:?}", result.err());
+        assert!(
+            result.is_ok(),
+            "streaming download failed: {:?}",
+            result.err()
+        );
     }
 
     #[tokio::test]

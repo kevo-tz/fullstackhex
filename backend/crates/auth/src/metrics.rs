@@ -28,10 +28,10 @@ pub async fn track_auth_metrics(request: Request, next: Next) -> Response {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use axum::Router;
     use axum::body::Body;
     use axum::http::{Request, StatusCode};
     use axum::middleware;
-    use axum::Router;
     use tower::ServiceExt;
 
     fn test_app() -> Router {
@@ -50,12 +50,7 @@ mod tests {
     #[tokio::test]
     async fn returns_200_response() {
         let response = test_app()
-            .oneshot(
-                Request::builder()
-                    .uri("/200")
-                    .body(Body::empty())
-                    .unwrap(),
-            )
+            .oneshot(Request::builder().uri("/200").body(Body::empty()).unwrap())
             .await
             .unwrap();
         assert_eq!(response.status(), StatusCode::OK);
@@ -64,12 +59,7 @@ mod tests {
     #[tokio::test]
     async fn returns_400_response() {
         let response = test_app()
-            .oneshot(
-                Request::builder()
-                    .uri("/400")
-                    .body(Body::empty())
-                    .unwrap(),
-            )
+            .oneshot(Request::builder().uri("/400").body(Body::empty()).unwrap())
             .await
             .unwrap();
         assert_eq!(response.status(), StatusCode::BAD_REQUEST);
@@ -78,12 +68,7 @@ mod tests {
     #[tokio::test]
     async fn returns_500_response() {
         let response = test_app()
-            .oneshot(
-                Request::builder()
-                    .uri("/500")
-                    .body(Body::empty())
-                    .unwrap(),
-            )
+            .oneshot(Request::builder().uri("/500").body(Body::empty()).unwrap())
             .await
             .unwrap();
         assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);

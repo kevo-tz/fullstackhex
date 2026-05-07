@@ -36,7 +36,7 @@ if (token) {
       font-size: 0.7rem;
       letter-spacing: 0.1em;
       text-transform: uppercase;
-      color: #475569;
+      color: var(--text-muted);
       margin-bottom: 0.75rem;
     }
 
@@ -134,7 +134,7 @@ if (token) {
     }
 
     document.getElementById("dashboard-logout")?.addEventListener("click", () => {
-      if (typeof window.logout === "function") window.logout();
+      if (typeof (window as any).logout === "function") (window as any).logout();
     });
   </script>
 </Layout>

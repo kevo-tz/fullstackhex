@@ -118,10 +118,7 @@ import Layout from "../components/Layout.astro";
     }
 
     document.getElementById("dashboard-logout")?.addEventListener("click", () => {
-      try { fetch("/api/auth/logout", { method: "POST" }); } catch {}
-      localStorage.removeItem(TOKEN_KEY);
-      localStorage.removeItem(USER_KEY);
-      window.location.href = "/login";
+      if (typeof window.logout === "function") window.logout();
     });
   </script>
 </Layout>

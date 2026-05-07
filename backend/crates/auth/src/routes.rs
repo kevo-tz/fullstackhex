@@ -380,6 +380,8 @@ pub async fn refresh(
         )
         .await?;
 
+    metrics::counter!("token_refresh_total", "status" => "success").increment(1);
+
     let response = TokenResponse {
         access_token,
         refresh_token: new_refresh_token,

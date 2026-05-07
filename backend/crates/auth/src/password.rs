@@ -53,7 +53,7 @@ mod tests {
     }
 
     #[test]
-    fn empty_password_rejected() {
+    fn empty_password_round_trip() {
         let result = hash_password("");
         assert!(result.is_ok(), "hashing empty password should succeed");
         let hash = result.unwrap();

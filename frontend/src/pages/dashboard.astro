@@ -1,21 +1,5 @@
 ---
 import Layout from "../components/Layout.astro";
-
-const apiBase = import.meta.env.VITE_RUST_BACKEND_URL || "http://localhost:8001";
-const token = Astro.cookies.get("fullstackhex_token")?.value;
-
-if (token) {
-  try {
-    const res = await fetch(`${apiBase}/auth/me`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    if (!res.ok) return Astro.redirect("/login");
-  } catch {
-    return Astro.redirect("/login");
-  }
-} else {
-  return Astro.redirect("/login");
-}
 ---
 
 <Layout title="Dashboard — FullStackHex">

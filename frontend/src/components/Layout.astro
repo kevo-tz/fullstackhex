@@ -369,43 +369,54 @@ const { title } = Astro.props;
       }
       (window as any).logout = logout;
 
-      let isRefreshing = false;
       const origFetch = window.fetch.bind(window);
+      let refreshPromise: Promise<string | null> | null = null;
+
+      async function performRefresh(): Promise<string | null> {
+        const refreshToken = localStorage.getItem(REFRESH_KEY);
+        if (!refreshToken) return null;
+        try {
+          const refreshRes = await origFetch("/api/auth/refresh", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ refresh_token: refreshToken }),
+          });
+          if (refreshRes.ok) {
+            const data = await refreshRes.json();
+            localStorage.setItem(TOKEN_KEY, data.access_token);
+            if (data.refresh_token) localStorage.setItem(REFRESH_KEY, data.refresh_token);
+            return data.access_token;
+          }
+          localStorage.removeItem(TOKEN_KEY);
+          localStorage.removeItem(USER_KEY);
+          localStorage.removeItem(REFRESH_KEY);
+          document.cookie = "fullstackhex_token=; path=/; max-age=0";
+          document.cookie = "fullstackhex_refresh_token=; path=/; max-age=0";
+          window.location.href = "/login";
+          return null;
+        } catch {
+          console.warn("Token refresh request failed");
+          return null;
+        }
+      }
+
       window.fetch = (async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
         const res = await origFetch(input, init);
-        if (res.status === 401 && !isRefreshing) {
-          const refreshToken = localStorage.getItem(REFRESH_KEY);
-          if (refreshToken) {
-            isRefreshing = true;
-            try {
-              const refreshRes = await origFetch("/api/auth/refresh", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ refresh_token: refreshToken }),
-              });
-              if (refreshRes.ok) {
-                const data = await refreshRes.json();
-                localStorage.setItem(TOKEN_KEY, data.access_token);
-                if (data.refresh_token) localStorage.setItem(REFRESH_KEY, data.refresh_token);
-                isRefreshing = false;
-                const newInit: RequestInit = { ...init };
-                const newHeaders = new Headers(init?.headers);
-                newHeaders.set("Authorization", `Bearer ${data.access_token}`);
-                newInit.headers = newHeaders;
-                return origFetch(input, newInit);
-              }
-              isRefreshing = false;
-              localStorage.removeItem(TOKEN_KEY);
-              localStorage.removeItem(USER_KEY);
-              localStorage.removeItem(REFRESH_KEY);
-              document.cookie = "fullstackhex_token=; path=/; max-age=0";
-              document.cookie = "fullstackhex_refresh_token=; path=/; max-age=0";
-              window.location.href = "/login";
+        if (res.status === 401) {
+          if (!refreshPromise) {
+            refreshPromise = performRefresh().finally(() => { refreshPromise = null; });
+          }
+          const newToken = await refreshPromise;
+          if (newToken) {
+            const body = init?.body;
+            if (body && typeof body !== "string") {
               return res;
-            } catch {
-              isRefreshing = false;
-              console.warn("Token refresh request failed");
             }
+            const newInit: RequestInit = { ...init };
+            const newHeaders = new Headers(init?.headers);
+            newHeaders.set("Authorization", `Bearer ${newToken}`);
+            newInit.headers = newHeaders;
+            return origFetch(input, newInit);
           }
         }
         return res;

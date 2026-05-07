@@ -385,12 +385,14 @@ pub async fn upload_part(
 
 /// Build the XML body for completing a multipart upload.
 fn build_complete_multipart_xml(parts: &[PartInfo]) -> String {
+    use quick_xml::escape::escape;
     let mut xml =
         String::from("<CompleteMultipartUpload xmlns=\"http://s3.amazonaws.com/doc/2006-03-01/\">");
     for p in parts {
+        let safe_etag = escape(&p.etag);
         xml.push_str(&format!(
             "<Part><PartNumber>{}</PartNumber><ETag>\"{}\"</ETag></Part>",
-            p.part_number, p.etag
+            p.part_number, safe_etag
         ));
     }
     xml.push_str("</CompleteMultipartUpload>");

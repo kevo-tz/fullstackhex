@@ -24,3 +24,68 @@ pub async fn track_auth_metrics(request: Request, next: Next) -> Response {
 
     response
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use axum::body::Body;
+    use axum::http::{Request, StatusCode};
+    use axum::middleware;
+    use axum::Router;
+    use tower::ServiceExt;
+
+    fn test_app() -> Router {
+        Router::new()
+            .route(
+                "/{status}",
+                axum::routing::get(
+                    |axum::extract::Path(status): axum::extract::Path<u16>| async move {
+                        StatusCode::from_u16(status).unwrap_or(StatusCode::OK)
+                    },
+                ),
+            )
+            .layer(middleware::from_fn(track_auth_metrics))
+    }
+
+    #[tokio::test]
+    async fn returns_200_response() {
+        let response = test_app()
+            .oneshot(
+                Request::builder()
+                    .uri("/200")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn returns_400_response() {
+        let response = test_app()
+            .oneshot(
+                Request::builder()
+                    .uri("/400")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn returns_500_response() {
+        let response = test_app()
+            .oneshot(
+                Request::builder()
+                    .uri("/500")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
+    }
+}

@@ -128,6 +128,7 @@ pub async fn presign(
 ) -> Result<impl IntoResponse, ApiError> {
     let method = body.method.unwrap_or_else(|| "GET".to_string());
     let expiry_secs = body.expiry_secs.unwrap_or(3600);
+    validate_storage_key(&body.key)?;
     let key = user_key(&auth_user.user_id, &body.key);
 
     let url = super::client::presigned_url(
@@ -165,6 +166,7 @@ pub async fn init_multipart(
     auth_user: AuthUser,
     Json(body): Json<MultipartInitRequest>,
 ) -> Result<impl IntoResponse, ApiError> {
+    validate_storage_key(&body.key)?;
     let key = user_key(&auth_user.user_id, &body.key);
     let content_type = body
         .content_type
@@ -224,6 +226,14 @@ pub async fn abort_multipart(
     let key = user_key(&auth_user.user_id, &key);
     super::client::abort_multipart_upload(&state.client, &state.config, &key, &upload_id).await?;
     Ok(StatusCode::NO_CONTENT)
+}
+
+/// Validate a storage key — prevents path traversal via `..` sequences.
+fn validate_storage_key(key: &str) -> Result<(), ApiError> {
+    if key.is_empty() || key.contains("..") || key.starts_with('/') {
+        return Err(ApiError::ValidationError("Invalid storage key".to_string()));
+    }
+    Ok(())
 }
 
 /// Prefix a storage key with the user's namespace.

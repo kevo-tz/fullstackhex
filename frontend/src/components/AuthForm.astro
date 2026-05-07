@@ -127,8 +127,6 @@ const altText = isLogin ? "Need an account? Register" : "Already have an account
       localStorage.setItem("fullstackhex_token", data.access_token);
       if (data.refresh_token) localStorage.setItem("fullstackhex_refresh_token", data.refresh_token);
       localStorage.setItem("fullstackhex_user", JSON.stringify(data.user));
-      document.cookie = `fullstackhex_token=${data.access_token}; path=/; max-age=${data.expires_in}; SameSite=Lax`;
-      document.cookie = `fullstackhex_refresh_token=${data.refresh_token}; path=/; max-age=604800; SameSite=Lax`;
       window.location.href = "/dashboard";
     } catch (err) {
       showError(err instanceof Error ? err.message : "Something went wrong");

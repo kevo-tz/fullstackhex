@@ -330,6 +330,7 @@ const { title } = Astro.props;
     <script>
       const TOKEN_KEY = "fullstackhex_token";
       const USER_KEY = "fullstackhex_user";
+      const REFRESH_KEY = "fullstackhex_refresh_token";
 
       function updateNav() {
         const el = document.getElementById("auth-nav");
@@ -361,11 +362,12 @@ const { title } = Astro.props;
         } catch { /* server session cleanup is best-effort */ }
         localStorage.removeItem(TOKEN_KEY);
         localStorage.removeItem(USER_KEY);
+        localStorage.removeItem(REFRESH_KEY);
+        document.cookie = "fullstackhex_token=; path=/; max-age=0";
+        document.cookie = "fullstackhex_refresh_token=; path=/; max-age=0";
         window.location.href = "/login";
       }
       window.logout = logout;
-
-      const REFRESH_KEY = "fullstackhex_refresh_token";
 
       const origFetch = window.fetch;
       window.fetch = async function(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
@@ -393,6 +395,8 @@ const { title } = Astro.props;
               localStorage.removeItem(TOKEN_KEY);
               localStorage.removeItem(USER_KEY);
               localStorage.removeItem(REFRESH_KEY);
+              document.cookie = "fullstackhex_token=; path=/; max-age=0";
+              document.cookie = "fullstackhex_refresh_token=; path=/; max-age=0";
               window.location.href = "/login";
               return res;
             } catch { console.warn("Token refresh request failed"); }

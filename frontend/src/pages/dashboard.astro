@@ -114,7 +114,7 @@ import Layout from "../components/Layout.astro";
         document.getElementById("user-email")!.textContent = user.email || "—";
         document.getElementById("user-name")!.textContent = user.name || "—";
         document.getElementById("user-provider")!.textContent = user.provider || "email";
-      } catch { /* ignore parse errors */ }
+      } catch { console.warn("Failed to parse user data from localStorage"); }
     }
 
     document.getElementById("dashboard-logout")?.addEventListener("click", () => {

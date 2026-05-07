@@ -388,6 +388,12 @@ const { title } = Astro.props;
                 newInit.headers = newHeaders;
                 return origFetch(input, newInit);
               }
+              // Refresh rejected — session expired or revoked
+              localStorage.removeItem(TOKEN_KEY);
+              localStorage.removeItem(USER_KEY);
+              localStorage.removeItem(REFRESH_KEY);
+              window.location.href = "/login";
+              return res;
             } catch { console.warn("Token refresh request failed"); }
           }
         }

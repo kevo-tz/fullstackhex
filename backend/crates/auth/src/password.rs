@@ -51,4 +51,25 @@ mod tests {
         let h2 = hash_password("same-password").unwrap();
         assert_ne!(h1, h2, "different salts should produce different hashes");
     }
+
+    #[test]
+    fn empty_password_rejected() {
+        let result = hash_password("");
+        assert!(result.is_ok(), "hashing empty password should succeed");
+        let hash = result.unwrap();
+        assert!(
+            verify_password("", &hash).unwrap(),
+            "empty password should verify against its own hash"
+        );
+        assert!(
+            !verify_password("not-empty", &hash).unwrap(),
+            "non-empty password should not verify against empty hash"
+        );
+    }
+
+    #[test]
+    fn verify_invalid_hash_returns_error() {
+        let result = verify_password("anything", "not-a-valid-hash");
+        assert!(result.is_err());
+    }
 }

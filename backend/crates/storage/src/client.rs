@@ -1058,4 +1058,233 @@ mod tests {
         let result = abort_multipart_upload(&client, &config, "big-file.dat", "no-such-upload").await;
         assert!(result.is_err());
     }
+
+    // ── Upload / Download / Delete / List integration tests ──────────────
+
+    #[tokio::test]
+    async fn upload_success() {
+        use wiremock::matchers::{method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let mock_server = MockServer::start().await;
+        let mut config = test_config();
+        config.endpoint = mock_server.uri();
+
+        Mock::given(method("PUT"))
+            .and(path("/test-bucket/file.txt"))
+            .respond_with(ResponseTemplate::new(200))
+            .expect(1)
+            .mount(&mock_server)
+            .await;
+
+        let client = reqwest::Client::new();
+        let result = upload(&client, &config, "file.txt", b"hello".to_vec(), "text/plain").await;
+        assert!(result.is_ok(), "upload failed: {:?}", result.err());
+    }
+
+    #[tokio::test]
+    async fn upload_fails_on_404() {
+        use wiremock::matchers::{method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let mock_server = MockServer::start().await;
+        let mut config = test_config();
+        config.endpoint = mock_server.uri();
+
+        Mock::given(method("PUT"))
+            .and(path("/test-bucket/missing.txt"))
+            .respond_with(ResponseTemplate::new(404))
+            .mount(&mock_server)
+            .await;
+
+        let client = reqwest::Client::new();
+        let result = upload(&client, &config, "missing.txt", b"data".to_vec(), "text/plain").await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn download_success() {
+        use wiremock::matchers::{method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let mock_server = MockServer::start().await;
+        let mut config = test_config();
+        config.endpoint = mock_server.uri();
+
+        Mock::given(method("GET"))
+            .and(path("/test-bucket/file.txt"))
+            .respond_with(ResponseTemplate::new(200).set_body_string("file content"))
+            .expect(1)
+            .mount(&mock_server)
+            .await;
+
+        let client = reqwest::Client::new();
+        let result = download(&client, &config, "file.txt").await;
+        assert!(result.is_ok(), "download failed: {:?}", result.err());
+        assert_eq!(result.unwrap(), b"file content");
+    }
+
+    #[tokio::test]
+    async fn download_fails_on_404() {
+        use wiremock::matchers::{method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let mock_server = MockServer::start().await;
+        let mut config = test_config();
+        config.endpoint = mock_server.uri();
+
+        Mock::given(method("GET"))
+            .and(path("/test-bucket/nope.txt"))
+            .respond_with(ResponseTemplate::new(404))
+            .mount(&mock_server)
+            .await;
+
+        let client = reqwest::Client::new();
+        let result = download(&client, &config, "nope.txt").await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn upload_streaming_success() {
+        use wiremock::matchers::{method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let mock_server = MockServer::start().await;
+        let mut config = test_config();
+        config.endpoint = mock_server.uri();
+
+        Mock::given(method("PUT"))
+            .and(path("/test-bucket/stream.dat"))
+            .respond_with(ResponseTemplate::new(200))
+            .expect(1)
+            .mount(&mock_server)
+            .await;
+
+        let client = reqwest::Client::new();
+        let body = reqwest::Body::from("streaming data");
+        let result = upload_streaming(&client, &config, "stream.dat", "application/octet-stream", body).await;
+        assert!(result.is_ok(), "streaming upload failed: {:?}", result.err());
+    }
+
+    #[tokio::test]
+    async fn download_streaming_success() {
+        use wiremock::matchers::{method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let mock_server = MockServer::start().await;
+        let mut config = test_config();
+        config.endpoint = mock_server.uri();
+
+        Mock::given(method("GET"))
+            .and(path("/test-bucket/stream-out.dat"))
+            .respond_with(ResponseTemplate::new(200).set_body_string("stream data"))
+            .expect(1)
+            .mount(&mock_server)
+            .await;
+
+        let client = reqwest::Client::new();
+        let result = download_streaming(&client, &config, "stream-out.dat").await;
+        assert!(result.is_ok(), "streaming download failed: {:?}", result.err());
+    }
+
+    #[tokio::test]
+    async fn delete_success() {
+        use wiremock::matchers::{method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let mock_server = MockServer::start().await;
+        let mut config = test_config();
+        config.endpoint = mock_server.uri();
+
+        Mock::given(method("DELETE"))
+            .and(path("/test-bucket/to-delete.txt"))
+            .respond_with(ResponseTemplate::new(204))
+            .expect(1)
+            .mount(&mock_server)
+            .await;
+
+        let client = reqwest::Client::new();
+        let result = delete(&client, &config, "to-delete.txt").await;
+        assert!(result.is_ok(), "delete failed: {:?}", result.err());
+    }
+
+    #[tokio::test]
+    async fn delete_accepts_200_as_success() {
+        use wiremock::matchers::{method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let mock_server = MockServer::start().await;
+        let mut config = test_config();
+        config.endpoint = mock_server.uri();
+
+        Mock::given(method("DELETE"))
+            .and(path("/test-bucket/to-delete.txt"))
+            .respond_with(ResponseTemplate::new(200))
+            .mount(&mock_server)
+            .await;
+
+        let client = reqwest::Client::new();
+        let result = delete(&client, &config, "to-delete.txt").await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn list_with_prefix() {
+        use wiremock::matchers::{method, path, query_param};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let mock_server = MockServer::start().await;
+        let mut config = test_config();
+        config.endpoint = mock_server.uri();
+
+        let list_xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+<ListBucketResult>
+  <Contents><Key>prefix/file1.txt</Key></Contents>
+  <Contents><Key>prefix/file2.txt</Key></Contents>
+</ListBucketResult>"#;
+
+        Mock::given(method("GET"))
+            .and(path("/test-bucket/"))
+            .and(query_param("list-type", "2"))
+            .and(query_param("prefix", "prefix/"))
+            .respond_with(ResponseTemplate::new(200).set_body_raw(list_xml, "application/xml"))
+            .expect(1)
+            .mount(&mock_server)
+            .await;
+
+        let client = reqwest::Client::new();
+        let result = list(&client, &config, "prefix/").await;
+        assert!(result.is_ok(), "list failed: {:?}", result.err());
+        let objects = result.unwrap();
+        assert_eq!(objects.len(), 2);
+        assert_eq!(objects[0].key, "prefix/file1.txt");
+        assert_eq!(objects[1].key, "prefix/file2.txt");
+    }
+
+    #[tokio::test]
+    async fn list_empty_prefix() {
+        use wiremock::matchers::{method, path, query_param};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let mock_server = MockServer::start().await;
+        let mut config = test_config();
+        config.endpoint = mock_server.uri();
+
+        let empty_xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+<ListBucketResult>
+</ListBucketResult>"#;
+
+        Mock::given(method("GET"))
+            .and(path("/test-bucket/"))
+            .and(query_param("list-type", "2"))
+            .and(query_param("prefix", ""))
+            .respond_with(ResponseTemplate::new(200).set_body_raw(empty_xml, "application/xml"))
+            .mount(&mock_server)
+            .await;
+
+        let client = reqwest::Client::new();
+        let result = list(&client, &config, "").await;
+        assert!(result.is_ok());
+        assert!(result.unwrap().is_empty());
+    }
 }

@@ -359,8 +359,38 @@ const { title } = Astro.props;
         try { fetch("/api/auth/logout", { method: "POST" }); } catch {}
         localStorage.removeItem(TOKEN_KEY);
         localStorage.removeItem(USER_KEY);
-        window.location.href = "/";
+        window.location.href = "/login";
       }
+
+      const REFRESH_KEY = "fullstackhex_refresh_token";
+
+      const origFetch = window.fetch;
+      window.fetch = async function(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+        const res = await origFetch(input, init);
+        if (res.status === 401) {
+          const refreshToken = localStorage.getItem(REFRESH_KEY);
+          if (refreshToken) {
+            try {
+              const refreshRes = await origFetch("/api/auth/refresh", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ refresh_token: refreshToken }),
+              });
+              if (refreshRes.ok) {
+                const data = await refreshRes.json();
+                localStorage.setItem(TOKEN_KEY, data.access_token);
+                if (data.refresh_token) localStorage.setItem(REFRESH_KEY, data.refresh_token);
+                const newInit: RequestInit = { ...init };
+                const newHeaders = new Headers(init?.headers);
+                newHeaders.set("Authorization", `Bearer ${data.access_token}`);
+                newInit.headers = newHeaders;
+                return origFetch(input, newInit);
+              }
+            } catch { /* refresh failed — fall through */ }
+          }
+        }
+        return res;
+      };
 
       updateNav();
 

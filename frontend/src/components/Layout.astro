@@ -355,8 +355,10 @@ const { title } = Astro.props;
         document.getElementById("nav-logout-mobile")?.addEventListener("click", logout);
       }
 
-      function logout() {
-        try { fetch("/api/auth/logout", { method: "POST" }); } catch {}
+      async function logout() {
+        try {
+          await fetch("/api/auth/logout", { method: "POST" });
+        } catch { /* server session cleanup is best-effort */ }
         localStorage.removeItem(TOKEN_KEY);
         localStorage.removeItem(USER_KEY);
         window.location.href = "/login";

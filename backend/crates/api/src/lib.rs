@@ -143,6 +143,7 @@ fn build_router(state: Arc<AppState>) -> Router {
                 "/oauth/{provider}/callback",
                 axum::routing::get(auth::routes::oauth_callback),
             )
+            .layer(middleware::from_fn(auth::metrics::track_auth_metrics))
             .with_state(auth_state);
         router = router.nest("/auth", auth_router);
     }

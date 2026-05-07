@@ -385,12 +385,14 @@ pub async fn upload_part(
 
 /// Build the XML body for completing a multipart upload.
 fn build_complete_multipart_xml(parts: &[PartInfo]) -> String {
+    use quick_xml::escape::escape;
     let mut xml =
         String::from("<CompleteMultipartUpload xmlns=\"http://s3.amazonaws.com/doc/2006-03-01/\">");
     for p in parts {
+        let safe_etag = escape(&p.etag);
         xml.push_str(&format!(
             "<Part><PartNumber>{}</PartNumber><ETag>\"{}\"</ETag></Part>",
-            p.part_number, p.etag
+            p.part_number, safe_etag
         ));
     }
     xml.push_str("</CompleteMultipartUpload>");
@@ -630,8 +632,8 @@ mod tests {
         let config = crate::StorageConfig {
             endpoint: "http://localhost:9000".to_string(),
             public_endpoint: "http://pub.local:9000".to_string(),
-            access_key: "test-key".to_string(),
-            secret_key: "test-secret".to_string(),
+            access_key: "dummy_access_key".to_string(),
+            secret_key: "dummy_secret_key".to_string(),
             bucket: "test-bucket".to_string(),
             region: "us-east-1".to_string(),
             auto_create_bucket: false,
@@ -655,8 +657,8 @@ mod tests {
         let config = crate::StorageConfig {
             endpoint: "http://localhost:9000".to_string(),
             public_endpoint: "http://pub.local:9000".to_string(),
-            access_key: "test-key".to_string(),
-            secret_key: "test-secret".to_string(),
+            access_key: "dummy_access_key".to_string(),
+            secret_key: "dummy_secret_key".to_string(),
             bucket: "test-bucket".to_string(),
             region: "us-east-1".to_string(),
             auto_create_bucket: false,
@@ -676,8 +678,8 @@ mod tests {
         let config = crate::StorageConfig {
             endpoint: "http://localhost:9000".to_string(),
             public_endpoint: "http://pub.local:9000".to_string(),
-            access_key: "test-key".to_string(),
-            secret_key: "test-secret".to_string(),
+            access_key: "dummy_access_key".to_string(),
+            secret_key: "dummy_secret_key".to_string(),
             bucket: "test-bucket".to_string(),
             region: "us-east-1".to_string(),
             auto_create_bucket: false,
@@ -691,7 +693,7 @@ mod tests {
         )
         .unwrap();
         assert!(signed.authorization.contains("AWS4-HMAC-SHA256"));
-        assert!(signed.authorization.contains("test-key"));
+        assert!(signed.authorization.contains("dummy_access_key"));
         assert_eq!(signed.host, "localhost");
         assert!(!signed.payload_hash.is_empty());
     }
@@ -701,8 +703,8 @@ mod tests {
         let config = crate::StorageConfig {
             endpoint: "http://localhost:9000".to_string(),
             public_endpoint: "http://pub.local:9000".to_string(),
-            access_key: "test-key".to_string(),
-            secret_key: "test-secret".to_string(),
+            access_key: "dummy_access_key".to_string(),
+            secret_key: "dummy_secret_key".to_string(),
             bucket: "test-bucket".to_string(),
             region: "us-east-1".to_string(),
             auto_create_bucket: false,
@@ -815,5 +817,519 @@ mod tests {
         assert!(xml.ends_with("</CompleteMultipartUpload>"));
         // No <Part> elements when empty
         assert!(!xml.contains("<Part>"));
+    }
+
+    // ── Multipart integration tests (wiremock) ───────────────────────────
+
+    fn test_config() -> crate::StorageConfig {
+        crate::StorageConfig {
+            endpoint: "http://localhost:0".to_string(),
+            public_endpoint: "http://pub.local:9000".to_string(),
+            access_key: "dummy_access_key".to_string(),
+            secret_key: "dummy_secret_key".to_string(),
+            bucket: "test-bucket".to_string(),
+            region: "us-east-1".to_string(),
+            auto_create_bucket: false,
+        }
+    }
+
+    #[tokio::test]
+    async fn multipart_init_round_trip() {
+        use wiremock::matchers::{method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let mock_server = MockServer::start().await;
+        let mut config = test_config();
+        config.endpoint = mock_server.uri();
+
+        let init_xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+<InitiateMultipartUploadResult>
+  <Bucket>test-bucket</Bucket>
+  <Key>big-file.dat</Key>
+  <UploadId>upload-id-123</UploadId>
+</InitiateMultipartUploadResult>"#;
+
+        Mock::given(method("POST"))
+            .and(path("/test-bucket/big-file.dat"))
+            .respond_with(ResponseTemplate::new(200).set_body_raw(init_xml, "application/xml"))
+            .expect(1)
+            .mount(&mock_server)
+            .await;
+
+        let client = reqwest::Client::new();
+        let result =
+            create_multipart_upload(&client, &config, "big-file.dat", "application/octet-stream")
+                .await;
+
+        assert!(result.is_ok(), "init failed: {:?}", result.err());
+        let multipart = result.unwrap();
+        assert_eq!(multipart.upload_id, "upload-id-123");
+        assert_eq!(multipart.key, "big-file.dat");
+    }
+
+    #[tokio::test]
+    async fn multipart_init_failure_on_error_status() {
+        use wiremock::matchers::{method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let mock_server = MockServer::start().await;
+        let mut config = test_config();
+        config.endpoint = mock_server.uri();
+
+        Mock::given(method("POST"))
+            .and(path("/test-bucket/big-file.dat"))
+            .respond_with(
+                ResponseTemplate::new(403)
+                    .set_body_string("<Error><Code>AccessDenied</Code></Error>"),
+            )
+            .mount(&mock_server)
+            .await;
+
+        let client = reqwest::Client::new();
+        let result = create_multipart_upload(&client, &config, "big-file.dat", "").await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn multipart_upload_two_parts_and_complete() {
+        use wiremock::matchers::{method, path, query_param};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let mock_server = MockServer::start().await;
+        let mut config = test_config();
+        config.endpoint = mock_server.uri();
+
+        // Mount the complete mock FIRST so it takes priority over init for matching
+        let complete_xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+<CompleteMultipartUploadResult>
+  <Bucket>test-bucket</Bucket>
+  <Key>big-file.dat</Key>
+  <ETag>&quot;final-etag-123&quot;</ETag>
+</CompleteMultipartUploadResult>"#;
+
+        Mock::given(method("POST"))
+            .and(path("/test-bucket/big-file.dat"))
+            .and(query_param("uploadId", "uid-456"))
+            .respond_with(ResponseTemplate::new(200).set_body_raw(complete_xml, "application/xml"))
+            .expect(1)
+            .mount(&mock_server)
+            .await;
+
+        let init_xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+<InitiateMultipartUploadResult>
+  <Bucket>test-bucket</Bucket>
+  <Key>big-file.dat</Key>
+  <UploadId>uid-456</UploadId>
+</InitiateMultipartUploadResult>"#;
+
+        Mock::given(method("POST"))
+            .and(path("/test-bucket/big-file.dat"))
+            .and(query_param("uploads", ""))
+            .respond_with(ResponseTemplate::new(200).set_body_raw(init_xml, "application/xml"))
+            .mount(&mock_server)
+            .await;
+
+        let client = reqwest::Client::new();
+        let multipart =
+            create_multipart_upload(&client, &config, "big-file.dat", "application/octet-stream")
+                .await
+                .expect("init failed");
+        assert_eq!(multipart.upload_id, "uid-456");
+
+        // Upload part 1
+        Mock::given(method("PUT"))
+            .and(path("/test-bucket/big-file.dat"))
+            .and(query_param("partNumber", "1"))
+            .and(query_param("uploadId", "uid-456"))
+            .respond_with(ResponseTemplate::new(200).insert_header("ETag", "\"etag-part-1\""))
+            .expect(1)
+            .mount(&mock_server)
+            .await;
+
+        let part1 = upload_part(
+            &client,
+            &config,
+            "big-file.dat",
+            "uid-456",
+            1,
+            b"part one data".to_vec(),
+        )
+        .await
+        .expect("part 1 failed");
+        assert_eq!(part1.part_number, 1);
+        assert_eq!(part1.etag, "etag-part-1");
+
+        // Upload part 2
+        Mock::given(method("PUT"))
+            .and(path("/test-bucket/big-file.dat"))
+            .and(query_param("partNumber", "2"))
+            .and(query_param("uploadId", "uid-456"))
+            .respond_with(ResponseTemplate::new(200).insert_header("ETag", "\"etag-part-2\""))
+            .expect(1)
+            .mount(&mock_server)
+            .await;
+
+        let part2 = upload_part(
+            &client,
+            &config,
+            "big-file.dat",
+            "uid-456",
+            2,
+            b"part two data".to_vec(),
+        )
+        .await
+        .expect("part 2 failed");
+        assert_eq!(part2.part_number, 2);
+        assert_eq!(part2.etag, "etag-part-2");
+
+        // Complete the multipart upload
+        let result =
+            complete_multipart_upload(&client, &config, "big-file.dat", "uid-456", &[part1, part2])
+                .await;
+        assert!(result.is_ok(), "complete failed: {:?}", result.err());
+    }
+
+    #[tokio::test]
+    async fn multipart_abort_mid_upload() {
+        use wiremock::matchers::{method, path, query_param};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let mock_server = MockServer::start().await;
+        let mut config = test_config();
+        config.endpoint = mock_server.uri();
+
+        let init_xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+<InitiateMultipartUploadResult>
+  <Bucket>test-bucket</Bucket>
+  <Key>big-file.dat</Key>
+  <UploadId>uid-abort-789</UploadId>
+</InitiateMultipartUploadResult>"#;
+
+        Mock::given(method("POST"))
+            .and(path("/test-bucket/big-file.dat"))
+            .respond_with(ResponseTemplate::new(200).set_body_raw(init_xml, "application/xml"))
+            .mount(&mock_server)
+            .await;
+
+        let client = reqwest::Client::new();
+        let multipart =
+            create_multipart_upload(&client, &config, "big-file.dat", "application/octet-stream")
+                .await
+                .expect("init failed");
+        assert_eq!(multipart.upload_id, "uid-abort-789");
+
+        // Upload part 1
+        Mock::given(method("PUT"))
+            .and(path("/test-bucket/big-file.dat"))
+            .and(query_param("partNumber", "1"))
+            .and(query_param("uploadId", "uid-abort-789"))
+            .respond_with(ResponseTemplate::new(200).insert_header("ETag", "\"etag-abort-1\""))
+            .mount(&mock_server)
+            .await;
+
+        let _part1 = upload_part(
+            &client,
+            &config,
+            "big-file.dat",
+            "uid-abort-789",
+            1,
+            b"data".to_vec(),
+        )
+        .await
+        .expect("part 1 failed");
+
+        // Abort before completing
+        Mock::given(method("DELETE"))
+            .and(path("/test-bucket/big-file.dat"))
+            .and(query_param("uploadId", "uid-abort-789"))
+            .respond_with(ResponseTemplate::new(204))
+            .expect(1)
+            .mount(&mock_server)
+            .await;
+
+        let result =
+            abort_multipart_upload(&client, &config, "big-file.dat", "uid-abort-789").await;
+        assert!(result.is_ok(), "abort failed: {:?}", result.err());
+    }
+
+    #[tokio::test]
+    async fn multipart_abort_nonexistent_upload() {
+        use wiremock::matchers::{method, path, query_param};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let mock_server = MockServer::start().await;
+        let mut config = test_config();
+        config.endpoint = mock_server.uri();
+
+        Mock::given(method("DELETE"))
+            .and(path("/test-bucket/big-file.dat"))
+            .and(query_param("uploadId", "no-such-upload"))
+            .respond_with(ResponseTemplate::new(404))
+            .expect(1)
+            .mount(&mock_server)
+            .await;
+
+        let client = reqwest::Client::new();
+        let result =
+            abort_multipart_upload(&client, &config, "big-file.dat", "no-such-upload").await;
+        assert!(result.is_err());
+    }
+
+    // ── Upload / Download / Delete / List integration tests ──────────────
+
+    #[tokio::test]
+    async fn upload_success() {
+        use wiremock::matchers::{method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let mock_server = MockServer::start().await;
+        let mut config = test_config();
+        config.endpoint = mock_server.uri();
+
+        Mock::given(method("PUT"))
+            .and(path("/test-bucket/file.txt"))
+            .respond_with(ResponseTemplate::new(200))
+            .expect(1)
+            .mount(&mock_server)
+            .await;
+
+        let client = reqwest::Client::new();
+        let result = upload(
+            &client,
+            &config,
+            "file.txt",
+            b"hello".to_vec(),
+            "text/plain",
+        )
+        .await;
+        assert!(result.is_ok(), "upload failed: {:?}", result.err());
+    }
+
+    #[tokio::test]
+    async fn upload_fails_on_404() {
+        use wiremock::matchers::{method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let mock_server = MockServer::start().await;
+        let mut config = test_config();
+        config.endpoint = mock_server.uri();
+
+        Mock::given(method("PUT"))
+            .and(path("/test-bucket/missing.txt"))
+            .respond_with(ResponseTemplate::new(404))
+            .mount(&mock_server)
+            .await;
+
+        let client = reqwest::Client::new();
+        let result = upload(
+            &client,
+            &config,
+            "missing.txt",
+            b"data".to_vec(),
+            "text/plain",
+        )
+        .await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn download_success() {
+        use wiremock::matchers::{method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let mock_server = MockServer::start().await;
+        let mut config = test_config();
+        config.endpoint = mock_server.uri();
+
+        Mock::given(method("GET"))
+            .and(path("/test-bucket/file.txt"))
+            .respond_with(ResponseTemplate::new(200).set_body_string("file content"))
+            .expect(1)
+            .mount(&mock_server)
+            .await;
+
+        let client = reqwest::Client::new();
+        let result = download(&client, &config, "file.txt").await;
+        assert!(result.is_ok(), "download failed: {:?}", result.err());
+        assert_eq!(result.unwrap(), b"file content");
+    }
+
+    #[tokio::test]
+    async fn download_fails_on_404() {
+        use wiremock::matchers::{method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let mock_server = MockServer::start().await;
+        let mut config = test_config();
+        config.endpoint = mock_server.uri();
+
+        Mock::given(method("GET"))
+            .and(path("/test-bucket/nope.txt"))
+            .respond_with(ResponseTemplate::new(404))
+            .mount(&mock_server)
+            .await;
+
+        let client = reqwest::Client::new();
+        let result = download(&client, &config, "nope.txt").await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn upload_streaming_success() {
+        use wiremock::matchers::{method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let mock_server = MockServer::start().await;
+        let mut config = test_config();
+        config.endpoint = mock_server.uri();
+
+        Mock::given(method("PUT"))
+            .and(path("/test-bucket/stream.dat"))
+            .respond_with(ResponseTemplate::new(200))
+            .expect(1)
+            .mount(&mock_server)
+            .await;
+
+        let client = reqwest::Client::new();
+        let body = reqwest::Body::from("streaming data");
+        let result = upload_streaming(
+            &client,
+            &config,
+            "stream.dat",
+            "application/octet-stream",
+            body,
+        )
+        .await;
+        assert!(
+            result.is_ok(),
+            "streaming upload failed: {:?}",
+            result.err()
+        );
+    }
+
+    #[tokio::test]
+    async fn download_streaming_success() {
+        use wiremock::matchers::{method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let mock_server = MockServer::start().await;
+        let mut config = test_config();
+        config.endpoint = mock_server.uri();
+
+        Mock::given(method("GET"))
+            .and(path("/test-bucket/stream-out.dat"))
+            .respond_with(ResponseTemplate::new(200).set_body_string("stream data"))
+            .expect(1)
+            .mount(&mock_server)
+            .await;
+
+        let client = reqwest::Client::new();
+        let result = download_streaming(&client, &config, "stream-out.dat").await;
+        assert!(
+            result.is_ok(),
+            "streaming download failed: {:?}",
+            result.err()
+        );
+    }
+
+    #[tokio::test]
+    async fn delete_success() {
+        use wiremock::matchers::{method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let mock_server = MockServer::start().await;
+        let mut config = test_config();
+        config.endpoint = mock_server.uri();
+
+        Mock::given(method("DELETE"))
+            .and(path("/test-bucket/to-delete.txt"))
+            .respond_with(ResponseTemplate::new(204))
+            .expect(1)
+            .mount(&mock_server)
+            .await;
+
+        let client = reqwest::Client::new();
+        let result = delete(&client, &config, "to-delete.txt").await;
+        assert!(result.is_ok(), "delete failed: {:?}", result.err());
+    }
+
+    #[tokio::test]
+    async fn delete_accepts_200_as_success() {
+        use wiremock::matchers::{method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let mock_server = MockServer::start().await;
+        let mut config = test_config();
+        config.endpoint = mock_server.uri();
+
+        Mock::given(method("DELETE"))
+            .and(path("/test-bucket/to-delete.txt"))
+            .respond_with(ResponseTemplate::new(200))
+            .mount(&mock_server)
+            .await;
+
+        let client = reqwest::Client::new();
+        let result = delete(&client, &config, "to-delete.txt").await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn list_with_prefix() {
+        use wiremock::matchers::{method, path, query_param};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let mock_server = MockServer::start().await;
+        let mut config = test_config();
+        config.endpoint = mock_server.uri();
+
+        let list_xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+<ListBucketResult>
+  <Contents><Key>prefix/file1.txt</Key></Contents>
+  <Contents><Key>prefix/file2.txt</Key></Contents>
+</ListBucketResult>"#;
+
+        Mock::given(method("GET"))
+            .and(path("/test-bucket/"))
+            .and(query_param("list-type", "2"))
+            .and(query_param("prefix", "prefix/"))
+            .respond_with(ResponseTemplate::new(200).set_body_raw(list_xml, "application/xml"))
+            .expect(1)
+            .mount(&mock_server)
+            .await;
+
+        let client = reqwest::Client::new();
+        let result = list(&client, &config, "prefix/").await;
+        assert!(result.is_ok(), "list failed: {:?}", result.err());
+        let objects = result.unwrap();
+        assert_eq!(objects.len(), 2);
+        assert_eq!(objects[0].key, "prefix/file1.txt");
+        assert_eq!(objects[1].key, "prefix/file2.txt");
+    }
+
+    #[tokio::test]
+    async fn list_empty_prefix() {
+        use wiremock::matchers::{method, path, query_param};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let mock_server = MockServer::start().await;
+        let mut config = test_config();
+        config.endpoint = mock_server.uri();
+
+        let empty_xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+<ListBucketResult>
+</ListBucketResult>"#;
+
+        Mock::given(method("GET"))
+            .and(path("/test-bucket/"))
+            .and(query_param("list-type", "2"))
+            .and(query_param("prefix", ""))
+            .respond_with(ResponseTemplate::new(200).set_body_raw(empty_xml, "application/xml"))
+            .mount(&mock_server)
+            .await;
+
+        let client = reqwest::Client::new();
+        let result = list(&client, &config, "").await;
+        assert!(result.is_ok());
+        assert!(result.unwrap().is_empty());
     }
 }

@@ -85,3 +85,50 @@ impl RedisClient {
         Ok(rx)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    #[ignore = "requires running Redis"]
+    async fn integration_publish_subscribe_roundtrip() {
+        let client = RedisClient::new("redis://127.0.0.1:6379/9", "test")
+            .await
+            .expect("redis connect");
+        let mut rx = client.subscribe("test-channel").await.unwrap();
+        tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+        client
+            .publish("test-channel", "hello pubsub")
+            .await
+            .unwrap();
+        let msg = tokio::time::timeout(tokio::time::Duration::from_secs(2), rx.recv())
+            .await
+            .expect("timeout waiting for message")
+            .expect("channel closed");
+        assert!(msg.channel.ends_with("test-channel"));
+        assert_eq!(msg.payload, "hello pubsub");
+    }
+
+    #[tokio::test]
+    #[ignore = "requires running Redis"]
+    async fn integration_publish_multiple_messages() {
+        let client = RedisClient::new("redis://127.0.0.1:6379/9", "test")
+            .await
+            .expect("redis connect");
+        let mut rx = client.subscribe("multi-channel").await.unwrap();
+        tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+        client.publish("multi-channel", "msg1").await.unwrap();
+        client.publish("multi-channel", "msg2").await.unwrap();
+        let msg1 = tokio::time::timeout(tokio::time::Duration::from_secs(2), rx.recv())
+            .await
+            .expect("timeout msg1")
+            .expect("channel closed");
+        assert_eq!(msg1.payload, "msg1");
+        let msg2 = tokio::time::timeout(tokio::time::Duration::from_secs(2), rx.recv())
+            .await
+            .expect("timeout msg2")
+            .expect("channel closed");
+        assert_eq!(msg2.payload, "msg2");
+    }
+}

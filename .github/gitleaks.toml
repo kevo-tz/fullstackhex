@@ -39,5 +39,6 @@ paths = [
 ]
 regexes = [
   '''CHANGE_ME''',
+  '''dummy_''',
   '''\$\{[A-Z_]+\}''',
 ]

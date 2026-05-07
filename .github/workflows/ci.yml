@@ -271,7 +271,7 @@ jobs:
         env:
           DATABASE_URL: postgres://postgres:postgres@localhost:5432/testdb
           REDIS_URL: redis://localhost:6379
-          JWT_SECRET: e2e-test-jwt-secret-do-not-use-in-prod
+          JWT_SECRET: dummy_jwt_secret_for_e2e_tests
           AUTH_MODE: bearer
           RUSTFS_ENDPOINT: ""
           PYTHON_SIDECAR_SOCKET: ""

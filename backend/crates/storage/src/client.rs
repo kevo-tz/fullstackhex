@@ -632,8 +632,8 @@ mod tests {
         let config = crate::StorageConfig {
             endpoint: "http://localhost:9000".to_string(),
             public_endpoint: "http://pub.local:9000".to_string(),
-            access_key: "test-key".to_string(),
-            secret_key: "test-secret".to_string(),
+            access_key: "dummy_access_key".to_string(),
+            secret_key: "dummy_secret_key".to_string(),
             bucket: "test-bucket".to_string(),
             region: "us-east-1".to_string(),
             auto_create_bucket: false,
@@ -657,8 +657,8 @@ mod tests {
         let config = crate::StorageConfig {
             endpoint: "http://localhost:9000".to_string(),
             public_endpoint: "http://pub.local:9000".to_string(),
-            access_key: "test-key".to_string(),
-            secret_key: "test-secret".to_string(),
+            access_key: "dummy_access_key".to_string(),
+            secret_key: "dummy_secret_key".to_string(),
             bucket: "test-bucket".to_string(),
             region: "us-east-1".to_string(),
             auto_create_bucket: false,
@@ -678,8 +678,8 @@ mod tests {
         let config = crate::StorageConfig {
             endpoint: "http://localhost:9000".to_string(),
             public_endpoint: "http://pub.local:9000".to_string(),
-            access_key: "test-key".to_string(),
-            secret_key: "test-secret".to_string(),
+            access_key: "dummy_access_key".to_string(),
+            secret_key: "dummy_secret_key".to_string(),
             bucket: "test-bucket".to_string(),
             region: "us-east-1".to_string(),
             auto_create_bucket: false,
@@ -693,7 +693,7 @@ mod tests {
         )
         .unwrap();
         assert!(signed.authorization.contains("AWS4-HMAC-SHA256"));
-        assert!(signed.authorization.contains("test-key"));
+        assert!(signed.authorization.contains("dummy_access_key"));
         assert_eq!(signed.host, "localhost");
         assert!(!signed.payload_hash.is_empty());
     }
@@ -703,8 +703,8 @@ mod tests {
         let config = crate::StorageConfig {
             endpoint: "http://localhost:9000".to_string(),
             public_endpoint: "http://pub.local:9000".to_string(),
-            access_key: "test-key".to_string(),
-            secret_key: "test-secret".to_string(),
+            access_key: "dummy_access_key".to_string(),
+            secret_key: "dummy_secret_key".to_string(),
             bucket: "test-bucket".to_string(),
             region: "us-east-1".to_string(),
             auto_create_bucket: false,
@@ -825,8 +825,8 @@ mod tests {
         crate::StorageConfig {
             endpoint: "http://localhost:0".to_string(),
             public_endpoint: "http://pub.local:9000".to_string(),
-            access_key: "minioadmin".to_string(),
-            secret_key: "minioadmin".to_string(),
+            access_key: "dummy_access_key".to_string(),
+            secret_key: "dummy_secret_key".to_string(),
             bucket: "test-bucket".to_string(),
             region: "us-east-1".to_string(),
             auto_create_bucket: false,

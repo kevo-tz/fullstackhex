@@ -265,8 +265,8 @@ mod tests {
             config: crate::StorageConfig {
                 endpoint: "http://localhost:9000".to_string(),
                 public_endpoint: "http://pub.local:9000".to_string(),
-                access_key: "test-key".to_string(),
-                secret_key: "test-secret".to_string(),
+                access_key: "dummy_access_key".to_string(),
+                secret_key: "dummy_secret_key".to_string(),
                 bucket: "test-bucket".to_string(),
                 region: "us-east-1".to_string(),
                 auto_create_bucket: false,
@@ -313,8 +313,8 @@ mod tests {
             config: crate::StorageConfig {
                 endpoint: "http://localhost:9000".to_string(),
                 public_endpoint: "http://pub.local:9000".to_string(),
-                access_key: "test-key".to_string(),
-                secret_key: "test-secret".to_string(),
+                access_key: "dummy_access_key".to_string(),
+                secret_key: "dummy_secret_key".to_string(),
                 bucket: "test-bucket".to_string(),
                 region: "us-east-1".to_string(),
                 auto_create_bucket: false,

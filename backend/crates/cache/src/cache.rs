@@ -134,7 +134,9 @@ impl RedisClient {
         if result.is_empty() {
             Ok(None)
         } else {
-            Ok(Some(result))
+            let value: String = serde_json::from_str(&result)
+                .map_err(|e| CacheError::SerializationFailed(e.to_string()))?;
+            Ok(Some(value))
         }
     }
 }

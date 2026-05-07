@@ -816,4 +816,246 @@ mod tests {
         // No <Part> elements when empty
         assert!(!xml.contains("<Part>"));
     }
+
+    // ── Multipart integration tests (wiremock) ───────────────────────────
+
+    fn test_config() -> crate::StorageConfig {
+        crate::StorageConfig {
+            endpoint: "http://localhost:0".to_string(),
+            public_endpoint: "http://pub.local:9000".to_string(),
+            access_key: "minioadmin".to_string(),
+            secret_key: "minioadmin".to_string(),
+            bucket: "test-bucket".to_string(),
+            region: "us-east-1".to_string(),
+            auto_create_bucket: false,
+        }
+    }
+
+    #[tokio::test]
+    async fn multipart_init_round_trip() {
+        use wiremock::matchers::{method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let mock_server = MockServer::start().await;
+        let mut config = test_config();
+        config.endpoint = mock_server.uri();
+
+        let init_xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+<InitiateMultipartUploadResult>
+  <Bucket>test-bucket</Bucket>
+  <Key>big-file.dat</Key>
+  <UploadId>upload-id-123</UploadId>
+</InitiateMultipartUploadResult>"#;
+
+        Mock::given(method("POST"))
+            .and(path("/test-bucket/big-file.dat"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_raw(init_xml, "application/xml"),
+            )
+            .expect(1)
+            .mount(&mock_server)
+            .await;
+
+        let client = reqwest::Client::new();
+        let result = create_multipart_upload(&client, &config, "big-file.dat", "application/octet-stream").await;
+
+        assert!(result.is_ok(), "init failed: {:?}", result.err());
+        let multipart = result.unwrap();
+        assert_eq!(multipart.upload_id, "upload-id-123");
+        assert_eq!(multipart.key, "big-file.dat");
+    }
+
+    #[tokio::test]
+    async fn multipart_init_failure_on_error_status() {
+        use wiremock::matchers::{method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let mock_server = MockServer::start().await;
+        let mut config = test_config();
+        config.endpoint = mock_server.uri();
+
+        Mock::given(method("POST"))
+            .and(path("/test-bucket/big-file.dat"))
+            .respond_with(ResponseTemplate::new(403).set_body_string("<Error><Code>AccessDenied</Code></Error>"))
+            .mount(&mock_server)
+            .await;
+
+        let client = reqwest::Client::new();
+        let result = create_multipart_upload(&client, &config, "big-file.dat", "").await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn multipart_upload_two_parts_and_complete() {
+        use wiremock::matchers::{method, path, query_param};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let mock_server = MockServer::start().await;
+        let mut config = test_config();
+        config.endpoint = mock_server.uri();
+
+        // Mount the complete mock FIRST so it takes priority over init for matching
+        let complete_xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+<CompleteMultipartUploadResult>
+  <Bucket>test-bucket</Bucket>
+  <Key>big-file.dat</Key>
+  <ETag>&quot;final-etag-123&quot;</ETag>
+</CompleteMultipartUploadResult>"#;
+
+        Mock::given(method("POST"))
+            .and(path("/test-bucket/big-file.dat"))
+            .and(query_param("uploadId", "uid-456"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_raw(complete_xml, "application/xml"),
+            )
+            .expect(1)
+            .mount(&mock_server)
+            .await;
+
+        let init_xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+<InitiateMultipartUploadResult>
+  <Bucket>test-bucket</Bucket>
+  <Key>big-file.dat</Key>
+  <UploadId>uid-456</UploadId>
+</InitiateMultipartUploadResult>"#;
+
+        Mock::given(method("POST"))
+            .and(path("/test-bucket/big-file.dat"))
+            .and(query_param("uploads", ""))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_raw(init_xml, "application/xml"),
+            )
+            .mount(&mock_server)
+            .await;
+
+        let client = reqwest::Client::new();
+        let multipart = create_multipart_upload(&client, &config, "big-file.dat", "application/octet-stream")
+            .await
+            .expect("init failed");
+        assert_eq!(multipart.upload_id, "uid-456");
+
+        // Upload part 1
+        Mock::given(method("PUT"))
+            .and(path("/test-bucket/big-file.dat"))
+            .and(query_param("partNumber", "1"))
+            .and(query_param("uploadId", "uid-456"))
+            .respond_with(
+                ResponseTemplate::new(200).insert_header("ETag", "\"etag-part-1\""),
+            )
+            .expect(1)
+            .mount(&mock_server)
+            .await;
+
+        let part1 = upload_part(&client, &config, "big-file.dat", "uid-456", 1, b"part one data".to_vec())
+            .await
+            .expect("part 1 failed");
+        assert_eq!(part1.part_number, 1);
+        assert_eq!(part1.etag, "etag-part-1");
+
+        // Upload part 2
+        Mock::given(method("PUT"))
+            .and(path("/test-bucket/big-file.dat"))
+            .and(query_param("partNumber", "2"))
+            .and(query_param("uploadId", "uid-456"))
+            .respond_with(
+                ResponseTemplate::new(200).insert_header("ETag", "\"etag-part-2\""),
+            )
+            .expect(1)
+            .mount(&mock_server)
+            .await;
+
+        let part2 = upload_part(&client, &config, "big-file.dat", "uid-456", 2, b"part two data".to_vec())
+            .await
+            .expect("part 2 failed");
+        assert_eq!(part2.part_number, 2);
+        assert_eq!(part2.etag, "etag-part-2");
+
+        // Complete the multipart upload
+        let result = complete_multipart_upload(&client, &config, "big-file.dat", "uid-456", &[part1, part2]).await;
+        assert!(result.is_ok(), "complete failed: {:?}", result.err());
+    }
+
+    #[tokio::test]
+    async fn multipart_abort_mid_upload() {
+        use wiremock::matchers::{method, path, query_param};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let mock_server = MockServer::start().await;
+        let mut config = test_config();
+        config.endpoint = mock_server.uri();
+
+        let init_xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+<InitiateMultipartUploadResult>
+  <Bucket>test-bucket</Bucket>
+  <Key>big-file.dat</Key>
+  <UploadId>uid-abort-789</UploadId>
+</InitiateMultipartUploadResult>"#;
+
+        Mock::given(method("POST"))
+            .and(path("/test-bucket/big-file.dat"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_raw(init_xml, "application/xml"),
+            )
+            .mount(&mock_server)
+            .await;
+
+        let client = reqwest::Client::new();
+        let multipart = create_multipart_upload(&client, &config, "big-file.dat", "application/octet-stream")
+            .await
+            .expect("init failed");
+        assert_eq!(multipart.upload_id, "uid-abort-789");
+
+        // Upload part 1
+        Mock::given(method("PUT"))
+            .and(path("/test-bucket/big-file.dat"))
+            .and(query_param("partNumber", "1"))
+            .and(query_param("uploadId", "uid-abort-789"))
+            .respond_with(
+                ResponseTemplate::new(200).insert_header("ETag", "\"etag-abort-1\""),
+            )
+            .mount(&mock_server)
+            .await;
+
+        let _part1 = upload_part(&client, &config, "big-file.dat", "uid-abort-789", 1, b"data".to_vec())
+            .await
+            .expect("part 1 failed");
+
+        // Abort before completing
+        Mock::given(method("DELETE"))
+            .and(path("/test-bucket/big-file.dat"))
+            .and(query_param("uploadId", "uid-abort-789"))
+            .respond_with(ResponseTemplate::new(204))
+            .expect(1)
+            .mount(&mock_server)
+            .await;
+
+        let result = abort_multipart_upload(&client, &config, "big-file.dat", "uid-abort-789").await;
+        assert!(result.is_ok(), "abort failed: {:?}", result.err());
+    }
+
+    #[tokio::test]
+    async fn multipart_abort_nonexistent_upload() {
+        use wiremock::matchers::{method, path, query_param};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let mock_server = MockServer::start().await;
+        let mut config = test_config();
+        config.endpoint = mock_server.uri();
+
+        Mock::given(method("DELETE"))
+            .and(path("/test-bucket/big-file.dat"))
+            .and(query_param("uploadId", "no-such-upload"))
+            .respond_with(ResponseTemplate::new(404))
+            .expect(1)
+            .mount(&mock_server)
+            .await;
+
+        let client = reqwest::Client::new();
+        let result = abort_multipart_upload(&client, &config, "big-file.dat", "no-such-upload").await;
+        assert!(result.is_err());
+    }
 }

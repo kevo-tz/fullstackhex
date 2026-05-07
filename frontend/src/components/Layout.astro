@@ -407,6 +407,9 @@ const { title } = Astro.props;
 
       updateNav();
 
+      // Init theme from localStorage
+      try { const t = localStorage.getItem("theme"); if (t) document.documentElement.dataset.theme = t; } catch {}
+
       // Theme toggle
       function toggleTheme() {
         var html = document.documentElement;

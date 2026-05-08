@@ -330,7 +330,7 @@ async fn health_db_ok_with_real_pool() {
 
     let state = AppState {
         db: DbStatus::Connected(pool),
-        sidecar: python_sidecar::PythonSidecar::new(
+        sidecar: py_sidecar::PythonSidecar::new(
             "/tmp/__nonexistent_test_socket__.sock",
             Duration::from_secs(1),
             0,
@@ -377,7 +377,7 @@ async fn health_python_ok_with_mock_socket() {
     let dir = tempfile::tempdir().unwrap();
     let sock_path = dir.path().join("health_ok.sock");
     let listener = UnixListener::bind(&sock_path).unwrap();
-    let sc = python_sidecar::PythonSidecar::new(sock_path.clone(), Duration::from_secs(2), 0);
+    let sc = py_sidecar::PythonSidecar::new(sock_path.clone(), Duration::from_secs(2), 0);
 
     // Spawn a mock sidecar that reads the request then responds with valid JSON.
     // Reading first ensures the client finishes writing before we close.
@@ -385,7 +385,7 @@ async fn health_python_ok_with_mock_socket() {
         let (mut stream, _) = listener.accept().await.unwrap();
         let mut buf = [0u8; 512];
         let _ = stream.read(&mut buf).await;
-        let response = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n{\"status\":\"ok\",\"service\":\"python-sidecar\",\"version\":\"0.1.0\"}";
+        let response = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n{\"status\":\"ok\",\"service\":\"py-api\",\"version\":\"0.1.0\"}";
         stream.write_all(response.as_bytes()).await.unwrap();
         stream.shutdown().await.ok();
         tokio::time::sleep(Duration::from_millis(200)).await;
@@ -424,7 +424,7 @@ async fn health_python_ok_with_mock_socket() {
         v["status"], "ok",
         "health_python should return 'ok' when sidecar responds successfully. Got: {v}"
     );
-    assert_eq!(v["service"], "python-sidecar");
+    assert_eq!(v["service"], "py-api");
     assert_eq!(v["version"], "0.1.0");
 }
 

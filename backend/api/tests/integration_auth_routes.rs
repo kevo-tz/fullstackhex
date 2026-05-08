@@ -1,14 +1,14 @@
 use api::AppState;
 use api::DbStatus;
-/// Integration tests verifying storage routes are absent when storage is not configured.
+/// Integration tests verifying auth routes are absent when auth is not configured.
 use api::metrics::init_metrics_recorder;
 use api::router_with_state;
 use axum::http::{Request, StatusCode};
-use python_sidecar::PythonSidecar;
+use py_sidecar::PythonSidecar;
 use std::time::Duration;
 use tower::ServiceExt;
 
-fn test_state_without_storage() -> AppState {
+fn test_state_without_auth() -> AppState {
     AppState {
         db: DbStatus::NotConfigured,
         redis: None,
@@ -25,12 +25,12 @@ fn test_state_without_storage() -> AppState {
 }
 
 #[tokio::test]
-async fn storage_download_returns_404_when_storage_disabled() {
-    let app = router_with_state(test_state_without_storage());
+async fn auth_me_returns_404_when_auth_disabled() {
+    let app = router_with_state(test_state_without_auth());
     let response = app
         .oneshot(
             Request::builder()
-                .uri("/storage/test-file.txt")
+                .uri("/auth/me")
                 .body(axum::body::Body::empty())
                 .unwrap(),
         )
@@ -41,12 +41,12 @@ async fn storage_download_returns_404_when_storage_disabled() {
 }
 
 #[tokio::test]
-async fn storage_list_returns_404_when_storage_disabled() {
-    let app = router_with_state(test_state_without_storage());
+async fn auth_register_returns_404_when_auth_disabled() {
+    let app = router_with_state(test_state_without_auth());
     let response = app
         .oneshot(
             Request::builder()
-                .uri("/storage")
+                .uri("/auth/register")
                 .body(axum::body::Body::empty())
                 .unwrap(),
         )
@@ -57,13 +57,28 @@ async fn storage_list_returns_404_when_storage_disabled() {
 }
 
 #[tokio::test]
-async fn storage_presign_returns_404_when_storage_disabled() {
-    let app = router_with_state(test_state_without_storage());
+async fn auth_login_returns_404_when_auth_disabled() {
+    let app = router_with_state(test_state_without_auth());
     let response = app
         .oneshot(
             Request::builder()
-                .uri("/storage/presign")
-                .method("POST")
+                .uri("/auth/login")
+                .body(axum::body::Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn auth_oauth_returns_404_when_auth_disabled() {
+    let app = router_with_state(test_state_without_auth());
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/auth/oauth/google")
                 .body(axum::body::Body::empty())
                 .unwrap(),
         )

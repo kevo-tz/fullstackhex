@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/*"]
+members = ["api", "auth", "cache", "db", "domain", "py-sidecar", "storage"]
 resolver = "3"
 
 [workspace.package]

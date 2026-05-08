@@ -173,7 +173,7 @@ scaffold() {
   run "rsync -a $rsync_excludes \"$SCRIPT_DIR/scripts/\" \"$PROJECT_NAME/scripts/\""
 
   log "Copying root files..."
-  for f in .env.example .gitignore .dockerignore Makefile AGENTS.md CLAUDE.md CONTRIBUTING.md CODE_OF_CONDUCT.md LICENSE; do
+  for f in .env.example .gitignore .dockerignore Makefile LICENSE; do
     if [ -f "$SCRIPT_DIR/$f" ]; then
       run "cp \"$SCRIPT_DIR/$f\" \"$PROJECT_NAME/$f\""
     fi

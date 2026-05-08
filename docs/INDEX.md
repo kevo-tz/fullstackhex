@@ -48,18 +48,18 @@ Start here for the FullStackHex documentation. Documents are listed in recommend
 8. **[EXAMPLES.md](./EXAMPLES.md)** - Copy-paste patterns
     - Extending routes, pages, tests, and CI
 
-4. **[INFRASTRUCTURE.md](./INFRASTRUCTURE.md)** - Docker setup and config
+9. **[INFRASTRUCTURE.md](./INFRASTRUCTURE.md)** - Docker setup and config
    - PostgreSQL 18, Redis 8, RustFS (S3-compatible)
    - Complete `compose/dev.yml` reference
    - Environment variables and volumes
    - Common commands and troubleshooting
 
-5. **[INITIALIZATION.md](./INITIALIZATION.md)** - Template-ready setup script
+10. **[INITIALIZATION.md](./INITIALIZATION.md)** - Template-ready setup script
    - Portable bootstrap script template for new projects
    - Verification steps
    - Troubleshooting
 
-6. **[performance-budget.md](./performance-budget.md)** - Performance targets and CI gates
+11. **[performance-budget.md](./performance-budget.md)** - Performance targets and CI gates
 
 ## Quick Reference
 

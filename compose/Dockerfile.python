@@ -1,6 +1,6 @@
 # Multi-stage Dockerfile for FullStackHex Python sidecar
 # Build context: repository root (.. when invoked from compose/)
-# Usage: docker build -f compose/Dockerfile.python -t fullstackhex/python-sidecar:latest .
+# Usage: docker build -f compose/Dockerfile.python -t fullstackhex/py-api:latest .
 
 # Stage1: Builder - Install Python dependencies
 FROM python:3.14-slim-bookworm AS builder
@@ -15,7 +15,7 @@ RUN apt-get update && apt-get install -y \
     && pip install --no-cache-dir uv
 
 # Copy pyproject.toml first (leverage Docker cache)
-COPY python-sidecar/pyproject.toml ./
+COPY py-api/pyproject.toml ./
 
 # Install Python dependencies into a prefix
 RUN uv pip install --system --no-cache fastapi uvicorn
@@ -30,9 +30,9 @@ RUN pip install --no-cache-dir uv && \
     uv pip install --system --no-cache fastapi uvicorn
 
 # Copy application source
-COPY python-sidecar/ ./python-sidecar/
+COPY py-api/ ./py-api/
 
-WORKDIR /app/python-sidecar
+WORKDIR /app/py-api
 
 # Create socket directory
 RUN mkdir -p /tmp/sidecar
@@ -42,6 +42,6 @@ USER appuser
 
 # Sidecar communicates over Unix socket — no TCP port exposed
 HEALTHCHECK --interval=30s --timeout=5s --retries=3 \
-    CMD python -c "import socket; s=socket.socket(socket.AF_UNIX); s.connect('/tmp/sidecar/python-sidecar.sock')" || exit 1
+    CMD python -c "import socket; s=socket.socket(socket.AF_UNIX); s.connect('/tmp/sidecar/py-api.sock')" || exit 1
 
-CMD ["uvicorn", "app.main:app", "--uds", "/tmp/sidecar/python-sidecar.sock"]
+CMD ["uvicorn", "app.main:app", "--uds", "/tmp/sidecar/py-api.sock"]

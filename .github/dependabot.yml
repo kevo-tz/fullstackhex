@@ -23,7 +23,7 @@ updates:
           - "patch"
 
   - package-ecosystem: "pip"
-    directory: "/python-sidecar"
+    directory: "/py-api"
     schedule:
       interval: "weekly"
       day: "monday"

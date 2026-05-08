@@ -2,7 +2,7 @@
 
 ## Table of Contents
 
-1. [Core Architecture](#core-architecture-rust-centric-with-python-sidecar)
+1. [Core Architecture](#core-architecture-rust-centric-with-py-api)
 2. [Key Architectural Decisions](#key-architectural-decisions)
 3. [Data Flow](#data-flow)
 4. [Technology Stack (Latest Versions)](#technology-stack-latest-versions)
@@ -11,7 +11,7 @@
 7. [Port Mappings](#port-mappings)
 8. [Related Docs](#related-docs)
 
-## Core Architecture: Rust-Centric with Python Sidecar
+## Core Architecture: Rust-Centric with py-api
 
 ```
 ┌────────────────────────────────────────────────────────┐
@@ -30,7 +30,7 @@
 │  ├── cache/        Redis caching, rate limiting      │
 │  ├── db/           sqlx + PostgreSQL                 │
 │  ├── domain/       Business logic and shared types   │
-│  ├── python-sidecar/ Sidecar manager                 │
+│   ├── py-sidecar/ Sidecar manager                 │
 │  └── storage/      S3-compatible object storage      │
 │                        │                              │
 │                        │ Unix domain socket            │
@@ -83,7 +83,7 @@
 1. **Browser** → Requests Astro frontend on `localhost:4321`
 2. **Astro Server Route** → Calls Rust backend on `localhost:8001` when backend data needed
 3. **Rust API** → Processes request, may call internal crates
-4. **Python Sidecar** → Rust communicates via Unix domain socket when Python logic needed
+4. **py-api** → Rust communicates via Unix domain socket when Python logic needed
 5. **Data Layer** → Postgres (sqlx) + Redis + RustFS
 6. **Production only** → Nginx terminates TLS and proxies external traffic; Prometheus + Grafana monitor the entire stack
 
@@ -121,28 +121,27 @@ frontend/
 
 backend/
 ├── Cargo.toml              # Workspace root
-├── crates/
-│   ├── api/               # HTTP API layer (Axum routes)
-│   ├── auth/              # JWT + OAuth + CSRF authentication
-│   ├── cache/             # Redis caching, rate limiting, sessions
-│   ├── db/                # Database layer (sqlx)
-│   ├── domain/            # Business logic and shared types
-│   ├── python-sidecar/    # Sidecar process manager
-│   └── storage/           # S3-compatible object storage
+├── api/               # HTTP API layer (Axum routes)
+├── auth/              # JWT + OAuth + CSRF authentication
+├── cache/             # Redis caching, rate limiting, sessions
+├── db/                # Database layer (sqlx)
+├── domain/            # Business logic and shared types
+├── py-sidecar/        # Sidecar process manager
+└── storage/           # S3-compatible object storage
 └── target/
 ```
 
 ## IPC: Unix Domain Socket
 
-Python sidecar binds to `/tmp/fullstackhex-python.sock`. Rust communicates through this socket for:
+py-api binds to `/tmp/fullstackhex-python.sock`. Rust communicates through this socket for:
 - Low latency (no TCP overhead)
 - Security (only local processes can connect)
 - Simple integration with FastAPI/Uvicorn
 
 ### PythonSidecar (implemented in v0.3.1.0)
 
-The `PythonSidecar` struct in `backend/crates/python-sidecar/src/lib.rs` handles
-HTTP communication with the Python sidecar via a Unix domain socket. The sidecar
+The \`PythonSidecar\` struct in \`backend/py-sidecar/src/lib.rs\` handles
+HTTP communication with py-api via a Unix domain socket. The service
 runs independently — start it with `uv run uvicorn app.main:app --uds /tmp/fullstackhex-python.sock`.
 
 ```rust
@@ -161,7 +160,7 @@ runs independently — start it with `uv run uvicorn app.main:app --uds /tmp/ful
 
 ### Database Health (implemented in v0.3.1.0)
 
-The `db` crate (`backend/crates/db/src/lib.rs`) exports `health_check(pool: Option<&PgPool>)`
+The \`db\` crate (\`backend/db/src/lib.rs\`) exports `health_check(pool: Option<&PgPool>)`
 which runs `SELECT 1` against PostgreSQL. A 3-second timeout prevents hanging on a
 slow database. The api crate uses it in the `/health/db` handler.
 
@@ -182,7 +181,7 @@ fn get_socket_path() -> PathBuf {
 |---------|------|---------|
 | Frontend | 4321 | Development server |
 | Rust Backend | 8001 | Only external API |
-| Python Sidecar | Internal | Unix socket only (/tmp/fullstackhex-python.sock) |
+| py-api | Internal | Unix socket only (/tmp/fullstackhex-python.sock) |
 | PostgreSQL | 5432 | Database |
 | Redis | 6379 | Cache |
 | RustFS | 9000 | S3-compatible storage |

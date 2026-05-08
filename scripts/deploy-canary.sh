@@ -35,7 +35,7 @@ STATE_FILE="${DEPLOY_PATH}/.deploy-state"
 IMAGE_TAG="${DEPLOY_IMAGE_TAG:-latest}"
 CANARY_PATH="${DEPLOY_PATH}/canary"
 NGINX_CONF="/etc/nginx/conf.d/fullstackhex.conf"
-CANARY_CONF="nginx/canary.conf"
+CANARY_CONF="compose/nginx/canary.conf"
 
 if [ -z "$TARGET" ] || [ -z "$USER" ]; then
     echo "ERROR: DEPLOY_HOST and DEPLOY_USER must be set in .env"

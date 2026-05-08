@@ -4,7 +4,7 @@
 
 1. [Architecture Overview](#architecture-overview)
 2. [Rust Backend (Workspace)](#rust-backend-workspace)
-3. [Python Service (Sidecar Mode)](#python-service-sidecar-mode)
+3. [py-api (Python Service)](#py-api-python-service)
 4. [Frontend Service](#frontend-service)
 5. [Service Communication](#service-communication)
 6. [Health Checks](#health-checks)
@@ -12,8 +12,8 @@
 
 ## Architecture Overview
 
-- **Rust Backend**: Main API server, manages Python sidecar
-- **Python Sidecar**: Managed subprocess of Rust, internal-only communication via Unix socket
+- **Rust Backend**: Main API server, manages py-api
+- **py-api**: Managed subprocess of Rust, internal-only communication via Unix socket
 - **Frontend**: Communicates exclusively with Rust API (port 8001)
 
 ---
@@ -25,23 +25,22 @@
 ```
 backend/
 ├── Cargo.toml              # Workspace root
-├── crates/
-│   ├── api/               # HTTP API layer (Axum routes)
-│   ├── auth/              # JWT + OAuth + CSRF authentication
-│   ├── cache/             # Redis caching, rate limiting, sessions
-│   ├── db/                # Database layer (sqlx)
-│   ├── domain/            # Business logic and shared types
-│   ├── python-sidecar/    # Sidecar process manager
-│   └── storage/           # S3-compatible object storage
+├── api/               # HTTP API layer (Axum routes)
+├── auth/              # JWT + OAuth + CSRF authentication
+├── cache/             # Redis caching, rate limiting, sessions
+├── db/                # Database layer (sqlx)
+├── domain/            # Business logic and shared types
+├── py-sidecar/        # Sidecar process manager
+└── storage/           # S3-compatible object storage
 └── target/
 ```
 
-### Crate: python-sidecar
+### Crate: py-sidecar
 
-Manages HTTP communication to the Python sidecar via Unix domain socket:
+Manages HTTP communication to py-api via Unix domain socket:
 
 ```rust
-// crates/python-sidecar/src/lib.rs
+// py-sidecar/src/lib.rs
 pub struct PythonSidecar {
     socket_path: PathBuf,
     timeout: Duration,
@@ -79,7 +78,7 @@ Response:
 }
 ```
 
-> **Note:** The Python sidecar `/health` response includes an additional field: `{"status": "ok", "service": "python-sidecar"}`.
+> **Note:** py-api `/health` response includes an additional field: `{"status": "ok", "service": "py-api"}`.
 
 #### Metrics (Prometheus)
 ```
@@ -95,10 +94,10 @@ Returns Prometheus text format with:
 GET /metrics/python
 ```
 
-Proxies Python sidecar metrics. Returns `503` if Python is unreachable.
+Proxies py-api metrics. Returns `503` if Python is unreachable.
 
 ```
-ANY /api/python/{path}  → Forwards request method/path/body to Python sidecar via Unix socket
+ANY /api/python/{path}  → Forwards request method/path/body to py-api via Unix socket
 ```
 
 ### Running Rust with Sidecar
@@ -109,22 +108,22 @@ cd backend
 # Development: starts Axum on port 8001
 cargo run -p api
 
-# The python-sidecar crate (crates/python-sidecar/) contains the
+# The py-sidecar crate (py-sidecar/) contains the
 # Unix socket client; wire it into main.rs to spawn and connect
-# to the Python sidecar process.
+# to py-api.
 ```
 
 ---
 
-## Python Service (Sidecar Mode)
+## py-api (Python Service)
 
-### Running the Sidecar
+### Running py-api
 
 Python runs as an independent process alongside Rust, communicating over a Unix socket.
 Start it via make targets (`make dev` or `make watch`) or manually:
 
 ```bash
-cd python-sidecar && uv run uvicorn app.main:app --uds /tmp/fullstackhex-python.sock
+cd py-api && uv run uvicorn app.main:app --uds /tmp/fullstackhex-python.sock
 ```
 
 ### FastAPI with Unix Socket
@@ -140,10 +139,10 @@ app = FastAPI()
 
 @app.get("/health")
 def health() -> dict[str, str]:
-    return {"status": "ok", "service": "python-sidecar"}
+    return {"status": "ok", "service": "py-api"}
 ```
 
-> **Note:** Add new routes here as Python business logic grows. The sidecar is
+> **Note:** Add new routes here as Python business logic grows. py-api is
 > started by Rust — run it directly only for debugging:
 > `uv run uvicorn app.main:app --uds /tmp/fullstackhex-python.sock`
 
@@ -313,7 +312,7 @@ async function getHealth() {
 # Rust backend
 curl http://localhost:8001/health
 
-# Python sidecar (via Rust)
+# py-api (via Rust)
 curl http://localhost:8001/api/python/health
 
 # Frontend
@@ -330,7 +329,7 @@ docker compose ps
 | Service | Log destination | How to tail |
 |---------|----------------|-------------|
 | Rust backend | stdout (runs directly) | `make logs-backend` |
-| Python sidecar | stdout (runs directly) | `make logs-python` |
+| py-api | stdout (runs directly) | `make logs-python` |
 | Frontend (Astro) | stdout (runs directly) | `make logs-frontend` |
 | PostgreSQL | Docker container stdout | `make logs-db` |
 | Redis | Docker container stdout | `make logs-redis` |

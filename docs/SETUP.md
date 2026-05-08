@@ -70,7 +70,7 @@ Ports:
 | PostgreSQL | localhost:5432 |
 | Redis | localhost:6379 |
 
-The Rust binary auto-spawns the Python sidecar over a Unix socket (`PYTHON_SIDECAR_SOCKET`). You do not need to start Python separately.
+The Rust binary auto-spawns py-api over a Unix socket (`PYTHON_SIDECAR_SOCKET`). You do not need to start Python separately.
 
 ## Verify Installation
 
@@ -95,8 +95,8 @@ docker compose -f compose/dev.yml ps
 # Database
 DATABASE_URL=postgres://app_user:CHANGE_ME@localhost:5432/app_database
 
-# Python sidecar (Unix socket — set automatically by make setup-env)
-PYTHON_SIDECAR_SOCKET=/home/<you>/.fullstackhex/sockets/python-sidecar.sock
+# py-api (Unix socket — set automatically by make setup-env)
+PYTHON_SIDECAR_SOCKET=/home/<you>/.fullstackhex/sockets/py-api.sock
 
 # Frontend → Rust
 VITE_RUST_BACKEND_URL=http://localhost:8001
@@ -125,7 +125,7 @@ cargo clean && cargo build --workspace
 ### Python dependencies
 
 ```bash
-cd python-sidecar
+cd py-api
 uv sync
 ```
 

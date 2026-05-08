@@ -54,8 +54,8 @@ Polls health endpoints until all services report healthy or timeout. Used automa
 
 | Template | Purpose |
 |----------|---------|
-| `nginx/upstream.conf.template` | Blue-green upstream switching. |
-| `nginx/canary.conf` | Canary traffic split (10/90 default). |
+| \`compose/nginx/upstream.conf.template\` | Blue-green upstream switching. |
+| \`compose/nginx/canary.conf\` | Canary traffic split (10/90 default). |
 
 ## Production Compose
 

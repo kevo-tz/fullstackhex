@@ -87,7 +87,7 @@ cargo fmt --check  # Check formatting
 cargo clippy -- -D warnings  # Lint with warnings as errors
 
 # Python
-cd python-sidecar
+cd py-api
 ruff check .
 
 # Frontend
@@ -108,7 +108,7 @@ make test-frontend
 
 # Run with verbose output
 cd backend && cargo test -- --nocapture
-cd python-sidecar && uv run pytest -v
+cd py-api && uv run pytest -v
 cd frontend && bun test --verbose
 ```
 
@@ -118,7 +118,7 @@ The `PYTHON_SIDECAR_SOCKET` env var must point to a writable path. In CI, set it
 
 ```bash
 # In CI (e.g. GitHub Actions), set the socket to a temp directory
-export PYTHON_SIDECAR_SOCKET="${RUNNER_TEMP}/python-sidecar.sock"
+export PYTHON_SIDECAR_SOCKET="${RUNNER_TEMP}/py-api.sock"
 ```
 
 To debug socket issues locally:
@@ -159,7 +159,7 @@ cargo update -p tokio   # Update specific package
 ### Python Dependencies
 
 ```bash
-cd python-sidecar
+cd py-api
 uv sync --all-extras
 uv lock
 ```
@@ -181,7 +181,7 @@ All source files, configs, and tests ship in the repo. CI jobs check out the rep
 
 The `smoke` job also runs `cargo sqlx prepare --check` to verify offline metadata is up to date.
 
-The `e2e` job starts a full backend (Rust with PostgreSQL + Redis) and frontend, then runs the Bun-based e2e tests in `e2e/`. It uses a dedicated `JWT_SECRET` and runs with `AUTH_MODE=bearer`.
+The `e2e` job starts a full backend (Rust with PostgreSQL + Redis) and frontend, then runs the Bun-based e2e tests in \`frontend/tests/e2e/\`. It uses a dedicated `JWT_SECRET` and runs with `AUTH_MODE=bearer`.
 
 ```yaml
 jobs:

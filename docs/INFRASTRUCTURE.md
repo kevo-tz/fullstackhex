@@ -49,11 +49,11 @@ docker compose -f compose/monitor.yml up -d
 
 The monitoring stack is defined in `compose/monitor.yml` and is designed to run alongside the main stack.
 
-- Prometheus config: `monitoring/prometheus.yml`
-- Grafana datasource provisioning: `monitoring/grafana/provisioning/datasources/prometheus.yml`
-- Grafana dashboard provisioning: `monitoring/grafana/provisioning/dashboards/dashboards.yml`
-- Auth dashboard: `monitoring/grafana/dashboards/auth.json`
-- Starter dashboard: `monitoring/grafana/dashboards/overview.json`
+- Prometheus config: \`compose/monitoring/prometheus.yml\`
+- Grafana datasource provisioning: \`compose/monitoring/grafana/provisioning/datasources/prometheus.yml\`
+- Grafana dashboard provisioning: \`compose/monitoring/grafana/provisioning/dashboards/dashboards.yml\`
+- Auth dashboard: \`compose/monitoring/grafana/dashboards/auth.json\`
+- Starter dashboard: \`compose/monitoring/grafana/dashboards/overview.json\`
 
 Use the monitoring-specific environment values in `.env` or `.env.prod.example`:
 
@@ -616,8 +616,8 @@ Use `compose/prod.yml` to run all services as Docker containers with no external
 | Service | Image | Internal port | Notes |
 |---------|-------|---------------|-------|
 | nginx | `nginx:alpine` | 80 / 443 | TLS termination, reverse proxy |
-| backend | `Dockerfile.rust` | 8001 | Depends on postgres, redis, python-sidecar |
-| python-sidecar | `Dockerfile.python` | Unix socket | Shares `sidecar_socket` volume with backend |
+| backend | `Dockerfile.rust` | 8001 | Depends on postgres, redis, py-api |
+| py-api | `Dockerfile.python` | Unix socket | Shares `sidecar_socket` volume with backend |
 | frontend | `Dockerfile.frontend` | 4321 | Astro SSR node adapter |
 | postgres | `postgres:18-alpine` | 5432 | Internal only (no host binding) |
 | redis | `redis:8-alpine` | 6379 | Internal only |
@@ -633,19 +633,19 @@ volumes:
     driver: local
 ```
 
-Both `backend` and `python-sidecar` mount this volume at `/tmp/sidecar`. The socket path becomes `/tmp/sidecar/python-sidecar.sock`. Set in `.env`:
+Both `backend` and `py-api` mount this volume at `/tmp/sidecar`. The socket path becomes `/tmp/sidecar/py-api.sock`. Set in `.env`:
 
 ```env
-PYTHON_SIDECAR_SOCKET=/tmp/sidecar/python-sidecar.sock
+PYTHON_SIDECAR_SOCKET=/tmp/sidecar/py-api.sock
 ```
 
 ### TLS Certificates
 
-Place certificates in `nginx/certs/` before starting:
+Place certificates in \`compose/nginx/certs/\` before starting:
 
 ```bash
-nginx/certs/fullchain.pem
-nginx/certs/privkey.pem
+compose/nginx/certs/fullchain.pem
+compose/nginx/certs/privkey.pem
 ```
 
 ### Start Production Stack
@@ -695,9 +695,9 @@ ssh $DEPLOY_USER@$DEPLOY_HOST "docker exec fullstackhex_db pg_dump -U $POSTGRES_
 
 ## Nginx Configuration
 
-Two config files in `nginx/`:
+Two config files in \`compose/nginx/\`:
 
-### `nginx/nginx.conf` — Production reverse proxy
+### \`compose/nginx/nginx.conf\` — Production reverse proxy
 
 Handles TLS termination and routing:
 
@@ -713,7 +713,7 @@ Key features:
 - Gzip compression for text, CSS, JS, JSON
 - OCSP stapling
 
-### `nginx/static.conf` — Optional static file serving
+### \`compose/nginx/static.conf\` — Optional static file serving
 
 Minimal config for serving an Astro **static** build (no SSR) at port 4321. Not used when running Astro in SSR mode with the Node adapter.
 
@@ -738,10 +738,10 @@ docker compose -f compose/monitor.yml up -d
 
 | File | Purpose |
 |------|---------|
-| `monitoring/prometheus.yml` | Scrape targets |
-| `monitoring/grafana/provisioning/datasources/prometheus.yml` | Auto-wire Prometheus as Grafana datasource |
-| `monitoring/grafana/provisioning/dashboards/dashboards.yml` | Dashboard provisioning path |
-| `monitoring/grafana/dashboards/overview.json` | Starter overview dashboard |
+| \`compose/monitoring/prometheus.yml\` | Scrape targets |
+| \`compose/monitoring/grafana/provisioning/datasources/prometheus.yml\` | Auto-wire Prometheus as Grafana datasource |
+| \`compose/monitoring/grafana/provisioning/dashboards/dashboards.yml\` | Dashboard provisioning path |
+| \`compose/monitoring/grafana/dashboards/overview.json\` | Starter overview dashboard |
 
 ### Monitoring `.env` Variables
 
@@ -768,7 +768,7 @@ The `compose/` directory contains Dockerfiles and configuration files used by th
 ```
 compose/
 ├── Dockerfile.rust              # Multi-stage Rust backend build
-├── Dockerfile.python           # Multi-stage Python sidecar build
+├── Dockerfile.python           # Multi-stage py-api build
 ├── Dockerfile.frontend         # Multi-stage Astro frontend build (with nginx)
 ├── nginx/
 │   ├── nginx.conf             # Nginx reverse proxy configuration
@@ -794,10 +794,10 @@ All production Dockerfiles are stored in `compose/` and use the **repository roo
 | Dockerfile | Purpose | Build Context | Description |
 |-----------|---------|--------------|-------------|
 | `compose/Dockerfile.rust` | Rust backend | `..` (repo root) | Multi-stage: builds Rust app, minimal runtime |
-| `compose/Dockerfile.python` | Python sidecar | `..` (repo root) | Multi-stage: installs deps, minimal Python runtime |
+| `compose/Dockerfile.python` | py-api | `..` (repo root) | Multi-stage: installs deps, minimal Python runtime |
 | `compose/Dockerfile.frontend` | Astro frontend | `..` (repo root) | Multi-stage: builds Astro site, serves with nginx |
 
-**Why repo root as context?** Dockerfiles need access to source files in `backend/`, `python-sidecar/`, `frontend/`. Using `..` (parent directory) as context allows Dockerfiles in `compose/` to copy from the repo root.
+**Why repo root as context?** Dockerfiles need access to source files in `backend/`, `py-api/`, `frontend/`. Using `..` (parent directory) as context allows Dockerfiles in `compose/` to copy from the repo root.
 
 Example from `compose/prod.yml`:
 ```yaml

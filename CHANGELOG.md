@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.10.1.0] - 2026-05-08
+
+### Fixed
+- **Dashboard health indicators**: aggregated `/health` endpoint now returns per-service JSON keyed by `rust`, `db`, `redis`, `storage`, `python`, `auth` — frontend dashboard shows green dots for healthy services instead of "All services down"
+
+### Changed
+- **Health endpoint**: `/health` response changed from flat `{"status":"ok"}` to aggregated `{"rust":..., "db":..., ...}` — individual sub-endpoints (`/health/db`, `/health/redis`, etc.) unchanged
+
+---
+
 ## [0.10.0.0] - 2026-05-07
 
 ### Added

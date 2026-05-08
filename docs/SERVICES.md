@@ -71,14 +71,19 @@ impl PythonSidecar {
 GET /health
 ```
 
-Response:
+Response (aggregated — all sub-services checked in a single call):
 ```json
 {
-  "status": "ok"
+  "rust":    { "status": "ok", "service": "api", "version": "0.1.0" },
+  "db":      { "status": "ok" },
+  "redis":   { "status": "ok" },
+  "storage": { "status": "ok", "bucket": "fullstackhex" },
+  "python":  { "status": "unavailable", "error": "socket not found", "fix": "Start the Python sidecar..." },
+  "auth":    { "status": "ok" }
 }
 ```
 
-> **Note:** py-api `/health` response includes an additional field: `{"status": "ok", "service": "py-api"}`.
+Individual sub-endpoints (`/health/db`, `/health/redis`, `/health/storage`, `/health/python`, `/health/auth`) return the same per-service JSON as the keys above.
 
 #### Metrics (Prometheus)
 ```

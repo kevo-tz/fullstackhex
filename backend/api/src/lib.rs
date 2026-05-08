@@ -8,7 +8,7 @@ use axum::{
     routing::get,
 };
 use metrics_exporter_prometheus::PrometheusHandle;
-use python_sidecar::PythonSidecar;
+use py_sidecar::PythonSidecar;
 use serde_json::json;
 use sqlx::PgPool;
 use sqlx::postgres::PgPoolOptions;
@@ -200,52 +200,63 @@ fn no_cache() -> HeaderMap {
     headers
 }
 
-async fn health() -> impl IntoResponse {
+async fn health(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+    let rust = json!({
+        "status": "ok",
+        "service": "api",
+        "version": env!("CARGO_PKG_VERSION")
+    });
+
+    let db = health_db_value(&state).await;
+    let redis = health_redis_value(&state).await;
+    let storage = health_storage_value(&state);
+    let python = health_python_value(&state).await;
+    let auth = health_auth_value(&state);
+
     (
         StatusCode::OK,
         no_cache(),
         Json(json!({
-            "status": "ok",
-            "service": "api",
-            "version": env!("CARGO_PKG_VERSION")
+            "rust": rust,
+            "db": db,
+            "redis": redis,
+            "storage": storage,
+            "python": python,
+            "auth": auth,
         })),
     )
 }
 
-async fn health_auth(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+fn health_auth_value(state: &AppState) -> serde_json::Value {
     if state.auth.is_some() {
-        (StatusCode::OK, no_cache(), Json(json!({ "status": "ok" })))
+        json!({ "status": "ok" })
     } else {
-        (
-            StatusCode::OK,
-            no_cache(),
-            Json(json!({
-                "status": "disabled",
-                "fix": "JWT_SECRET not set or is CHANGE_ME — auth disabled. Set a secure JWT_SECRET in .env and restart."
-            })),
-        )
+        json!({
+            "status": "disabled",
+            "fix": "JWT_SECRET not set or is CHANGE_ME — auth disabled. Set a secure JWT_SECRET in .env and restart."
+        })
     }
 }
 
-async fn health_db(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+async fn health_auth(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+    (StatusCode::OK, no_cache(), Json(health_auth_value(&state)))
+}
+
+async fn health_db_value(state: &AppState) -> serde_json::Value {
     let pool = match &state.db {
         DbStatus::Connected(pool) => Some(pool),
         DbStatus::NotConfigured => None,
         DbStatus::ConnectionFailed(msg) => {
-            return (
-                StatusCode::SERVICE_UNAVAILABLE,
-                no_cache(),
-                Json(json!({
-                    "status": "error",
-                    "error": msg,
-                    "fix": "Check that PostgreSQL is running and DATABASE_URL is correct in .env. Then restart the backend."
-                })),
-            );
+            return json!({
+                "status": "error",
+                "error": msg,
+                "fix": "Check that PostgreSQL is running and DATABASE_URL is correct in .env. Then restart the backend."
+            });
         }
     };
 
     match db::health_check(pool).await {
-        Ok(()) => (StatusCode::OK, no_cache(), Json(json!({ "status": "ok" }))),
+        Ok(()) => json!({ "status": "ok" }),
         Err(e) => {
             let (error, fix) = match &e {
                 db::DbError::NotConfigured => (
@@ -262,56 +273,106 @@ async fn health_db(State(state): State<Arc<AppState>>) -> impl IntoResponse {
                 ),
                 db::DbError::MigrationFailed(_) => (
                     "database migration failed",
-                    "Check the migration files in backend/crates/db/migrations/ and run: make migrate",
+                    "Check the migration files in backend/db/migrations/ and run: make migrate",
                 ),
             };
-            (
-                StatusCode::SERVICE_UNAVAILABLE,
-                no_cache(),
-                Json(json!({ "status": "error", "error": error, "fix": fix })),
-            )
+            json!({ "status": "error", "error": error, "fix": fix })
         }
     }
 }
 
-async fn health_redis(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+async fn health_db(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+    let value = health_db_value(&state).await;
+    let status = if value["status"] == "ok" {
+        StatusCode::OK
+    } else {
+        StatusCode::SERVICE_UNAVAILABLE
+    };
+    (status, no_cache(), Json(value))
+}
+
+async fn health_redis_value(state: &AppState) -> serde_json::Value {
     match &state.redis {
         Some(redis) => match redis.ping().await {
-            Ok(()) => (StatusCode::OK, no_cache(), Json(json!({ "status": "ok" }))),
-            Err(e) => (
-                StatusCode::SERVICE_UNAVAILABLE,
-                no_cache(),
-                Json(json!({ "status": "error", "error": e.to_string() })),
-            ),
+            Ok(()) => json!({ "status": "ok" }),
+            Err(e) => json!({ "status": "error", "error": e.to_string() }),
         },
-        None => (
-            StatusCode::SERVICE_UNAVAILABLE,
-            no_cache(),
-            Json(json!({
-                "status": "error",
-                "error": "Redis not configured",
-                "fix": "Set REDIS_URL in .env and restart the backend."
-            })),
-        ),
+        None => json!({
+            "status": "error",
+            "error": "Redis not configured",
+            "fix": "Set REDIS_URL in .env and restart the backend."
+        }),
+    }
+}
+
+async fn health_redis(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+    let value = health_redis_value(&state).await;
+    let status = if value["status"] == "ok" {
+        StatusCode::OK
+    } else {
+        StatusCode::SERVICE_UNAVAILABLE
+    };
+    (status, no_cache(), Json(value))
+}
+
+fn health_storage_value(state: &AppState) -> serde_json::Value {
+    match &state.storage {
+        Some(s) => json!({ "status": "ok", "bucket": s.config.bucket }),
+        None => json!({
+            "status": "error",
+            "error": "Storage not configured",
+            "fix": "Set RUSTFS_ENDPOINT, RUSTFS_ACCESS_KEY, and RUSTFS_SECRET_KEY in .env."
+        }),
     }
 }
 
 async fn health_storage(State(state): State<Arc<AppState>>) -> impl IntoResponse {
-    match &state.storage {
-        Some(s) => (
-            StatusCode::OK,
-            no_cache(),
-            Json(json!({ "status": "ok", "bucket": s.config.bucket })),
-        ),
-        None => (
-            StatusCode::SERVICE_UNAVAILABLE,
-            no_cache(),
-            Json(json!({
-                "status": "error",
-                "error": "Storage not configured",
-                "fix": "Set RUSTFS_ENDPOINT, RUSTFS_ACCESS_KEY, and RUSTFS_SECRET_KEY in .env."
-            })),
-        ),
+    let value = health_storage_value(&state);
+    let status = if value["status"] == "ok" {
+        StatusCode::OK
+    } else {
+        StatusCode::SERVICE_UNAVAILABLE
+    };
+    (status, no_cache(), Json(value))
+}
+
+async fn health_python_value(state: &AppState) -> serde_json::Value {
+    match state.sidecar.health().await {
+        Ok(v) => json!({
+            "status": v.get("status").and_then(|s| s.as_str()).unwrap_or("unknown"),
+            "service": v.get("service").and_then(|s| s.as_str()).unwrap_or("unknown"),
+            "version": v.get("version").and_then(|s| s.as_str()).unwrap_or("unknown"),
+        }),
+        Err(e) => {
+            let sock_display = state.sidecar.socket_path().display();
+            let (error_msg, fix_msg) = match &e {
+                py_sidecar::SidecarError::SocketNotFound(_) => (
+                    "socket not found".to_string(),
+                    format!("Start the Python sidecar: make dev starts it automatically, or run: cd py-api && uv run uvicorn app.main:app --uds {sock_display}"),
+                ),
+                py_sidecar::SidecarError::ConnectionFailed(msg) => (
+                    format!("connection failed: {msg}"),
+                    format!("Check that the Python sidecar is running. Run: cd py-api && uv run uvicorn app.main:app --uds {sock_display}"),
+                ),
+                py_sidecar::SidecarError::Timeout(d) => (
+                    format!("request timed out after {d:?}"),
+                    format!("The Python sidecar is not responding. Restart it with: cd py-api && uv run uvicorn app.main:app --uds {sock_display}"),
+                ),
+                py_sidecar::SidecarError::InvalidInput(msg) => (
+                    format!("invalid input: {msg}"),
+                    "The request contains invalid characters.".to_string(),
+                ),
+                py_sidecar::SidecarError::InvalidResponse(msg) => (
+                    format!("invalid response: {msg}"),
+                    "The Python sidecar returned an unexpected response. Check its logs for errors.".to_string(),
+                ),
+                py_sidecar::SidecarError::HttpError { status, body } => (
+                    format!("HTTP {status}: {body}"),
+                    "The Python sidecar returned an HTTP error. Check its logs for details.".to_string(),
+                ),
+            };
+            json!({ "status": "unavailable", "error": error_msg, "fix": fix_msg })
+        }
     }
 }
 
@@ -329,60 +390,58 @@ async fn health_python(
         tracing::info!(%trace_id, "health check via sidecar with propagated trace_id");
     }
 
-    let result = if trace_id.is_empty() {
-        state.sidecar.health().await
+    let value = if trace_id.is_empty() {
+        health_python_value(&state).await
     } else {
-        state
+        match state
             .sidecar
             .get_with_trace_id("/health", trace_id, None)
             .await
-    };
-
-    match result {
-        Ok(v) => (
-            StatusCode::OK,
-            no_cache(),
-            Json(json!({
+        {
+            Ok(v) => json!({
                 "status": v.get("status").and_then(|s| s.as_str()).unwrap_or("unknown"),
                 "service": v.get("service").and_then(|s| s.as_str()).unwrap_or("unknown"),
                 "version": v.get("version").and_then(|s| s.as_str()).unwrap_or("unknown"),
-            })),
-        ),
-        Err(e) => {
-            let sock_display = state.sidecar.socket_path().display();
-            let (error_msg, fix_msg) = match &e {
-                python_sidecar::SidecarError::SocketNotFound(_) => (
-                    "socket not found".to_string(),
-                    format!("Start the Python sidecar: make dev starts it automatically, or run: cd python-sidecar && uv run uvicorn app.main:app --uds {sock_display}"),
-                ),
-                python_sidecar::SidecarError::ConnectionFailed(msg) => (
-                    format!("connection failed: {msg}"),
-                    format!("Check that the Python sidecar is running. Run: cd python-sidecar && uv run uvicorn app.main:app --uds {sock_display}"),
-                ),
-                python_sidecar::SidecarError::Timeout(d) => (
-                    format!("request timed out after {d:?}"),
-                    format!("The Python sidecar is not responding. Restart it with: cd python-sidecar && uv run uvicorn app.main:app --uds {sock_display}"),
-                ),
-                python_sidecar::SidecarError::InvalidInput(msg) => (
-                    format!("invalid input: {msg}"),
-                    "The request contains invalid characters.".to_string(),
-                ),
-                python_sidecar::SidecarError::InvalidResponse(msg) => (
-                    format!("invalid response: {msg}"),
-                    "The Python sidecar returned an unexpected response. Check its logs for errors.".to_string(),
-                ),
-                python_sidecar::SidecarError::HttpError { status, body } => (
-                    format!("HTTP {status}: {body}"),
-                    "The Python sidecar returned an HTTP error. Check its logs for details.".to_string(),
-                ),
-            };
-            (
-                StatusCode::SERVICE_UNAVAILABLE,
-                no_cache(),
-                Json(json!({ "status": "unavailable", "error": error_msg, "fix": fix_msg })),
-            )
+            }),
+            Err(e) => {
+                let sock_display = state.sidecar.socket_path().display();
+                let (error_msg, fix_msg) = match &e {
+                    py_sidecar::SidecarError::SocketNotFound(_) => (
+                        "socket not found".to_string(),
+                        format!("Start the Python sidecar: make dev starts it automatically, or run: cd py-api && uv run uvicorn app.main:app --uds {sock_display}"),
+                    ),
+                    py_sidecar::SidecarError::ConnectionFailed(msg) => (
+                        format!("connection failed: {msg}"),
+                        format!("Check that the Python sidecar is running. Run: cd py-api && uv run uvicorn app.main:app --uds {sock_display}"),
+                    ),
+                    py_sidecar::SidecarError::Timeout(d) => (
+                        format!("request timed out after {d:?}"),
+                        format!("The Python sidecar is not responding. Restart it with: cd py-api && uv run uvicorn app.main:app --uds {sock_display}"),
+                    ),
+                    py_sidecar::SidecarError::InvalidInput(msg) => (
+                        format!("invalid input: {msg}"),
+                        "The request contains invalid characters.".to_string(),
+                    ),
+                    py_sidecar::SidecarError::InvalidResponse(msg) => (
+                        format!("invalid response: {msg}"),
+                        "The Python sidecar returned an unexpected response. Check its logs for errors.".to_string(),
+                    ),
+                    py_sidecar::SidecarError::HttpError { status, body } => (
+                        format!("HTTP {status}: {body}"),
+                        "The Python sidecar returned an HTTP error. Check its logs for details.".to_string(),
+                    ),
+                };
+                json!({ "status": "unavailable", "error": error_msg, "fix": fix_msg })
+            }
         }
-    }
+    };
+
+    let status = if value["status"] == "ok" {
+        StatusCode::OK
+    } else {
+        StatusCode::SERVICE_UNAVAILABLE
+    };
+    (status, no_cache(), Json(value))
 }
 
 async fn metrics_handler(State(state): State<Arc<AppState>>) -> impl IntoResponse {
@@ -401,7 +460,7 @@ async fn metrics_python_proxy(State(state): State<Arc<AppState>>) -> impl IntoRe
             [(header::CONTENT_TYPE, "text/plain; charset=utf-8")],
             body,
         ),
-        Err(python_sidecar::SidecarError::HttpError { status, body }) => {
+        Err(py_sidecar::SidecarError::HttpError { status, body }) => {
             let code = StatusCode::from_u16(status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
             tracing::warn!(status = %status, "Python sidecar returned HTTP error for /metrics");
             (

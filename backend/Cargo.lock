@@ -44,7 +44,7 @@ dependencies = [
  "dotenvy",
  "metrics",
  "metrics-exporter-prometheus",
- "python-sidecar",
+ "py-sidecar",
  "reqwest",
  "serde_json",
  "serial_test",
@@ -1944,7 +1944,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "python-sidecar"
+name = "py-sidecar"
 version = "0.1.0"
 dependencies = [
  "serde_json",

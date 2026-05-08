@@ -1,6 +1,6 @@
 # Storage
 
-S3-compatible object storage via `crates/storage/`. Backed by RustFS (local) or any S3-compatible endpoint (MinIO, AWS S3, Cloudflare R2).
+S3-compatible object storage via \`storage/\`. Backed by RustFS (local) or any S3-compatible endpoint (MinIO, AWS S3, Cloudflare R2).
 
 ## Configuration
 

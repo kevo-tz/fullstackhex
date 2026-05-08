@@ -26,11 +26,11 @@ docker compose -f compose/monitor.yml up -d
 
 ## Pre-configured Dashboards
 
-All dashboards are auto-provisioned from `monitoring/grafana/dashboards/`.
+All dashboards are auto-provisioned from \`compose/monitoring/grafana/dashboards/`.
 
 ### FullStackHex Overview Dashboard
 
-Located at: `monitoring/grafana/dashboards/overview.json`
+Located at: \`compose/monitoring/grafana/dashboards/overview.json`
 
 **Panels included:**
 1. **Service Health Overview** - Shows Up/Down status for all services
@@ -41,31 +41,31 @@ Located at: `monitoring/grafana/dashboards/overview.json`
 
 ### Auth Dashboard
 
-Located at: `monitoring/grafana/dashboards/auth.json`
+Located at: \`compose/monitoring/grafana/dashboards/auth.json`
 
 **Panels included:** Login success/failure rates, registration activity, token issuance and refresh counts, active sessions, custom auth request rate (`auth_requests_total`), auth error rate by type (`auth_errors_total`), auth p50/p99 latency (`auth_latency_seconds`), auth errors cumulative, OAuth callbacks by provider.
 
 ### Database Dashboard
 
-Located at: `monitoring/grafana/dashboards/database.json`
+Located at: \`compose/monitoring/grafana/dashboards/database.json`
 
 **Panels:** Active connections, query rate, cache hit ratio, slow queries.
 
 ### Python Sidecar Dashboard
 
-Located at: `monitoring/grafana/dashboards/python.json`
+Located at: \`compose/monitoring/grafana/dashboards/python.json`
 
 **Panels:** Request rate, error rate, p99 latency, socket health.
 
 ### Infrastructure Dashboard
 
-Located at: `monitoring/grafana/dashboards/infra.json`
+Located at: \`compose/monitoring/grafana/dashboards/infra.json`
 
 **Panels:** CPU usage, memory usage, disk I/O, nginx request rate.
 
 ### SLO Dashboard
 
-Located at: `monitoring/grafana/dashboards/slo.json`
+Located at: \`compose/monitoring/grafana/dashboards/slo.json`
 
 **Panels:** Error rate vs SLO, p99 latency vs SLO, uptime %, error budget burn.
 
@@ -76,7 +76,7 @@ Located at: `monitoring/grafana/dashboards/slo.json`
 If the dashboard isn't auto-loaded:
 
 1. Go to Grafana → Dashboards → Import
-2. Upload `monitoring/grafana/dashboards/overview.json`
+2. Upload \`compose/monitoring/grafana/dashboards/overview.json`
 3. Select "Prometheus" as datasource
 4. Click "Import"
 
@@ -146,9 +146,9 @@ Evaluation group: warning
 
 ### In Prometheus (Alertmanager)
 
-Alert rules are defined in `monitoring/alerts.yml` and loaded by Prometheus via `rule_files` in `prometheus.yml`.
+Alert rules are defined in \`compose/monitoring/alerts.yml\` and loaded by Prometheus via `rule_files` in `prometheus.yml`.
 
-> **Note:** Alert rules are commented out by default (opt-in). Uncomment the `groups` block in `monitoring/alerts.yml` to enable alerting.
+> **Note:** Alert rules are commented out by default (opt-in). Uncomment the `groups` block in \`compose/monitoring/alerts.yml\` to enable alerting.
 
 Example rules included:
 
@@ -190,10 +190,10 @@ In production, the `/metrics` endpoint is restricted to the internal Docker netw
 
 ### How it works
 
-1. **Tower middleware** (`backend/crates/api/src/metrics.rs::track_metrics`) records every request:
+1. **Tower middleware** (\`backend/api/src/metrics.rs::track_metrics\`) records every request:
    - `http_requests_total` counter with `method`, `route`, `status` labels
    - `http_request_duration_seconds` histogram with custom buckets
-2. **Auth middleware** (`backend/crates/auth/src/metrics.rs::track_auth_metrics`) records auth-specific metrics on auth routes:
+2. **Auth middleware** (\`backend/auth/src/metrics.rs::track_auth_metrics\`) records auth-specific metrics on auth routes:
    - `auth_requests_total` counter with `method`, `path` labels
    - `auth_latency_seconds` histogram with custom buckets (1ms–5s)
    - `auth_errors_total` counter with `error_type`, `status` labels on 4xx/5xx
@@ -210,7 +210,7 @@ To prevent cardinality explosion, the middleware normalizes paths:
 - `/health`, `/health/db`, `/health/python` → exact match
 - Everything else → `unknown`
 
-Add new routes to `normalize_route()` in `backend/crates/api/src/metrics.rs` to track them correctly.
+Add new routes to `normalize_route()` in \`backend/api/src/metrics.rs\` to track them correctly.
 
 ## Troubleshooting
 
@@ -225,7 +225,7 @@ Add new routes to `normalize_route()` in `backend/crates/api/src/metrics.rs` to 
 ### Metrics Not Showing in Prometheus
 
 1. Check Rust backend exposes `/metrics`: `curl http://localhost:8001/metrics`
-2. Verify Prometheus scrape config: `monitoring/prometheus.yml`
+2. Verify Prometheus scrape config: \`compose/monitoring/prometheus.yml\`
 3. Check Prometheus targets: http://localhost:9090/targets
 
 ### Dashboard Panels Empty

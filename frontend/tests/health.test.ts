@@ -16,9 +16,20 @@ function makeResponse(json: () => Promise<unknown>): Response {
 
 describe("aggregateHealth", () => {
   test("all endpoints healthy returns ok statuses", async () => {
-    const fetchImpl = mock(async (_url: string, _init?: RequestInit) =>
-      makeResponse(async () => ({ status: "ok" })),
-    );
+    const fetchImpl = mock(async (url: string, _init?: RequestInit) => {
+      // /health returns nested { rust: { status }, db, redis, ... }
+      if ((url as string).endsWith("/health")) {
+        return makeResponse(async () => ({
+          rust: { status: "ok", service: "api", version: "0.1.0" },
+          db: { status: "ok" },
+          redis: { status: "ok" },
+          storage: { status: "ok" },
+          python: { status: "ok" },
+          auth: { status: "ok" },
+        }));
+      }
+      return makeResponse(async () => ({ status: "ok" }));
+    });
     const result = await aggregateHealth(fetchImpl as unknown as typeof fetch);
     expect((result.rust as Record<string, unknown>).status).toBe("ok");
     expect((result.db as Record<string, unknown>).status).toBe("ok");
@@ -50,6 +61,17 @@ describe("aggregateHealth", () => {
           throw new SyntaxError("bad JSON");
         });
       }
+      // /health returns nested structure
+      if ((url as string).endsWith("/health")) {
+        return makeResponse(async () => ({
+          rust: { status: "ok", service: "api", version: "0.1.0" },
+          db: { status: "ok" },
+          redis: { status: "ok" },
+          storage: { status: "ok" },
+          python: { status: "ok" },
+          auth: { status: "ok" },
+        }));
+      }
       return makeResponse(async () => ({ status: "ok" }));
     });
     const result = await aggregateHealth(fetchImpl as unknown as typeof fetch);
@@ -57,11 +79,19 @@ describe("aggregateHealth", () => {
   });
 
   test("mixed: rust ok, db error, python unavailable", async () => {
-    let calls = 0;
-    const fetchImpl = mock(async () => {
-      calls++;
-      if (calls === 1) return makeResponse(async () => ({ status: "ok" }));
-      if (calls === 2) throw new Error("db down");
+    const fetchImpl = mock(async (url: string) => {
+      // /health returns nested structure with rust ok
+      if ((url as string).endsWith("/health")) {
+        return makeResponse(async () => ({
+          rust: { status: "ok", service: "api", version: "0.1.0" },
+          db: { status: "ok" },
+          redis: { status: "ok" },
+          storage: { status: "ok" },
+          python: { status: "ok" },
+          auth: { status: "ok" },
+        }));
+      }
+      if ((url as string).endsWith("/health/db")) throw new Error("db down");
       return makeResponse(async () => ({ status: "unavailable" }));
     });
     const result = await aggregateHealth(fetchImpl as unknown as typeof fetch);
@@ -178,8 +208,19 @@ describe("aggregateHealth", () => {
 
   test("x-trace-id header is sent in each fetch call", async () => {
     const capturedHeaders: Record<string, string>[] = [];
-    const fetchImpl = mock(async (_url: string, init?: RequestInit) => {
+    const fetchImpl = mock(async (url: string, init?: RequestInit) => {
       capturedHeaders.push((init?.headers as Record<string, string>) || {});
+      // /health returns nested structure
+      if ((url as string).endsWith("/health")) {
+        return makeResponse(async () => ({
+          rust: { status: "ok", service: "api", version: "0.1.0" },
+          db: { status: "ok" },
+          redis: { status: "ok" },
+          storage: { status: "ok" },
+          python: { status: "ok" },
+          auth: { status: "ok" },
+        }));
+      }
       return makeResponse(async () => ({ status: "ok" }));
     });
 
@@ -193,9 +234,20 @@ describe("aggregateHealth", () => {
   });
 
   test("result contains entries for all services", async () => {
-    const fetchImpl = mock(async () =>
-      makeResponse(async () => ({ status: "ok" })),
-    );
+    const fetchImpl = mock(async (url: string) => {
+      // /health returns nested structure
+      if ((url as string).endsWith("/health")) {
+        return makeResponse(async () => ({
+          rust: { status: "ok", service: "api", version: "0.1.0" },
+          db: { status: "ok" },
+          redis: { status: "ok" },
+          storage: { status: "ok" },
+          python: { status: "ok" },
+          auth: { status: "ok" },
+        }));
+      }
+      return makeResponse(async () => ({ status: "ok" }));
+    });
     const result = await aggregateHealth(fetchImpl as unknown as typeof fetch);
     expect(result.rust).toBeDefined();
     expect(result.db).toBeDefined();

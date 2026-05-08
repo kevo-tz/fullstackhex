@@ -28,7 +28,7 @@
       },
       "targets": [
         {
-          "expr": "up{job=~\"rust-backend|frontend|python-sidecar\"}",
+          "expr": "up{job=~\"rust-backend|frontend|py-api\"}",
           "legendFormat": "{{job}}"
         }
       ],

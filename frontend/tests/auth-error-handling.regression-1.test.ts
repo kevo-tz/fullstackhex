@@ -34,9 +34,14 @@ describe("AuthForm error extraction", () => {
 
   test("validation error returns correct message", () => {
     const apiResponse = {
-      error: { code: "VALIDATION_ERROR", message: "Password must be at least 8 characters" },
+      error: {
+        code: "VALIDATION_ERROR",
+        message: "Password must be at least 8 characters",
+      },
     };
-    expect(extractError(apiResponse)).toBe("Password must be at least 8 characters");
+    expect(extractError(apiResponse)).toBe(
+      "Password must be at least 8 characters",
+    );
   });
 
   test("missing error returns fallback", () => {

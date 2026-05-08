@@ -1,5 +1,10 @@
 import { describe, expect, test, mock } from "bun:test";
-import { aggregateHealth, isFullOutage, getDiagnostics, createRetryController } from "../src/lib/health";
+import {
+  aggregateHealth,
+  isFullOutage,
+  getDiagnostics,
+  createRetryController,
+} from "../src/lib/health";
 
 function makeResponse(json: () => Promise<unknown>): Response {
   return {
@@ -75,7 +80,9 @@ describe("aggregateHealth", () => {
       return makeResponse(async () => ({ status: "ok" }));
     });
     const result = await aggregateHealth(fetchImpl as unknown as typeof fetch);
-    expect((result.python as Record<string, unknown>).status).toBe("unavailable");
+    expect((result.python as Record<string, unknown>).status).toBe(
+      "unavailable",
+    );
   });
 
   test("mixed: rust ok, db error, python unavailable", async () => {
@@ -97,7 +104,9 @@ describe("aggregateHealth", () => {
     const result = await aggregateHealth(fetchImpl as unknown as typeof fetch);
     expect((result.rust as Record<string, unknown>).status).toBe("ok");
     expect((result.db as Record<string, unknown>).status).toBe("error");
-    expect((result.python as Record<string, unknown>).status).toBe("unavailable");
+    expect((result.python as Record<string, unknown>).status).toBe(
+      "unavailable",
+    );
   });
 
   describe("diagnostics", () => {
@@ -175,7 +184,13 @@ describe("aggregateHealth", () => {
 
     test("createRetryController starts timer and calls callback", async () => {
       const calls: number[] = [];
-      const ctrl = createRetryController(() => { calls.push(Date.now()); }, 50000, 50);
+      const ctrl = createRetryController(
+        () => {
+          calls.push(Date.now());
+        },
+        50000,
+        50,
+      );
       expect(calls.length).toBe(0);
       ctrl.start();
       await new Promise((r) => setTimeout(r, 80));
@@ -185,7 +200,13 @@ describe("aggregateHealth", () => {
 
     test("createRetryController cancel stops further calls", async () => {
       const calls: number[] = [];
-      const ctrl = createRetryController(() => { calls.push(Date.now()); }, 50000, 50);
+      const ctrl = createRetryController(
+        () => {
+          calls.push(Date.now());
+        },
+        50000,
+        50,
+      );
       ctrl.start();
       await new Promise((r) => setTimeout(r, 20));
       ctrl.cancel();
@@ -195,7 +216,13 @@ describe("aggregateHealth", () => {
 
     test("createRetryController reset clears and restarts delay", async () => {
       const calls: number[] = [];
-      const ctrl = createRetryController(() => { calls.push(Date.now()); }, 50000, 50);
+      const ctrl = createRetryController(
+        () => {
+          calls.push(Date.now());
+        },
+        50000,
+        50,
+      );
       ctrl.start();
       await new Promise((r) => setTimeout(r, 80));
       expect(calls.length).toBe(1);

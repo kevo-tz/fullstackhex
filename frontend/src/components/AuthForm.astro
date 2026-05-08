@@ -133,7 +133,7 @@ const altText = isLogin ? "Need an account? Register" : "Already have an account
       showError(err instanceof Error ? err.message : "Something went wrong");
     } finally {
       btn.disabled = false;
-      btn.textContent = "{action}";
+      btn.textContent = isLogin ? "Sign in" : "Create account";
     }
   });
 </script>

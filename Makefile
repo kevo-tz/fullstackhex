@@ -5,6 +5,8 @@
 .PHONY: logs-db logs-redis deploy-check prod-restart prod-up prod-down
 .PHONY: status run-dev check-cargo-watch status-sh
 
+APP_NAME ?= fullstackhex
+
 # Default values (override with: make up POSTGRES_PASSWORD=mypassword)
 COMPOSE_DEV = docker compose -f compose/dev.yml --env-file .env
 COMPOSE_PROD = docker compose -f compose/prod.yml --env-file .env
@@ -29,7 +31,7 @@ START_DEPS = \
 	done; \
 	echo "PostgreSQL ready (or timeout — Rust will retry connections)"; \
 	echo "Starting Python sidecar..."; \
-	cd python-sidecar && set -a && . ../.env && set +a && uv run uvicorn app.main:app --uds $(PYTHON_SOCK) & \
+	cd py-api && set -a && . ../.env && set +a && uv run uvicorn app.main:app --uds $(PYTHON_SOCK) & \
 	echo $$! > $(PID_DIR)/python.pid; \
 	echo "Starting frontend..."; \
 	cd frontend && bun run dev & \
@@ -234,7 +236,7 @@ verify-health:
 	    echo ""; \
 	    echo "Troubleshooting:"; \
 	    echo "  - Is the Rust backend running? Run: cd backend && cargo run -p api"; \
-	    echo "  - Is the Python sidecar running? Run: cd python-sidecar && uv run uvicorn app.main:app --uds $(PYTHON_SOCK)"; \
+	    echo "  - Is the Python sidecar running? Run: cd py-api && uv run uvicorn app.main:app --uds $(PYTHON_SOCK)"; \
 	    echo "  - Is PostgreSQL running? Run: docker compose -f compose/dev.yml up -d postgres"; \
 	    exit 1; \
 	  fi; \
@@ -337,7 +339,7 @@ logs-redis:
 logs-python:
 	@echo "Python sidecar runs directly (not in compose)."
 	@echo "  View logs in the terminal where 'make dev' or 'make watch' is running."
-	@echo "  Or restart manually with: cd python-sidecar && uv run uvicorn app.main:app --uds $(PYTHON_SOCK)"
+	@echo "  Or restart manually with: cd py-api && uv run uvicorn app.main:app --uds $(PYTHON_SOCK)"
 
 # Testing
 test: test-rust test-python test-frontend
@@ -348,7 +350,7 @@ test-rust:
 
 test-python:
 	@echo "Running Python tests..."
-	cd python-sidecar && uv run pytest
+	cd py-api && uv run pytest
 
 test-frontend:
 	@echo "Running frontend tests (bun)..."
@@ -358,14 +360,14 @@ test-frontend:
 
 test-socket-ci:
 	@echo "Starting test sidecar for socket integration tests..."
-	cd python-sidecar && PYTHONUNBUFFERED=1 uv run uvicorn app.main:app --uds $(PYTHON_TEST_SOCK) & \
+	cd py-api && PYTHONUNBUFFERED=1 uv run uvicorn app.main:app --uds $(PYTHON_TEST_SOCK) & \
 	PID=$$!; \
 	for i in $$(seq 1 20); do \
 	  test -S $(PYTHON_TEST_SOCK) && break; \
 	  sleep 0.3; \
 	done; \
 	echo "Running socket integration tests..."; \
-	cd backend && PYTHON_SIDECAR_SOCKET=$(PYTHON_TEST_SOCK) cargo test -p python-sidecar -- --ignored; \
+	cd backend && PYTHON_SIDECAR_SOCKET=$(PYTHON_TEST_SOCK) cargo test -p py-sidecar -- --ignored; \
 	R=$$?; \
 	kill $$PID 2>/dev/null || true; \
 	rm -f $(PYTHON_TEST_SOCK); \
@@ -376,7 +378,7 @@ test-contract:
 
 test-e2e:
 	@echo "Running e2e auth tests..."
-	cd e2e && bun test
+	cd frontend/tests/e2e && bun test
 
 test-e2e-shell:
 	@echo "Running e2e shell test..."
@@ -411,7 +413,7 @@ deploy: check-env
 	@test -n "$(DEPLOY_USER)" || { echo "ERROR: DEPLOY_USER not set in .env"; exit 1; }
 	@test -n "$(DEPLOY_PATH)" || { echo "ERROR: DEPLOY_PATH not set in .env"; exit 1; }
 	rsync -avz --exclude='.git' --exclude='target' --exclude='node_modules' \
-	  compose/ nginx/ scripts/ Makefile .env \
+	  compose/ scripts/ Makefile .env \
 	  $(DEPLOY_USER)@$(DEPLOY_HOST):$(DEPLOY_PATH)/
 	ssh $(DEPLOY_USER)@$(DEPLOY_HOST) "cd $(DEPLOY_PATH) && chmod 600 .env && docker compose -f compose/prod.yml up -d --wait"
 	$(MAKE) deploy-check

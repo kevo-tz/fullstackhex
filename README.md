@@ -1,6 +1,6 @@
 # FullStackHex
 
-A production-ready full-stack template combining a Rust/Axum backend, Python sidecar (FastAPI over Unix socket IPC), Astro frontend, and six pre-wired infrastructure components — all using the latest available tooling.
+A production-ready full-stack template combining a Rust/Axum backend, Python FastAPI sidecar (`py-api/`), Astro frontend, and six pre-wired infrastructure components — all using the latest available tooling.
 
 ## Stack at a Glance
 
@@ -8,14 +8,14 @@ A production-ready full-stack template combining a Rust/Axum backend, Python sid
 |-------|-----------|
 | Frontend | Astro + Bun + Tailwind CSS |
 | Backend | Rust (Axum, edition 2024) |
-| Python sidecar | FastAPI + uv, connected via Unix domain socket |
+| Python API (`py-api/`) | FastAPI + uv, connected via Unix domain socket |
 | Cache | Redis 8 |
 | Database | PostgreSQL 18 |
 | Object storage | RustFS (S3-compatible) |
 
 ## Key Features
 
-- **Rust + Python sidecar** — Rust backend connects to a running Python FastAPI sidecar via Unix domain socket for low-latency IPC without network overhead.
+- **Rust + Python API (`py-api/`)** — Rust backend connects to a running Python FastAPI sidecar via Unix domain socket for low-latency IPC without network overhead.
 - **Latest tooling** — Rust stable (edition 2024), Bun (latest), uv (latest), Astro v6.
 - **Ships complete** — every source file, config, and test is committed. Clone and run — no scaffolding step.
 - **`make setup`** — installs Rust, Bun, uv and creates `.env` from `.env.example`. That's all first-time setup requires.

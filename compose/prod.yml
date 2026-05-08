@@ -3,12 +3,12 @@
 #
 # Prerequisites:
 #   - Copy .env.example to .env and set all required values (no CHANGE_ME left)
-#   - TLS certificates in nginx/certs/ (fullchain.pem and privkey.pem)
+#   - TLS certificates in compose/nginx/certs/ (fullchain.pem and privkey.pem)
 #
 # Services:
 #   - nginx          (ports 80, 443)  - Reverse proxy + TLS termination
 #   - backend        (internal :8001) - Rust/Axum API server
-#   - python-sidecar (internal socket) - Python FastAPI sidecar (managed by Rust)
+#   - py-api (internal socket) - Python FastAPI sidecar (managed by Rust)
 #   - frontend       (internal :4321) - Astro SSR Node server
 #   - postgres       (internal :5432) - Primary database
 #   - redis          (internal :6379) - Cache layer
@@ -76,7 +76,7 @@ services:
       RUSTFS_ENDPOINT: ${RUSTFS_ENDPOINT:?RUSTFS_ENDPOINT must be set in .env}
       RUSTFS_ACCESS_KEY: ${RUSTFS_ACCESS_KEY:?RUSTFS_ACCESS_KEY must be set in .env}
       RUSTFS_SECRET_KEY: ${RUSTFS_SECRET_KEY:?RUSTFS_SECRET_KEY must be set in .env}
-      PYTHON_SIDECAR_SOCKET: /tmp/sidecar/python-sidecar.sock
+      PYTHON_SIDECAR_SOCKET: /tmp/sidecar/py-api.sock
     volumes:
       - sidecar_socket:/tmp/sidecar
     depends_on:
@@ -84,7 +84,7 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-      python-sidecar:
+      py-api:
         condition: service_started
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
@@ -105,20 +105,20 @@ services:
         max-size: "10m"
         max-file: "3"
 
-  python-sidecar:
+  py-api:
     build:
       context: ..
       dockerfile: compose/Dockerfile.python
-    image: fullstackhex/python-sidecar:${VERSION:-latest}
-    container_name: fullstackhex_python
+    image: fullstackhex/py-api:${VERSION:-latest}
+    container_name: fullstackhex_py_api
     restart: unless-stopped
     environment:
       PYTHON_LOG_LEVEL: ${PYTHON_LOG_LEVEL:-info}
-      PYTHON_SIDECAR_SOCKET: /tmp/sidecar/python-sidecar.sock
+      PYTHON_SIDECAR_SOCKET: /tmp/sidecar/py-api.sock
     volumes:
       - sidecar_socket:/tmp/sidecar
     healthcheck:
-      test: ["CMD-SHELL", "test -S /tmp/sidecar/python-sidecar.sock"]
+      test: ["CMD-SHELL", "test -S /tmp/sidecar/py-api.sock"]
       interval: 10s
       timeout: 3s
       retries: 5

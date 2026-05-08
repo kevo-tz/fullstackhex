@@ -102,6 +102,40 @@ async function handleService(
   }
 }
 
+async function handleRustHealth(
+  fetchImpl: typeof fetch,
+  apiBase: string,
+  traceId: string,
+): Promise<{ status: string }> {
+  try {
+    const res = await fetchImpl(`${apiBase}/health`, {
+      headers: { "x-trace-id": traceId },
+    });
+    const d = await res.json();
+    const rust = (d as Record<string, unknown>).rust as Record<string, unknown> | undefined;
+    const status = rust?.status ?? "unknown";
+    jsonLog({
+      timestamp: new Date().toISOString(),
+      level: "info",
+      target: "frontend:health",
+      message: "rust health response",
+      trace_id: traceId,
+      target_service: "api",
+      response_status: status,
+    });
+    return { status: String(status) };
+  } catch {
+    jsonLog({
+      timestamp: new Date().toISOString(),
+      level: "warn",
+      target: "frontend:health",
+      message: "rust health fetch/parse failed",
+      trace_id: traceId,
+    });
+    return { status: "error" };
+  }
+}
+
 export async function aggregateHealth(
   fetchImpl: typeof fetch,
   apiBase = "http://localhost:8001",
@@ -118,7 +152,7 @@ export async function aggregateHealth(
   });
 
   const [rustResult, dbResult, redisResult, storageResult, pythonResult, authResult] = await Promise.all([
-    handleService(fetchImpl, `${apiBase}/health`, "rust", "api", "error", traceId),
+    handleRustHealth(fetchImpl, apiBase, traceId),
     handleService(fetchImpl, `${apiBase}/health/db`, "db", "db", "error", traceId),
     handleService(fetchImpl, `${apiBase}/health/redis`, "redis", "redis", "unavailable", traceId),
     handleService(fetchImpl, `${apiBase}/health/storage`, "storage", "storage", "unavailable", traceId),

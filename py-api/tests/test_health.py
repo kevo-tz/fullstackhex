@@ -20,7 +20,7 @@ def test_health_with_trace_id_header() -> None:
 
     assert response.status_code == 200
     assert response.json()["status"] == "ok"
-    assert response.json()["service"] == "python-sidecar"
+    assert response.json()["service"] == "py-api"
 
 
 def test_health_without_trace_id_header() -> None:

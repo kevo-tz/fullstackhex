@@ -8,7 +8,7 @@ use serde::Serialize;
 use sha2::{Digest, Sha256};
 use std::time::Duration;
 
-use hmac::{Hmac, Mac};
+use hmac::{Hmac, KeyInit, Mac};
 
 /// Build a safe object URL from endpoint, bucket, and key.
 fn build_object_url(endpoint: &str, bucket: &str, key: &str) -> Result<url::Url, url::ParseError> {
@@ -589,7 +589,7 @@ fn sign_request_inner(
 fn sha256_hex(data: &[u8]) -> String {
     let mut hasher = Sha256::new();
     hasher.update(data);
-    format!("{:x}", hasher.finalize())
+    hex::encode(hasher.finalize())
 }
 
 /// Compute HMAC-SHA256.

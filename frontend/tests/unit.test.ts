@@ -21,7 +21,7 @@ describe("frontend generated unit test", () => {
 
     const mockResponse: HealthResponse = {
       status: "ok",
-      service: "api"
+      service: "api",
     };
 
     expect(mockResponse.status).toBe("ok");
@@ -43,13 +43,13 @@ describe("Python card detail logic", () => {
   }
 
   test("shows detail when present", () => {
-    expect(computeDetailText({ detail: { uptime: 42 } }))
-      .toContain("uptime");
+    expect(computeDetailText({ detail: { uptime: 42 } })).toContain("uptime");
   });
 
   test("shows error when detail absent", () => {
-    expect(computeDetailText({ error: "connection failed" }))
-      .toBe("connection failed");
+    expect(computeDetailText({ error: "connection failed" })).toBe(
+      "connection failed",
+    );
   });
 
   test("clears to empty string when neither detail nor error present", () => {

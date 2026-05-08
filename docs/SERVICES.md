@@ -285,7 +285,7 @@ bun run preview
 ### Rust → Python (Unix Socket)
 
 ```rust
-// From Rust crate: python-sidecar
+// From Rust crate: py-sidecar
 use std::time::Duration;
 
 async fn call_python() -> Result<serde_json::Value, Box<dyn std::error::Error>> {

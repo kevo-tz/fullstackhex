@@ -7,11 +7,15 @@ function buildAuthFormHTML(mode: "login" | "register"): string {
   <div class="card">
     <div class="error-msg" id="auth-error"></div>
     <form id="auth-form" method="post" data-is-login="${isLogin}">
-      ${isLogin ? "" : `
+      ${
+        isLogin
+          ? ""
+          : `
       <div class="form-group">
         <label for="name">Name</label>
         <input id="name" name="name" type="text" placeholder="Your name (optional)" />
-      </div>`}
+      </div>`
+      }
       <div class="form-group">
         <label for="email">Email</label>
         <input id="email" name="email" type="email" placeholder="you@example.com" required />
@@ -50,8 +54,12 @@ function hideError(): void {
 }
 
 function renderOAuth(providers: string[]): void {
-  const section = document.getElementById("oauth-section") as HTMLDivElement | null;
-  const buttons = document.getElementById("oauth-buttons") as HTMLDivElement | null;
+  const section = document.getElementById(
+    "oauth-section",
+  ) as HTMLDivElement | null;
+  const buttons = document.getElementById(
+    "oauth-buttons",
+  ) as HTMLDivElement | null;
   if (!section || !buttons) return;
   if (providers.length === 0) {
     section.style.display = "none";
@@ -59,7 +67,10 @@ function renderOAuth(providers: string[]): void {
   }
   section.style.display = "block";
   buttons.innerHTML = providers
-    .map(p => `<a href="/api/auth/oauth/${p}" class="btn btn-oauth">${p[0].toUpperCase() + p.slice(1)}</a>`)
+    .map(
+      (p) =>
+        `<a href="/api/auth/oauth/${p}" class="btn btn-oauth">${p[0].toUpperCase() + p.slice(1)}</a>`,
+    )
     .join("");
 }
 
@@ -70,7 +81,9 @@ describe("AuthForm", () => {
     });
 
     test("renders sign in title", () => {
-      const btn = document.getElementById("submit-btn") as HTMLButtonElement | null;
+      const btn = document.getElementById(
+        "submit-btn",
+      ) as HTMLButtonElement | null;
       expect(btn).not.toBeNull();
       expect(btn!.textContent).toBe("Sign in");
     });
@@ -90,18 +103,24 @@ describe("AuthForm", () => {
     });
 
     test("submit button enabled by default", () => {
-      const btn = document.getElementById("submit-btn") as HTMLButtonElement | null;
+      const btn = document.getElementById(
+        "submit-btn",
+      ) as HTMLButtonElement | null;
       expect(btn!.disabled).toBe(false);
     });
 
     test("link points to register", () => {
-      const link = document.querySelector(".form-footer a") as HTMLAnchorElement | null;
+      const link = document.querySelector(
+        ".form-footer a",
+      ) as HTMLAnchorElement | null;
       expect(link).not.toBeNull();
       expect(link!.getAttribute("href")).toBe("/register");
     });
 
     test("link text shows register prompt", () => {
-      const link = document.querySelector(".form-footer a") as HTMLAnchorElement | null;
+      const link = document.querySelector(
+        ".form-footer a",
+      ) as HTMLAnchorElement | null;
       expect(link!.textContent).toBe("Need an account? Register");
     });
 
@@ -116,7 +135,9 @@ describe("AuthForm", () => {
     });
 
     test("form data-is-login attribute is true", () => {
-      const form = document.getElementById("auth-form") as HTMLFormElement | null;
+      const form = document.getElementById(
+        "auth-form",
+      ) as HTMLFormElement | null;
       expect(form!.dataset.isLogin).toBe("true");
     });
   });
@@ -127,7 +148,9 @@ describe("AuthForm", () => {
     });
 
     test("renders create account title", () => {
-      const btn = document.getElementById("submit-btn") as HTMLButtonElement | null;
+      const btn = document.getElementById(
+        "submit-btn",
+      ) as HTMLButtonElement | null;
       expect(btn!.textContent).toBe("Create account");
     });
 
@@ -146,17 +169,23 @@ describe("AuthForm", () => {
     });
 
     test("link points to login", () => {
-      const link = document.querySelector(".form-footer a") as HTMLAnchorElement | null;
+      const link = document.querySelector(
+        ".form-footer a",
+      ) as HTMLAnchorElement | null;
       expect(link!.getAttribute("href")).toBe("/login");
     });
 
     test("link text shows sign in prompt", () => {
-      const link = document.querySelector(".form-footer a") as HTMLAnchorElement | null;
+      const link = document.querySelector(
+        ".form-footer a",
+      ) as HTMLAnchorElement | null;
       expect(link!.textContent).toBe("Already have an account? Sign in");
     });
 
     test("form data-is-login attribute is false", () => {
-      const form = document.getElementById("auth-form") as HTMLFormElement | null;
+      const form = document.getElementById(
+        "auth-form",
+      ) as HTMLFormElement | null;
       expect(form!.dataset.isLogin).toBe("false");
     });
   });
@@ -184,14 +213,18 @@ describe("AuthForm", () => {
     });
 
     test("error element exists and is hidden by default", () => {
-      const err = document.getElementById("auth-error") as HTMLDivElement | null;
+      const err = document.getElementById(
+        "auth-error",
+      ) as HTMLDivElement | null;
       expect(err).not.toBeNull();
       expect(err!.classList.contains("visible")).toBe(false);
     });
 
     test("showError sets text and makes visible", () => {
       showError("Invalid credentials");
-      const err = document.getElementById("auth-error") as HTMLDivElement | null;
+      const err = document.getElementById(
+        "auth-error",
+      ) as HTMLDivElement | null;
       expect(err!.textContent).toBe("Invalid credentials");
       expect(err!.classList.contains("visible")).toBe(true);
     });
@@ -199,13 +232,17 @@ describe("AuthForm", () => {
     test("hideError clears text and removes visibility", () => {
       showError("Invalid credentials");
       hideError();
-      const err = document.getElementById("auth-error") as HTMLDivElement | null;
+      const err = document.getElementById(
+        "auth-error",
+      ) as HTMLDivElement | null;
       expect(err!.textContent).toBe("");
       expect(err!.classList.contains("visible")).toBe(false);
     });
 
     test("showError and hideError are idempotent", () => {
-      const err = document.getElementById("auth-error") as HTMLDivElement | null;
+      const err = document.getElementById(
+        "auth-error",
+      ) as HTMLDivElement | null;
       showError("err");
       showError("err2");
       expect(err!.textContent).toBe("err2");
@@ -222,26 +259,34 @@ describe("AuthForm", () => {
 
     test("oauth section hidden when no providers", () => {
       renderOAuth([]);
-      const section = document.getElementById("oauth-section") as HTMLDivElement | null;
+      const section = document.getElementById(
+        "oauth-section",
+      ) as HTMLDivElement | null;
       expect(section!.style.display).toBe("none");
     });
 
     test("oauth section visible when providers exist", () => {
       renderOAuth(["github"]);
-      const section = document.getElementById("oauth-section") as HTMLDivElement | null;
+      const section = document.getElementById(
+        "oauth-section",
+      ) as HTMLDivElement | null;
       expect(section!.style.display).toBe("block");
     });
 
     test("renders single provider button", () => {
       renderOAuth(["github"]);
-      const buttons = document.getElementById("oauth-buttons") as HTMLDivElement | null;
+      const buttons = document.getElementById(
+        "oauth-buttons",
+      ) as HTMLDivElement | null;
       expect(buttons!.innerHTML).toContain("/api/auth/oauth/github");
       expect(buttons!.innerHTML).toContain("Github");
     });
 
     test("renders multiple provider buttons", () => {
       renderOAuth(["github", "google", "microsoft"]);
-      const buttons = document.getElementById("oauth-buttons") as HTMLDivElement | null;
+      const buttons = document.getElementById(
+        "oauth-buttons",
+      ) as HTMLDivElement | null;
       expect(buttons!.innerHTML).toContain("/api/auth/oauth/github");
       expect(buttons!.innerHTML).toContain("/api/auth/oauth/google");
       expect(buttons!.innerHTML).toContain("/api/auth/oauth/microsoft");
@@ -252,13 +297,17 @@ describe("AuthForm", () => {
 
     test("renders no buttons when providers empty", () => {
       renderOAuth([]);
-      const buttons = document.getElementById("oauth-buttons") as HTMLDivElement | null;
+      const buttons = document.getElementById(
+        "oauth-buttons",
+      ) as HTMLDivElement | null;
       expect(buttons!.innerHTML).toBe("");
     });
 
     test("capitalizes provider names correctly", () => {
       renderOAuth(["github"]);
-      const buttons = document.getElementById("oauth-buttons") as HTMLDivElement | null;
+      const buttons = document.getElementById(
+        "oauth-buttons",
+      ) as HTMLDivElement | null;
       expect(buttons!.innerHTML).toContain(">Github</a>");
     });
   });

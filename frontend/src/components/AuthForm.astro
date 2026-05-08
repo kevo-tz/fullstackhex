@@ -120,7 +120,8 @@ const altText = isLogin ? "Need an account? Register" : "Already have an account
 
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        throw new Error(data.error || `Request failed (${res.status})`);
+        const msg = typeof data.error === "object" && data.error !== null ? data.error.message : data.error;
+        throw new Error(msg || `Request failed (${res.status})`);
       }
 
       const data = await res.json();
@@ -132,7 +133,7 @@ const altText = isLogin ? "Need an account? Register" : "Already have an account
       showError(err instanceof Error ? err.message : "Something went wrong");
     } finally {
       btn.disabled = false;
-      btn.textContent = "{action}";
+      btn.textContent = isLogin ? "Sign in" : "Create account";
     }
   });
 </script>

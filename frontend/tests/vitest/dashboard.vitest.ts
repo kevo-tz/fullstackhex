@@ -63,9 +63,13 @@ describe("Dashboard health status display", () => {
     });
 
     test("status texts show checking state", () => {
-      expect(document.getElementById("text-rust")!.textContent).toBe("checking…");
+      expect(document.getElementById("text-rust")!.textContent).toBe(
+        "checking…",
+      );
       expect(document.getElementById("text-db")!.textContent).toBe("checking…");
-      expect(document.getElementById("text-python")!.textContent).toBe("checking…");
+      expect(document.getElementById("text-python")!.textContent).toBe(
+        "checking…",
+      );
     });
   });
 
@@ -111,7 +115,9 @@ describe("Dashboard health status display", () => {
 
       expect(document.getElementById("dot-rust")!.className).toContain("ok");
       expect(document.getElementById("dot-db")!.className).toContain("error");
-      expect(document.getElementById("dot-python")!.className).toContain("degraded");
+      expect(document.getElementById("dot-python")!.className).toContain(
+        "degraded",
+      );
     });
 
     test("status texts reflect mixed state", () => {
@@ -120,15 +126,21 @@ describe("Dashboard health status display", () => {
       setStatus("python", "degraded", "not running");
 
       expect(document.getElementById("text-rust")!.textContent).toBe("ok");
-      expect(document.getElementById("text-db")!.textContent).toBe("error: connection failed");
-      expect(document.getElementById("text-python")!.textContent).toBe("not running");
+      expect(document.getElementById("text-db")!.textContent).toBe(
+        "error: connection failed",
+      );
+      expect(document.getElementById("text-python")!.textContent).toBe(
+        "not running",
+      );
     });
 
     test("python detail shows error text", () => {
       setStatus("python", "degraded", "not running");
       setDetail("python", "socket not found");
 
-      expect(document.getElementById("detail-python")!.textContent).toBe("socket not found");
+      expect(document.getElementById("detail-python")!.textContent).toBe(
+        "socket not found",
+      );
     });
 
     test("python detail clears when switching to ok", () => {
@@ -149,7 +161,9 @@ describe("Dashboard health status display", () => {
 
       expect(document.getElementById("dot-rust")!.className).toContain("error");
       expect(document.getElementById("dot-db")!.className).toContain("error");
-      expect(document.getElementById("dot-python")!.className).toContain("error");
+      expect(document.getElementById("dot-python")!.className).toContain(
+        "error",
+      );
     });
 
     test("status texts show error state", () => {
@@ -157,7 +171,9 @@ describe("Dashboard health status display", () => {
       setStatus("db", "error", "—");
       setStatus("python", "error", "—");
 
-      expect(document.getElementById("text-rust")!.textContent).toBe("unreachable");
+      expect(document.getElementById("text-rust")!.textContent).toBe(
+        "unreachable",
+      );
       expect(document.getElementById("text-db")!.textContent).toBe("—");
       expect(document.getElementById("text-python")!.textContent).toBe("—");
     });
@@ -179,7 +195,9 @@ describe("Dashboard health status display", () => {
 
       setStatus("rust", "error", "unreachable");
       expect(document.getElementById("dot-rust")!.className).toContain("error");
-      expect(document.getElementById("dot-rust")!.className).not.toContain("ok");
+      expect(document.getElementById("dot-rust")!.className).not.toContain(
+        "ok",
+      );
     });
   });
 });

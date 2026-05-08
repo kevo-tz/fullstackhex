@@ -9,11 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.10.1.0] - 2026-05-08
 
-### Fixed
-- **Dashboard health indicators**: aggregated `/health` endpoint now returns per-service JSON keyed by `rust`, `db`, `redis`, `storage`, `python`, `auth` — frontend dashboard shows green dots for healthy services instead of "All services down"
+### Added
+- **Template installer** (`install.sh`): single-command project scaffolding — validates toolchain (Rust, Bun, uv, Docker), copies trimmed template, substitutes project name into configs, installs deps, and initializes git
+- **Aggregated health endpoint**: `/health` now returns per-service status keyed by `rust`, `db`, `redis`, `storage`, `python`, `auth` — dashboard shows green dots per service instead of binary up/down
 
 ### Changed
-- **Health endpoint**: `/health` response changed from flat `{"status":"ok"}` to aggregated `{"rust":..., "db":..., ...}` — individual sub-endpoints (`/health/db`, `/health/redis`, etc.) unchanged
+- **Folder restructure**: backend crates flattened from `backend/crates/` → `backend/`, `python-sidecar/` → `py-api/` (Python) / `backend/py-sidecar/` (Rust), `nginx/` + `monitoring/` → `compose/`, `e2e/` → `frontend/tests/e2e/`
+- **Dependency bumps**: sha2 0.10→0.11, hmac 0.12→0.13, oauth2 4→5, rand 0.8→0.9, reqwest 0.11→0.13, quick-xml 0.37→0.39 — API migration for oauth2 builder pattern, HMAC KeyInit trait, rand RngCore
+- **CI workflows**: gitleaks-action and opencode/github hash pins updated to latest
+- **Code style**: prettier formatting applied across all frontend sources and tests
+
+### Fixed
+- **Error display bug**: login/register forms no longer show `[object Object]` — nested `ApiError.message` extracted correctly
+- **Button text regression**: submit button text no longer shows literal `{action}` placeholder after form submit
 
 ---
 

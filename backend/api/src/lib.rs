@@ -8,7 +8,7 @@ use axum::{
     routing::get,
 };
 use metrics_exporter_prometheus::PrometheusHandle;
-use python_sidecar::PythonSidecar;
+use py_sidecar::PythonSidecar;
 use serde_json::json;
 use sqlx::PgPool;
 use sqlx::postgres::PgPoolOptions;
@@ -351,27 +351,27 @@ async fn health_python(
         Err(e) => {
             let sock_display = state.sidecar.socket_path().display();
             let (error_msg, fix_msg) = match &e {
-                python_sidecar::SidecarError::SocketNotFound(_) => (
+                py_sidecar::SidecarError::SocketNotFound(_) => (
                     "socket not found".to_string(),
-                    format!("Start the Python sidecar: make dev starts it automatically, or run: cd python-sidecar && uv run uvicorn app.main:app --uds {sock_display}"),
+                    format!("Start the Python sidecar: make dev starts it automatically, or run: cd py-api && uv run uvicorn app.main:app --uds {sock_display}"),
                 ),
-                python_sidecar::SidecarError::ConnectionFailed(msg) => (
+                py_sidecar::SidecarError::ConnectionFailed(msg) => (
                     format!("connection failed: {msg}"),
-                    format!("Check that the Python sidecar is running. Run: cd python-sidecar && uv run uvicorn app.main:app --uds {sock_display}"),
+                    format!("Check that the Python sidecar is running. Run: cd py-api && uv run uvicorn app.main:app --uds {sock_display}"),
                 ),
-                python_sidecar::SidecarError::Timeout(d) => (
+                py_sidecar::SidecarError::Timeout(d) => (
                     format!("request timed out after {d:?}"),
-                    format!("The Python sidecar is not responding. Restart it with: cd python-sidecar && uv run uvicorn app.main:app --uds {sock_display}"),
+                    format!("The Python sidecar is not responding. Restart it with: cd py-api && uv run uvicorn app.main:app --uds {sock_display}"),
                 ),
-                python_sidecar::SidecarError::InvalidInput(msg) => (
+                py_sidecar::SidecarError::InvalidInput(msg) => (
                     format!("invalid input: {msg}"),
                     "The request contains invalid characters.".to_string(),
                 ),
-                python_sidecar::SidecarError::InvalidResponse(msg) => (
+                py_sidecar::SidecarError::InvalidResponse(msg) => (
                     format!("invalid response: {msg}"),
                     "The Python sidecar returned an unexpected response. Check its logs for errors.".to_string(),
                 ),
-                python_sidecar::SidecarError::HttpError { status, body } => (
+                py_sidecar::SidecarError::HttpError { status, body } => (
                     format!("HTTP {status}: {body}"),
                     "The Python sidecar returned an HTTP error. Check its logs for details.".to_string(),
                 ),
@@ -401,7 +401,7 @@ async fn metrics_python_proxy(State(state): State<Arc<AppState>>) -> impl IntoRe
             [(header::CONTENT_TYPE, "text/plain; charset=utf-8")],
             body,
         ),
-        Err(python_sidecar::SidecarError::HttpError { status, body }) => {
+        Err(py_sidecar::SidecarError::HttpError { status, body }) => {
             let code = StatusCode::from_u16(status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
             tracing::warn!(status = %status, "Python sidecar returned HTTP error for /metrics");
             (

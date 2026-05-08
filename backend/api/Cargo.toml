@@ -19,7 +19,7 @@ metrics = { workspace = true }
 metrics-exporter-prometheus = { workspace = true }
 dotenvy = "0.15"
 db = { path = "../db" }
-python-sidecar = { path = "../python-sidecar" }
+py-sidecar = { path = "../py-sidecar" }
 cache = { path = "../cache" }
 auth = { path = "../auth" }
 storage = { path = "../storage" }

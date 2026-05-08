@@ -8,7 +8,7 @@ use axum::extract::FromRequestParts;
 use axum::http::StatusCode;
 use axum::http::{Method, request::Parts};
 use axum::response::{IntoResponse, Response};
-use hmac::{Hmac, Mac};
+use hmac::{Hmac, KeyInit, Mac};
 use sha2::Sha256;
 use std::sync::Arc;
 use tracing;

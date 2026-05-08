@@ -2,6 +2,8 @@
 
 ## Idea 1: Folder Restructure
 
+**Completed:** v0.10.1.0 (2026-05-08)
+
 Flatten `backend/crates/` — move all crates directly into `backend/`. Rename `python-sidecar` → `py-sidecar` (Rust crate) and `python-sidecar/` → `py-api/` (Python FastAPI project). Move root `nginx/`, `monitoring/` into `compose/` and `e2e/` into `frontend/tests/`.
 
 ### Steps

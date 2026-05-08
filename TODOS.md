@@ -2,7 +2,7 @@
 
 ## Idea 1: Folder Restructure
 
-Flatten `backend/crates/` — move all crates directly into `backend/`. Rename `python-sidecar` → `py-sidecar`. Move root `nginx/`, `monitoring/` into `compose/` and `e2e/` into `frontend/tests/`.
+Flatten `backend/crates/` — move all crates directly into `backend/`. Rename `python-sidecar` → `py-sidecar` (Rust crate) and `python-sidecar/` → `py-api/` (Python FastAPI project). Move root `nginx/`, `monitoring/` into `compose/` and `e2e/` into `frontend/tests/`.
 
 ### Steps
 
@@ -13,14 +13,15 @@ Flatten `backend/crates/` — move all crates directly into `backend/`. Rename `
    rmdir backend/crates/
    ```
 
-2. **Move root folders into proper locations**
-   ```bash
-   mv nginx/canary.conf compose/nginx/canary.conf
-   mv nginx/upstream.conf.template compose/nginx/upstream.conf.template
-   rmdir nginx/
-   mv monitoring/ compose/monitoring/
-   mv e2e/ frontend/tests/e2e/
-   ```
+2. **Move root folders into proper locations and rename python-sidecar → py-api**
+    ```bash
+    mv nginx/canary.conf compose/nginx/canary.conf
+    mv nginx/upstream.conf.template compose/nginx/upstream.conf.template
+    rmdir nginx/
+    mv monitoring/ compose/monitoring/
+    mv e2e/ frontend/tests/e2e/
+    mv python-sidecar/ py-api/
+    ```
 
 3. **Update workspace members** — `backend/Cargo.toml` line 2
    ```toml
@@ -57,21 +58,27 @@ Flatten `backend/crates/` — move all crates directly into `backend/`. Rename `
    - Lines 19-21: remove `crates/` from all COPY paths (`backend/crates/X/Cargo.toml` → `backend/X/Cargo.toml`)
    - Lines 24-28: remove `crates/` from all mkdir + echo paths (`backend/crates/X/src` → `backend/X/src`)
 
-10. **Update compose references**
-    - `compose/monitor.yml` lines 24, 55, 56, 76: `../monitoring/` → `./monitoring/`
-    - `compose/prod.yml` line 6: comment `nginx/certs/` → `compose/nginx/certs/`
+10. **Add APP_NAME to Makefile** (needed by Idea 2 template substitution)
+     - Insert `APP_NAME ?= fullstackhex` near top of Makefile (after `.PHONY` lines, before `COMPOSE_DEV`)
 
-11. **Update deploy scripts**
-    - `scripts/deploy-canary.sh` line 38: `nginx/canary.conf` → `compose/nginx/canary.conf`
-    - `scripts/deploy-canary-promote.sh` line 17: `nginx/upstream.conf.template` → `compose/nginx/upstream.conf.template`
-    - `scripts/deploy-blue-green.sh` lines 87, 93: `nginx/upstream.conf.template` → `compose/nginx/upstream.conf.template`
+11. **Update compose references**
+     - `compose/monitor.yml` lines 24, 55, 56, 76: `../monitoring/` → `./monitoring/`
+     - `compose/prod.yml` line 6: comment `nginx/certs/` → `compose/nginx/certs/`
 
-12. **Update CI/CD**
+12. **Update deploy scripts + Makefile**
+     - `scripts/deploy-canary.sh` line 38: `nginx/canary.conf` → `compose/nginx/canary.conf`
+     - `scripts/deploy-canary-promote.sh` line 17: `nginx/upstream.conf.template` → `compose/nginx/upstream.conf.template`
+     - `scripts/deploy-blue-green.sh` lines 87, 93: `nginx/upstream.conf.template` → `compose/nginx/upstream.conf.template`
+     - `Makefile` line 414: remove `nginx/` from rsync, replace with `compose/nginx/`
+     - `Makefile` line 379: `cd e2e` → `cd frontend/tests/e2e`
+
+13. **Update CI/CD**
     - `Makefile` line 368: `cargo test -p python-sidecar` → `cargo test -p py-sidecar`
     - `.github/workflows/ci.yml` line 92: `cargo test -p python-sidecar` → `cargo test -p py-sidecar`
-    - `.github/workflows/ci.yml` line 352: `monitoring/grafana/dashboards/` → `compose/monitoring/grafana/dashboards/`
+     - `.github/workflows/ci.yml` line 309: `cd e2e` → `cd frontend/tests/e2e`
+     - `.github/workflows/ci.yml` line 352: `monitoring/grafana/dashboards/` → `compose/monitoring/grafana/dashboards/`
 
-13. **Update docs** — remove `crates/` and fix moved-folder paths
+14. **Update docs** — remove `crates/` and fix moved-folder paths
 
     | File | Lines | What to change |
     |------|-------|---------------|
@@ -98,6 +105,8 @@ cd frontend && bun test
 ---
 
 ## Idea 2: Template Installation
+
+**Depends on Idea 1 being completed first** (install.sh references flattened crate paths).
 
 Single `install.sh` at repo root that scaffolds a new project from this template.
 
@@ -143,7 +152,9 @@ Single `install.sh` at repo root that scaffolds a new project from this template
    | `backend/py-sidecar/Cargo.toml` | `name` → keep as `py-sidecar` (crate name, not project-scoped) |
    | `frontend/package.json` | `name` field |
    | `python-sidecar/pyproject.toml` | `name` field |
-   | `compose/docker-compose.yml` | image tags, container names |
+    | `compose/prod.yml` | container names (`fullstackhex_` → `$PROJECT_NAME_`) |
+    | `compose/dev.yml` | container names (`fullstackhex_` → `$PROJECT_NAME_`) |
+    | `compose/monitor.yml` | container names (`fullstackhex_` → `$PROJECT_NAME_`) |
    | `compose/Dockerfile.rust` | crate pod paths (mirrors Idea 1 flattening) |
    | `Makefile` | `APP_NAME` variable at top |
 

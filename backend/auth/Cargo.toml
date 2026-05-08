@@ -17,7 +17,7 @@ tracing = { workspace = true }
 uuid = { workspace = true }
 thiserror = "2"
 jsonwebtoken = "9"
-oauth2 = "4"
+oauth2 = "5"
 argon2 = "0.5"
 hmac = "0.12"
 sha2 = "0.10"

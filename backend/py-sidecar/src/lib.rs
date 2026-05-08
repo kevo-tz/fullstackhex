@@ -104,7 +104,7 @@ impl PythonSidecar {
     /// # Example
     ///
     /// ```no_run
-    /// use python_sidecar::PythonSidecar;
+    /// use py_sidecar::PythonSidecar;
     /// use std::time::Duration;
     ///
     /// # async fn example() {
@@ -342,7 +342,7 @@ impl PythonSidecar {
     /// # Example
     ///
     /// ```no_run
-    /// use python_sidecar::PythonSidecar;
+    /// use py_sidecar::PythonSidecar;
     /// use std::time::Duration;
     ///
     /// # async fn example() {
@@ -360,16 +360,16 @@ impl PythonSidecar {
     /// ```
     pub async fn health(&self) -> Result<serde_json::Value, SidecarError> {
         let trace_id = uuid::Uuid::new_v4().to_string();
-        tracing::info!(%trace_id, target = "python_sidecar", "health check");
+        tracing::info!(%trace_id, target = "py_sidecar", "health check");
         let start = std::time::Instant::now();
         let result = self.get_with_trace_id("/health", &trace_id, None).await;
         let duration_ms = start.elapsed().as_millis() as u64;
         match &result {
             Ok(_) => {
-                tracing::info!(%trace_id, duration_ms, target = "python_sidecar", "health check OK")
+                tracing::info!(%trace_id, duration_ms, target = "py_sidecar", "health check OK")
             }
             Err(e) => {
-                tracing::warn!(%trace_id, duration_ms, error = %e, target = "python_sidecar", "health check failed")
+                tracing::warn!(%trace_id, duration_ms, error = %e, target = "py_sidecar", "health check failed")
             }
         }
         result
@@ -511,7 +511,7 @@ mod tests {
     // Socket integration tests — require a mock Unix socket server
     // These tests use real UnixListener and are skipped by default
     // because they're timing-sensitive in Rust's parallel test runner.
-    // Run with: cargo test -p python-sidecar -- --ignored
+    // Run with: cargo test -p py-sidecar -- --ignored
     // ------------------------------------------------------------------
 
     #[tokio::test]
@@ -700,7 +700,7 @@ mod tests {
     // Socket integration tests — use mock UnixListeners
     // These tests create in-memory UnixListeners with controlled responses
     // and are skipped by default because they're timing-sensitive.
-    // Run with: cargo test -p python-sidecar -- --ignored
+    // Run with: cargo test -p py-sidecar -- --ignored
     // Or via: make test-socket-ci
     // ------------------------------------------------------------------
 

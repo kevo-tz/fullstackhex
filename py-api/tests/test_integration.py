@@ -1,5 +1,5 @@
 """
-Live integration tests — require the Python sidecar to be running on the
+Live integration tests — require the py-api service to be running on the
 configured Unix socket. Run with:
 
     uv run pytest -m integration
@@ -24,4 +24,4 @@ def test_live_health_endpoint() -> None:
     payload = response.json()
     assert set(payload.keys()) >= {"status", "service", "version"}
     assert payload["status"] == "ok"
-    assert payload["service"] == "python-sidecar"
+    assert payload["service"] == "py-api"

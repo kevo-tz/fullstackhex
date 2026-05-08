@@ -84,13 +84,13 @@ echo "Switching nginx upstream..."
 ssh "${USER}@${TARGET}" "cp ${NGINX_CONF} ${NGINX_CONF}.bak"
 
 # 5. Generate and apply new nginx config (pointer to inactive dir services)
-NGINX_TEMPLATE="nginx/upstream.conf.template"
+NGINX_TEMPLATE="compose/nginx/upstream.conf.template"
 if [ -f "$NGINX_TEMPLATE" ]; then
     UPSTREAM_SUFFIX="_${INACTIVE_DIR}"
     sed "s/backend:8001/backend${UPSTREAM_SUFFIX}:8001/g; s/frontend:4321/frontend${UPSTREAM_SUFFIX}:4321/g" \
         "$NGINX_TEMPLATE" > /tmp/nginx-new.conf
 else
-    echo "WARNING: nginx/upstream.conf.template not found — skipping nginx switch"
+    echo "WARNING: compose/nginx/upstream.conf.template not found — skipping nginx switch"
 fi
 
 # 6. Copy new nginx config and validate/reload

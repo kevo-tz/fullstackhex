@@ -7,7 +7,7 @@
 - test: cd backend && cargo test
 - test: cd frontend && vitest run
 - test: cd frontend && bun test
-- test: cd python-sidecar && pytest
+- test: cd py-api && pytest
 - deadcode: cd frontend && npx knip
 - shell: shellcheck -x scripts/*.sh tests/*.sh
 

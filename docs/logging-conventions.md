@@ -41,6 +41,6 @@ Each log line with the same `trace_id` represents one step in the request's jour
 
 ## Implementation
 
-- **Rust:** `tracing-subscriber` with JSON layer, writing to stderr. Configured in `backend/crates/api/src/main.rs`.
-- **Python:** Custom `JsonFormatter` on `logging.StreamHandler(sys.stderr)`. Configured in `python-sidecar/app/main.py`.
+- **Rust:** `tracing-subscriber` with JSON layer, writing to stderr. Configured in `backend/api/src/main.rs`.
+- **Python:** Custom `JsonFormatter` on `logging.StreamHandler(sys.stderr)`. Configured in `py-api/app/main.py`.
 - **TypeScript:** Lightweight `jsonLog()` wrapper over `console.log` on Astro server stdout. Used in `frontend/src/lib/health.ts`.

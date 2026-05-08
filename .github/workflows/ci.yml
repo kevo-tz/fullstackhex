@@ -70,7 +70,7 @@ jobs:
 
       - name: Start Python sidecar for socket tests
         run: |
-          cd ../python-sidecar
+          cd ../py-api
           uv sync --all-extras
           uv run uvicorn app.main:app --uds /tmp/fullstackhex-python.sock &
           for i in $(seq 1 20); do
@@ -89,14 +89,14 @@ jobs:
         env:
           DATABASE_URL: postgres://postgres:postgres@localhost:5432/testdb
           PYTHON_SIDECAR_SOCKET: /tmp/fullstackhex-python.sock
-        run: cargo test -p python-sidecar -- --ignored
+        run: cargo test -p py-sidecar -- --ignored
 
   python:
     name: python
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: python-sidecar
+        working-directory: py-api
 
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
@@ -158,7 +158,7 @@ jobs:
         run: bun run typecheck
 
       - name: Test (bun)
-        run: bun test
+        run: bun test tests/*.test.ts
 
       - name: Test (vitest)
         run: bun run test:vitest
@@ -200,14 +200,14 @@ jobs:
         run: cargo test --workspace
 
       - name: Python smoke
-        working-directory: python-sidecar
+        working-directory: py-api
         run: |
           uv sync --all-extras
           uv run pytest
 
       - name: Frontend smoke
         working-directory: frontend
-        run: bun test
+        run: bun test tests/*.test.ts
 
   e2e:
     name: e2e
@@ -306,7 +306,7 @@ jobs:
           VITE_RUST_BACKEND_URL: http://localhost:8001
           FRONTEND_URL: http://localhost:4321
         run: |
-          cd e2e
+          cd frontend/tests/e2e
           bun test
 
   infra:
@@ -349,7 +349,7 @@ jobs:
 
       - name: Validate Grafana dashboard JSON
         run: |
-          for f in monitoring/grafana/dashboards/*.json; do
+          for f in compose/monitoring/grafana/dashboards/*.json; do
             jq empty "$f" || { echo "Invalid JSON: $f"; exit 1; }
           done
 

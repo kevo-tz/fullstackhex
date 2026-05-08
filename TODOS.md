@@ -1,121 +1,189 @@
 # TODOS
 
-All items active on `feat/0.10` branch. Tags: [priority] [effort].
+## Idea 1: Folder Restructure
 
-## v0.10 summary
+**Completed:** v0.10.1.0 (2026-05-08)
 
-**4 tasks completed, 17 files changed, 164 tests passing (115 cargo + 49 vitest), 0 lint/type errors.**
+Flatten `backend/crates/` — move all crates directly into `backend/`. Rename `python-sidecar` → `py-sidecar` (Rust crate) and `python-sidecar/` → `py-api/` (Python FastAPI project). Move root `nginx/`, `monitoring/` into `compose/` and `e2e/` into `frontend/tests/`.
 
-| Commit | Task | Scope |
-|--------|------|-------|
-| `ae64291` | A10 Auth UI finalize | dashboard.astro, AuthForm (refresh_token + /dashboard redirect), Layout fetch interceptor, 34 vitest tests |
-| `53eeeec` | S7 S3 multipart tests | wiremock deps, 5 multipart integration tests |
-| `7123719` | S8 Coverage >80% | 11 storage CRUD tests, cache/pubsub modules, password tests, 25 new total |
-| `93b395b` | S11 Auth Grafana | auth metrics middleware, oauth_callbacks_total counter, 6 Grafana panels |
+### Steps
 
-## Gstack skill dependency map (v1.26.4)
+1. **Move backend crates out of `backend/crates/` and rename**
+   ```bash
+   mv backend/crates/api backend/crates/auth backend/crates/cache backend/crates/db backend/crates/domain backend/crates/storage backend/
+   mv backend/crates/python-sidecar/ backend/py-sidecar/
+   rmdir backend/crates/
+   ```
 
-Pending gstack plan (see `~/.claude/skills/gstack/TODOS.md`) grouped by parallelism.
-Items marked **(G)** are gstack-internal; items marked **(P)** are project-consumable.
+2. **Move root folders into proper locations and rename python-sidecar → py-api**
+    ```bash
+    mv nginx/canary.conf compose/nginx/canary.conf
+    mv nginx/upstream.conf.template compose/nginx/upstream.conf.template
+    rmdir nginx/
+    mv monitoring/ compose/monitoring/
+    mv e2e/ frontend/tests/e2e/
+    mv python-sidecar/ py-api/
+    ```
 
-### Parallel block 1 — independent, any order
-| Skill | Priority | Consumed by fullstackhex |
-|-------|----------|------------------------|
-| **Anti-bot CDP patches (G)** | P1 | Headless QA of auth flows |
-| **Sidebar direct API (G)** | P2 | Faster browse-debug loop |
-| **Sidebar PID scoping (G)** | P2 | Multi-workspace safety |
-| **Test AskUserQuestion assertion (G)** | P2 | Plan-mode test reliability |
-| **Devex handshake removal (G)** | P2 | /plan-devex-review works in plan mode |
-| **Path-confusion hardening (G)** | P3 | Defensive test harness |
+3. **Update workspace members** — `backend/Cargo.toml` line 2
+   ```toml
+   members = ["api", "auth", "cache", "db", "domain", "py-sidecar", "storage"]
+   ```
 
-### Parallel block 2 — new skills, independent
-| Skill | Priority | Consumed by fullstackhex |
-|-------|----------|------------------------|
-| **/health dashboard (G)** | P1 | Composite scores for all crates |
-| **Codex reverse buddy (G)** | P1 | Cross-model review of auth code |
-| **/checkpoint (G)** | P2 | Session saves across branches |
-| **/refactor-prep (G)** | P2 | Dead-code strip before refactors |
-| **/yc-prep (G)** | P2 | N/A (startup skill) |
+4. **Update crate name** — `backend/py-sidecar/Cargo.toml` line 2
+   ```toml
+   name = "py-sidecar"
+   ```
 
-### Parallel block 3 — QA and CI
-| Skill | Priority | Consumed by fullstackhex |
-|-------|----------|------------------------|
-| **QA trend tracking (G)** | P2 | Auth health over time |
-| **QA CI integration (G)** | P2 | QA gate in CI pipeline |
-| **Smart default QA tier (G)** | P2 | Skip tier prompt on repeat runs |
-| **CI QA quality gate (G)** | P2 | Fail PR on health drop |
+5. **Update dependency** — `backend/api/Cargo.toml` line 22
+   ```toml
+   py-sidecar = { path = "../py-sidecar" }
+   ```
 
-### Sequential chain — Phase 2a → 2b
-| Skill | Priority | Consumed by fullstackhex |
-|-------|----------|------------------------|
-| `/scrape` + `/skillify` (G) | P1 | Codify auth-flow browser skills |
-| → `/automate` (G) | P0 | Codify reg/test button flows |
+6. **Update Rust imports** — `backend/api/src/lib.rs`
+   - Line 11: `use python_sidecar::PythonSidecar` → `use py_sidecar::PythonSidecar`
+   - Lines 354, 358, 362, 366, 370, 374, 404: `python_sidecar::SidecarError::` → `py_sidecar::SidecarError::`
+   - SKIP lines 356, 360, 364 (these reference root Python service, not crate)
 
-### Blocked/gated items
-| Skill | Priority | Gate | Consumed by fullstackhex |
-|-------|----------|------|------------------------|
-| PACING_UPDATES_V0 (G) | P0 | V1 shipping | Better /plan-devex-review pacing |
-| Plan Tune E1-E7 (G) | P0 | v1 dogfood calibration | Adaptive skill defaults |
-| Chrome DevTools MCP (G) | P0 | Chrome 146+ | Real-session browser debug |
-| Context recovery preamble (G) | P1 | — | Auto-reload plans after compaction |
-| Session timeline (G) | P1 | Preamble shipped | /retro includes auth work |
-| /learn SQLite migration (G) | P2 | JSONL pain data | Durable per-skill notes |
-| Swarm primitive (G) | P2 | — | Parallel /ship pre-flight checks |
+7. **Update test imports**
+   - `backend/api/tests/integration_auth_routes.rs` line 7: `use python_sidecar::PythonSidecar` → `use py_sidecar::PythonSidecar`
+   - `backend/api/tests/integration_storage_routes.rs` line 7: same
+   - `backend/api/tests/integration_health_route.rs` lines 333, 380: `python_sidecar::PythonSidecar::new(` → `py_sidecar::PythonSidecar::new(`
+   - SKIP lines 388, 427 (assert Python service name in JSON, not crate)
 
-### Verdict for this project
-- **Use now:** /investigate, /review, /qa, /browse, /ship
-- **Use after shipping:** /scrape + /skillify (codify auth QA), /health (crate scores), Codex buddy (cross-model review)
-- **Watch:** Chrome MCP (game-changer for auth debug), Plan Tune v2 (less friction)
+8. **Update crate lib.rs** — `backend/py-sidecar/src/lib.rs`
+   - Lines 107, 345: doc comments `use python_sidecar::` → `use py_sidecar::`
+   - Lines 363, 369, 372: tracing target `"python_sidecar"` → `"py_sidecar"`
+   - Lines 514, 703: test comment `cargo test -p python-sidecar` → `cargo test -p py-sidecar`
+
+9. **Update Dockerfile** — `compose/Dockerfile.rust`
+   - Lines 19-21: remove `crates/` from all COPY paths (`backend/crates/X/Cargo.toml` → `backend/X/Cargo.toml`)
+   - Lines 24-28: remove `crates/` from all mkdir + echo paths (`backend/crates/X/src` → `backend/X/src`)
+
+10. **Add APP_NAME to Makefile** (needed by Idea 2 template substitution)
+     - Insert `APP_NAME ?= fullstackhex` near top of Makefile (after `.PHONY` lines, before `COMPOSE_DEV`)
+
+11. **Update compose references**
+     - `compose/monitor.yml` lines 24, 55, 56, 76: `../monitoring/` → `./monitoring/`
+     - `compose/prod.yml` line 6: comment `nginx/certs/` → `compose/nginx/certs/`
+
+12. **Update deploy scripts + Makefile**
+     - `scripts/deploy-canary.sh` line 38: `nginx/canary.conf` → `compose/nginx/canary.conf`
+     - `scripts/deploy-canary-promote.sh` line 17: `nginx/upstream.conf.template` → `compose/nginx/upstream.conf.template`
+     - `scripts/deploy-blue-green.sh` lines 87, 93: `nginx/upstream.conf.template` → `compose/nginx/upstream.conf.template`
+     - `Makefile` line 414: remove `nginx/` from rsync, replace with `compose/nginx/`
+     - `Makefile` line 379: `cd e2e` → `cd frontend/tests/e2e`
+
+13. **Update CI/CD**
+    - `Makefile` line 368: `cargo test -p python-sidecar` → `cargo test -p py-sidecar`
+    - `.github/workflows/ci.yml` line 92: `cargo test -p python-sidecar` → `cargo test -p py-sidecar`
+     - `.github/workflows/ci.yml` line 309: `cd e2e` → `cd frontend/tests/e2e`
+     - `.github/workflows/ci.yml` line 352: `monitoring/grafana/dashboards/` → `compose/monitoring/grafana/dashboards/`
+
+14. **Update docs** — remove `crates/` and fix moved-folder paths
+
+    | File | Lines | What to change |
+    |------|-------|---------------|
+    | `docs/ARCHITECTURE.md` | 33, 124, 130, 144, 164 | remove `crates/` from all paths |
+    | `docs/SERVICES.md` | 28, 34, 39, 44, 112 | remove `crates/` from all paths |
+    | `docs/INITIALIZATION.md` | 83, 108-111, 204 | remove `crates/` from all paths |
+    | `docs/EXAMPLES.md` | 7, 25, 229 | remove `crates/` from paths; line 255: `e2e/` → `frontend/tests/e2e/` |
+    | `docs/STORAGE.md` | 3 | remove `crates/` |
+    | `docs/MONITORING.md` | 193, 196, 213 | remove `crates/`; also: `monitoring/` → `compose/monitoring/` (lines 29, 33, 44, 50, 56, 62, 68, 79, 149, 151, 228) |
+    | `docs/INFRASTRUCTURE.md` | 644, 647-648, 698, 700, 716, 773 | `nginx/` → `compose/nginx/`; `monitoring/` references on lines 52-56, 741-744 |
+    | `docs/DEPLOY.md` | 57-58 | `nginx/` → `compose/nginx/` |
+    | `docs/CI.md` | 184 | `e2e/` → `frontend/tests/e2e/` |
+    | `CHANGELOG.md` | 36, 37, 73, 233 | `e2e/auth.test.ts`, `nginx/...`, `monitoring/...` → new paths |
+    | `.github/.secrets.baseline` | 333, 336, 343 | `e2e/auth.test.ts` → `frontend/tests/e2e/auth.test.ts` |
+
+### Verify
+```bash
+cd backend && cargo check
+cd backend && cargo test --workspace
+cd backend && cargo clippy -- -D warnings
+cd frontend && bun test
+```
 
 ---
 
-## ✅ Completed (this branch)
+## Idea 2: Template Installation
 
-### A10. Auth UI finalize [P0] [M]
-- Created `frontend/src/pages/dashboard.astro` (auth-gated, user email/name, logout button)
-- Modified `AuthForm.astro`: stores `fullstackhex_refresh_token`, redirects to `/dashboard`
-- Modified `Layout.astro`: fetch interceptor for 401 → auto-refresh, logout redirects to `/login`
-- Added `frontend/tests/vitest/auth-form.vitest.ts` (30 tests: login/register modes, validation, OAuth)
-- **Files:** 4 new/modified. **Tests:** 30 vitest, 0 TS errors. **Commit:** `A10. Auth UI finalize — dashboard, token refresh, logout, vitest tests`
+**Depends on Idea 1 being completed first** (install.sh references flattened crate paths).
 
-### S7. S3 multipart integration tests [P1] [S]
-- Added `wiremock` to workspace deps + storage dev-deps
-- 6 wiremock-based async tests: init round-trip, init failure, upload 2 parts + complete, abort mid-upload, abort nonexistent
-- **Files:** 3 modified. **Tests:** 6 new. **Commit:** `S7. S3 multipart integration tests — init, upload 2 parts, complete, abort`
+Single `install.sh` at repo root that scaffolds a new project from this template.
 
-### S8. Coverage >80% per crate [P1] [L]
-- **storage**: 11 wiremock integration tests for upload/download/streaming/delete/list operations
-- **cache::cache**: 5 unit tests (serialization/deserialization) + 5 `#[ignore]` integration tests (require Redis)
-- **cache::pubsub**: 2 `#[ignore]` integration tests (publish/subscribe round-trip)
-- **auth::password**: 2 new tests (empty password round-trip, invalid hash error)
-- **Files:** 4 modified. **Tests:** 25 new (18 live + 7 ignored). **Commit:** `S8. Coverage >80% per crate — storage integration, cache, password tests`
-
-### S11. Auth Grafana dashboard — custom metrics + panels [P1] [M]
-- Created `backend/crates/auth/src/metrics.rs` — `track_auth_metrics` middleware recording: `auth_requests_total`, `auth_latency_seconds` (histogram), `auth_errors_total` (by error_type/status)
-- Added `oauth_callbacks_total` counter in `oauth_callback` handler
-- Added 7 new Grafana panels: Custom Auth Request Rate, Auth Error Rate by Type, Auth p50/p99 Latency (custom), Auth Errors Cumulative, OAuth Callbacks by Provider
-- **Files:** 7 modified. **Commit:** `S11. Auth Grafana dashboard — custom metrics middleware + panels`
-
-## Later (deferred from v0.10)
-
-### Auth route handler integration tests [P2] [M]
-**What:** `register`/`login`/`logout`/`refresh`/`me` handlers in `crates/auth/src/routes.rs` have zero integration tests. Current tests cover health endpoints only.
-**Why deferred:** Scope was already 4 items for v0.10. Auth route tests are a pre-existing gap, not introduced by v0.10.
-**Files:** `backend/crates/api/tests/` or `backend/crates/auth/src/routes.rs`
-
-## Icebox
-
-### S3 auto-promote to multipart [P2] [S]
-Route-level content-length check: files >5MB auto-init multipart. S3 API is manual by design, and manual endpoints already exist. No user demand yet.
-
-## Review findings — post-implementation
-
+### Usage
+```bash
+./install.sh my-new-project                    # full scaffold
+./install.sh my-new-project --dry-run          # preview only
+./install.sh my-new-project --skip-deps        # skip dependency install
+./install.sh my-new-project --skip-git         # skip git init + commit
+./install.sh my-new-project --skip-verify      # skip proof-of-concept build check
 ```
-Step 0:      Scope accepted — 4 commits landed on feat/0.10
-Architecture: 4 issues (all resolved)
-Code quality: 4 issues (all addressed)
-Tests:        4 findings (3 resolved; 1 deferred: auth route handler integration tests)
-Performance:  2 findings (no blocking issues)
-Deferred:     auth route handler integration tests (pre-existing gap, P2)
-Eng Review verdict: CLEARED — all 4 tasks implemented and verified
-```
+
+### Phases
+
+#### Phase 1 — Validate
+1. Reject missing/empty project name; reject if target directory already exists
+2. Check required tools: Rust (1.95+), Bun (1.x+), uv (0.6+), Python 3.14+, Docker
+3. If any tool missing, print install command and exit early
+
+#### Phase 2 — Scaffold
+4. `mkdir $PROJECT_NAME`
+5. Copy trimmed copies (exclude `.git/`, `target/`, `node_modules/`, `.venv/`, `*.lock`, `dist/`):
+
+   Directory copies:
+   - `backend/` — Rust workspace (api, auth, cache, db, domain, py-sidecar, storage)
+   - `compose/` — Docker Compose + Dockerfiles + nginx configs + monitoring (Prometheus/Grafana)
+   - `frontend/` — Bun + React app + e2e tests (in `tests/e2e/`)
+   - `python-sidecar/` → `$PROJECT_NAME/python-sidecar/` — Python FastAPI sidecar
+   - `scripts/` — deploy, health, rollback, env utilities
+
+   Root file copies:
+   - `.env.example` `.gitignore` `.dockerignore` `Makefile`
+   - `AGENTS.md` `CLAUDE.md` `CONTRIBUTING.md` `CODE_OF_CONDUCT.md` `LICENSE`
+
+#### Phase 3 — Configure
+6. Generate `.env` from `.env.example` with seeded `APP_NAME=$PROJECT_NAME`
+7. Substitute `PROJECT_NAME` in template-aware files using `sed`:
+
+   | File | What to replace |
+   |------|-----------------|
+   | `backend/Cargo.toml` | `repository` URL, `authors` |
+   | `backend/*/Cargo.toml` | workspace metadata (inherited, so only root) |
+   | `backend/py-sidecar/Cargo.toml` | `name` → keep as `py-sidecar` (crate name, not project-scoped) |
+   | `frontend/package.json` | `name` field |
+   | `python-sidecar/pyproject.toml` | `name` field |
+    | `compose/prod.yml` | container names (`fullstackhex_` → `$PROJECT_NAME_`) |
+    | `compose/dev.yml` | container names (`fullstackhex_` → `$PROJECT_NAME_`) |
+    | `compose/monitor.yml` | container names (`fullstackhex_` → `$PROJECT_NAME_`) |
+   | `compose/Dockerfile.rust` | crate pod paths (mirrors Idea 1 flattening) |
+   | `Makefile` | `APP_NAME` variable at top |
+
+#### Phase 4 — Install
+8. `cd $PROJECT_NAME/python-sidecar && uv sync`
+9. `cd $PROJECT_NAME/frontend && bun install`
+
+#### Phase 5 — Verify (skippable)
+10. `cd $PROJECT_NAME/backend && cargo check`
+11. `cd $PROJECT_NAME/frontend && bun run typecheck`
+12. Optional: `cd $PROJECT_NAME/python-sidecar && uv run pytest`
+
+#### Phase 6 — Git
+13. `cd $PROJECT_NAME && git init && git add . && git commit -m "chore: scaffold from fullstackhex template"`
+14. Print directory tree + next-steps message
+
+### Cleanup on Failure
+- `trap` on ERR/EXIT: if `$PHASE < Configure`, remove `$PROJECT_NAME`
+- If configure or later fails, print "partial scaffold left at $PROJECT_NAME — remove it and retry"
+
+### Dry-Run Mode
+- `--dry-run` prints every action without executing (mkdir, cp, sed, git, etc.)
+- Validates args and tools but skips all mutations
+
+### Files to Create
+- `install.sh` (repo root)
+
+### Files to Update
+- `docs/INITIALIZATION.md` — reference install.sh
+- `README.md` — add template usage section

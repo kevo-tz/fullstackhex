@@ -4,7 +4,7 @@ Copy-paste patterns for extending FullStackHex. Each example is self-contained.
 
 ## Add a new backend API route
 
-### 1. Define the handler (`backend/crates/api/src/routes/hello.rs`)
+### 1. Define the handler (\`backend/api/src/routes/hello.rs\`)
 
 ```rust
 use axum::{extract::State, Json};
@@ -22,7 +22,7 @@ pub async fn hello() -> Json<HelloResponse> {
 }
 ```
 
-### 2. Register the route (`backend/crates/api/src/lib.rs`)
+### 2. Register the route (\`backend/api/src/lib.rs\`)
 
 In `router_with_state()` after existing routes:
 
@@ -226,7 +226,7 @@ Add to `monitoring/grafana/dashboards/overview.json`:
 ## Call the Python sidecar from Rust
 
 ```rust
-use python_sidecar::PythonSidecar;
+use py_sidecar::PythonSidecar;
 use std::time::Duration;
 
 async fn sidecar_example() {
@@ -252,7 +252,7 @@ async fn sidecar_example() {
 
 ## Write an e2e test
 
-### Bun test (`e2e/my-feature.test.ts`)
+### Bun test (\`frontend/tests/e2e/my-feature.test.ts\`)
 
 ```ts
 const BACKEND = process.env.VITE_RUST_BACKEND_URL || "http://localhost:8001";

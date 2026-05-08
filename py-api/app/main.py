@@ -58,7 +58,7 @@ def setup_logging() -> None:
 
 
 setup_logging()
-logger = logging.getLogger("python-sidecar")
+logger = logging.getLogger("py-api")
 
 
 @app.middleware("http")
@@ -137,7 +137,7 @@ def health(request: Request) -> dict[str, str]:
     trace_id = request.headers.get("x-trace-id", "")
     logger.info("health check", extra={"trace_id": trace_id})
     # Bump this version together with VERSION file at repo root
-    return {"status": "ok", "service": "python-sidecar", "version": "0.7.0"}
+    return {"status": "ok", "service": "py-api", "version": "0.7.0"}
 
 
 @app.get("/metrics")

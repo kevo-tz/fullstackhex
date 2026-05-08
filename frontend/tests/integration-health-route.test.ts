@@ -51,7 +51,10 @@ function makeFetchMock(responses: FetchResponses) {
 import { aggregateHealth } from "../src/lib/health";
 
 // Test helper: wraps aggregateHealth into a Response matching the Astro route shape
-async function runHandler(fetchImpl: typeof fetch, apiBase = "http://localhost:8001") {
+async function runHandler(
+  fetchImpl: typeof fetch,
+  apiBase = "http://localhost:8001",
+) {
   const result = await aggregateHealth(fetchImpl, apiBase);
   return new Response(JSON.stringify(result), {
     headers: { "Content-Type": "application/json" },
@@ -83,7 +86,9 @@ describe("/api/health aggregation route", () => {
       });
 
       const response = await runHandler(fetchMock as unknown as typeof fetch);
-      expect(response.headers.get("content-type")).toContain("application/json");
+      expect(response.headers.get("content-type")).toContain(
+        "application/json",
+      );
     });
 
     test("body contains rust, db, and python keys", async () => {
@@ -94,7 +99,7 @@ describe("/api/health aggregation route", () => {
       });
 
       const response = await runHandler(fetchMock as unknown as typeof fetch);
-      const body = await response.json() as Record<string, unknown>;
+      const body = (await response.json()) as Record<string, unknown>;
 
       expect(body).toHaveProperty("rust");
       expect(body).toHaveProperty("db");
@@ -109,7 +114,10 @@ describe("/api/health aggregation route", () => {
       });
 
       const response = await runHandler(fetchMock as unknown as typeof fetch);
-      const body = await response.json() as Record<string, Record<string, unknown>>;
+      const body = (await response.json()) as Record<
+        string,
+        Record<string, unknown>
+      >;
 
       expect(body.rust.status).toBe("ok");
     });
@@ -122,7 +130,10 @@ describe("/api/health aggregation route", () => {
       });
 
       const response = await runHandler(fetchMock as unknown as typeof fetch);
-      const body = await response.json() as Record<string, Record<string, unknown>>;
+      const body = (await response.json()) as Record<
+        string,
+        Record<string, unknown>
+      >;
 
       expect(body.db.status).toBe("ok");
     });
@@ -135,7 +146,10 @@ describe("/api/health aggregation route", () => {
       });
 
       const response = await runHandler(fetchMock as unknown as typeof fetch);
-      const body = await response.json() as Record<string, Record<string, unknown>>;
+      const body = (await response.json()) as Record<
+        string,
+        Record<string, unknown>
+      >;
 
       expect(body.python.status).toBe("ok");
     });
@@ -150,7 +164,10 @@ describe("/api/health aggregation route", () => {
       });
 
       const response = await runHandler(fetchMock as unknown as typeof fetch);
-      const body = await response.json() as Record<string, Record<string, unknown>>;
+      const body = (await response.json()) as Record<
+        string,
+        Record<string, unknown>
+      >;
 
       expect(body.rust.status).toBe("error");
     });
@@ -163,7 +180,10 @@ describe("/api/health aggregation route", () => {
       });
 
       const response = await runHandler(fetchMock as unknown as typeof fetch);
-      const body = await response.json() as Record<string, Record<string, unknown>>;
+      const body = (await response.json()) as Record<
+        string,
+        Record<string, unknown>
+      >;
 
       expect(body.db.status).toBe("ok");
       expect(body.python.status).toBe("unavailable");
@@ -179,7 +199,10 @@ describe("/api/health aggregation route", () => {
       });
 
       const response = await runHandler(fetchMock as unknown as typeof fetch);
-      const body = await response.json() as Record<string, Record<string, unknown>>;
+      const body = (await response.json()) as Record<
+        string,
+        Record<string, unknown>
+      >;
 
       expect(body.db.status).toBe("error");
     });
@@ -194,7 +217,10 @@ describe("/api/health aggregation route", () => {
       });
 
       const response = await runHandler(fetchMock as unknown as typeof fetch);
-      const body = await response.json() as Record<string, Record<string, unknown>>;
+      const body = (await response.json()) as Record<
+        string,
+        Record<string, unknown>
+      >;
 
       expect(body.python.status).toBe("unavailable");
     });
@@ -209,7 +235,10 @@ describe("/api/health aggregation route", () => {
       });
 
       const response = await runHandler(fetchMock as unknown as typeof fetch);
-      const body = await response.json() as Record<string, Record<string, unknown>>;
+      const body = (await response.json()) as Record<
+        string,
+        Record<string, unknown>
+      >;
 
       expect(body.rust.status).toBe("error");
       expect(body.db.status).toBe("error");
@@ -235,17 +264,20 @@ describe("/api/health aggregation route", () => {
         fetchCalls.push(url);
         // /health returns nested structure
         if (url.endsWith("/health")) {
-          return new Response(JSON.stringify({
-            rust: { status: "ok", service: "api", version: "0.1.0" },
-            db: { status: "ok" },
-            redis: { status: "ok" },
-            storage: { status: "ok" },
-            python: { status: "ok" },
-            auth: { status: "ok" },
-          }), {
-            status: 200,
-            headers: { "Content-Type": "application/json" },
-          });
+          return new Response(
+            JSON.stringify({
+              rust: { status: "ok", service: "api", version: "0.1.0" },
+              db: { status: "ok" },
+              redis: { status: "ok" },
+              storage: { status: "ok" },
+              python: { status: "ok" },
+              auth: { status: "ok" },
+            }),
+            {
+              status: 200,
+              headers: { "Content-Type": "application/json" },
+            },
+          );
         }
         return new Response(JSON.stringify({ status: "ok" }), {
           status: 200,
@@ -271,7 +303,10 @@ describe("/api/health aggregation route", () => {
       });
 
       const response = await runHandler(fetchMock as unknown as typeof fetch);
-      const body = await response.json() as Record<string, Record<string, unknown>>;
+      const body = (await response.json()) as Record<
+        string,
+        Record<string, unknown>
+      >;
 
       expect(body.rust.status).toBe("error");
       expect(body.db.status).toBe("error");
@@ -282,14 +317,18 @@ describe("/api/health aggregation route", () => {
   describe("partial malformed JSON — one endpoint returns non-JSON", () => {
     test("rust returns non-JSON, db and python succeed", async () => {
       const fetchMock = mock(async (url: string) => {
-        if (url.endsWith("/health")) return new Response("not-json", { status: 200 });
+        if (url.endsWith("/health"))
+          return new Response("not-json", { status: 200 });
         return new Response(JSON.stringify({ status: "ok" }), {
           headers: { "Content-Type": "application/json" },
         });
       });
 
       const response = await runHandler(fetchMock as unknown as typeof fetch);
-      const body = await response.json() as Record<string, Record<string, unknown>>;
+      const body = (await response.json()) as Record<
+        string,
+        Record<string, unknown>
+      >;
 
       expect(body.rust.status).toBe("error");
       expect(body.db.status).toBe("ok");
@@ -298,19 +337,23 @@ describe("/api/health aggregation route", () => {
 
     test("db returns non-JSON, rust and python succeed", async () => {
       const fetchMock = mock(async (url: string) => {
-        if (url.endsWith("/health/db")) return new Response("not-json", { status: 200 });
+        if (url.endsWith("/health/db"))
+          return new Response("not-json", { status: 200 });
         // /health returns nested structure
         if (url.endsWith("/health")) {
-          return new Response(JSON.stringify({
-            rust: { status: "ok", service: "api", version: "0.1.0" },
-            db: { status: "ok" },
-            redis: { status: "ok" },
-            storage: { status: "ok" },
-            python: { status: "ok" },
-            auth: { status: "ok" },
-          }), {
-            headers: { "Content-Type": "application/json" },
-          });
+          return new Response(
+            JSON.stringify({
+              rust: { status: "ok", service: "api", version: "0.1.0" },
+              db: { status: "ok" },
+              redis: { status: "ok" },
+              storage: { status: "ok" },
+              python: { status: "ok" },
+              auth: { status: "ok" },
+            }),
+            {
+              headers: { "Content-Type": "application/json" },
+            },
+          );
         }
         return new Response(JSON.stringify({ status: "ok" }), {
           headers: { "Content-Type": "application/json" },
@@ -318,7 +361,10 @@ describe("/api/health aggregation route", () => {
       });
 
       const response = await runHandler(fetchMock as unknown as typeof fetch);
-      const body = await response.json() as Record<string, Record<string, unknown>>;
+      const body = (await response.json()) as Record<
+        string,
+        Record<string, unknown>
+      >;
 
       expect(body.rust.status).toBe("ok");
       expect(body.db.status).toBe("error");
@@ -327,19 +373,23 @@ describe("/api/health aggregation route", () => {
 
     test("python returns non-JSON, rust and db succeed", async () => {
       const fetchMock = mock(async (url: string) => {
-        if (url.endsWith("/health/python")) return new Response("not-json", { status: 200 });
+        if (url.endsWith("/health/python"))
+          return new Response("not-json", { status: 200 });
         // /health returns nested structure
         if (url.endsWith("/health")) {
-          return new Response(JSON.stringify({
-            rust: { status: "ok", service: "api", version: "0.1.0" },
-            db: { status: "ok" },
-            redis: { status: "ok" },
-            storage: { status: "ok" },
-            python: { status: "ok" },
-            auth: { status: "ok" },
-          }), {
-            headers: { "Content-Type": "application/json" },
-          });
+          return new Response(
+            JSON.stringify({
+              rust: { status: "ok", service: "api", version: "0.1.0" },
+              db: { status: "ok" },
+              redis: { status: "ok" },
+              storage: { status: "ok" },
+              python: { status: "ok" },
+              auth: { status: "ok" },
+            }),
+            {
+              headers: { "Content-Type": "application/json" },
+            },
+          );
         }
         return new Response(JSON.stringify({ status: "ok" }), {
           headers: { "Content-Type": "application/json" },
@@ -347,7 +397,10 @@ describe("/api/health aggregation route", () => {
       });
 
       const response = await runHandler(fetchMock as unknown as typeof fetch);
-      const body = await response.json() as Record<string, Record<string, unknown>>;
+      const body = (await response.json()) as Record<
+        string,
+        Record<string, unknown>
+      >;
 
       expect(body.rust.status).toBe("ok");
       expect(body.db.status).toBe("ok");

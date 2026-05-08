@@ -108,7 +108,7 @@ cd frontend && bun test
 
 ## Idea 2: Template Installation
 
-**Depends on Idea 1 being completed first** (install.sh references flattened crate paths).
+**Completed:** v0.10.1.0 (2026-05-08)
 
 Single `install.sh` at repo root that scaffolds a new project from this template.
 
@@ -136,7 +136,7 @@ Single `install.sh` at repo root that scaffolds a new project from this template
    - `backend/` — Rust workspace (api, auth, cache, db, domain, py-sidecar, storage)
    - `compose/` — Docker Compose + Dockerfiles + nginx configs + monitoring (Prometheus/Grafana)
    - `frontend/` — Bun + React app + e2e tests (in `tests/e2e/`)
-   - `python-sidecar/` → `$PROJECT_NAME/python-sidecar/` — Python FastAPI sidecar
+   - `py-api/` → `$PROJECT_NAME/py-api/` — Python FastAPI sidecar
    - `scripts/` — deploy, health, rollback, env utilities
 
    Root file copies:
@@ -153,7 +153,7 @@ Single `install.sh` at repo root that scaffolds a new project from this template
    | `backend/*/Cargo.toml` | workspace metadata (inherited, so only root) |
    | `backend/py-sidecar/Cargo.toml` | `name` → keep as `py-sidecar` (crate name, not project-scoped) |
    | `frontend/package.json` | `name` field |
-   | `python-sidecar/pyproject.toml` | `name` field |
+   | `py-api/pyproject.toml` | `name` field |
     | `compose/prod.yml` | container names (`fullstackhex_` → `$PROJECT_NAME_`) |
     | `compose/dev.yml` | container names (`fullstackhex_` → `$PROJECT_NAME_`) |
     | `compose/monitor.yml` | container names (`fullstackhex_` → `$PROJECT_NAME_`) |
@@ -161,13 +161,13 @@ Single `install.sh` at repo root that scaffolds a new project from this template
    | `Makefile` | `APP_NAME` variable at top |
 
 #### Phase 4 — Install
-8. `cd $PROJECT_NAME/python-sidecar && uv sync`
+8. `cd $PROJECT_NAME/py-api && uv sync`
 9. `cd $PROJECT_NAME/frontend && bun install`
 
 #### Phase 5 — Verify (skippable)
 10. `cd $PROJECT_NAME/backend && cargo check`
 11. `cd $PROJECT_NAME/frontend && bun run typecheck`
-12. Optional: `cd $PROJECT_NAME/python-sidecar && uv run pytest`
+12. Optional: `cd $PROJECT_NAME/py-api && uv run pytest`
 
 #### Phase 6 — Git
 13. `cd $PROJECT_NAME && git init && git add . && git commit -m "chore: scaffold from fullstackhex template"`

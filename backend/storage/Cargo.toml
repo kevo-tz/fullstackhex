@@ -15,15 +15,15 @@ serde_json = { workspace = true }
 tracing = { workspace = true }
 uuid = { workspace = true }
 thiserror = "2"
-hmac = "0.12"
-sha2 = "0.10"
+hmac = "0.13"
+sha2 = "0.11"
 hex = "0.4"
 chrono = "0.4"
-reqwest = { version = "0.11", features = ["stream"] }
+reqwest = { version = "0.13", features = ["stream"] }
 futures-util = "0.3"
 bytes = "1"
 url = "2"
-quick-xml = "0.37"
+quick-xml = "0.39"
 domain = { path = "../domain" }
 auth = { path = "../auth" }
 

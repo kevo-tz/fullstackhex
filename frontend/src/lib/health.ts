@@ -11,11 +11,17 @@ export function isFullOutage(data: Record<string, unknown>): boolean {
   return true;
 }
 
-export function getDiagnostics(data: Record<string, unknown>): { service: string; status: string; fix: string | null }[] {
+export function getDiagnostics(
+  data: Record<string, unknown>,
+): { service: string; status: string; fix: string | null }[] {
   const services = ["rust", "db", "redis", "storage", "python", "auth"];
   const labels: Record<string, string> = {
-    rust: "Rust API", db: "PostgreSQL", redis: "Redis",
-    storage: "RustFS Storage", python: "Python sidecar", auth: "Auth",
+    rust: "Rust API",
+    db: "PostgreSQL",
+    redis: "Redis",
+    storage: "RustFS Storage",
+    python: "Python sidecar",
+    auth: "Auth",
   };
   const result: { service: string; status: string; fix: string | null }[] = [];
   for (const svc of services) {
@@ -112,7 +118,9 @@ async function handleRustHealth(
       headers: { "x-trace-id": traceId },
     });
     const d = await res.json();
-    const rust = (d as Record<string, unknown>).rust as Record<string, unknown> | undefined;
+    const rust = (d as Record<string, unknown>).rust as
+      | Record<string, unknown>
+      | undefined;
     const status = rust?.status ?? "unknown";
     jsonLog({
       timestamp: new Date().toISOString(),
@@ -151,13 +159,55 @@ export async function aggregateHealth(
     trace_id: traceId,
   });
 
-  const [rustResult, dbResult, redisResult, storageResult, pythonResult, authResult] = await Promise.all([
+  const [
+    rustResult,
+    dbResult,
+    redisResult,
+    storageResult,
+    pythonResult,
+    authResult,
+  ] = await Promise.all([
     handleRustHealth(fetchImpl, apiBase, traceId),
-    handleService(fetchImpl, `${apiBase}/health/db`, "db", "db", "error", traceId),
-    handleService(fetchImpl, `${apiBase}/health/redis`, "redis", "redis", "unavailable", traceId),
-    handleService(fetchImpl, `${apiBase}/health/storage`, "storage", "storage", "unavailable", traceId),
-    handleService(fetchImpl, `${apiBase}/health/python`, "python", "python", "unavailable", traceId),
-    handleService(fetchImpl, `${apiBase}/health/auth`, "auth", "auth", "disabled", traceId),
+    handleService(
+      fetchImpl,
+      `${apiBase}/health/db`,
+      "db",
+      "db",
+      "error",
+      traceId,
+    ),
+    handleService(
+      fetchImpl,
+      `${apiBase}/health/redis`,
+      "redis",
+      "redis",
+      "unavailable",
+      traceId,
+    ),
+    handleService(
+      fetchImpl,
+      `${apiBase}/health/storage`,
+      "storage",
+      "storage",
+      "unavailable",
+      traceId,
+    ),
+    handleService(
+      fetchImpl,
+      `${apiBase}/health/python`,
+      "python",
+      "python",
+      "unavailable",
+      traceId,
+    ),
+    handleService(
+      fetchImpl,
+      `${apiBase}/health/auth`,
+      "auth",
+      "auth",
+      "disabled",
+      traceId,
+    ),
   ]);
 
   const durationMs = Math.round(performance.now() - start);

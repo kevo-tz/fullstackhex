@@ -34,9 +34,11 @@ function renderDashboard(): void {
 
     try {
       const user = JSON.parse(localStorage.getItem(USER_KEY) || "{}");
-      document.getElementById("user-email")!.textContent = user.email || "\u2014";
+      document.getElementById("user-email")!.textContent =
+        user.email || "\u2014";
       document.getElementById("user-name")!.textContent = user.name || "\u2014";
-      document.getElementById("user-provider")!.textContent = user.provider || "email";
+      document.getElementById("user-provider")!.textContent =
+        user.provider || "email";
     } catch {
       console.warn("Failed to parse user data from localStorage");
     }
@@ -52,7 +54,9 @@ describe("Dashboard auth gating", () => {
   test("shows auth guard when no token", () => {
     renderDashboard();
 
-    expect(document.getElementById("dashboard-content")!.style.display).toBe("none");
+    expect(document.getElementById("dashboard-content")!.style.display).toBe(
+      "none",
+    );
     expect(document.getElementById("auth-guard")!.style.display).toBe("block");
   });
 
@@ -60,12 +64,18 @@ describe("Dashboard auth gating", () => {
     localStorage.setItem(TOKEN_KEY, "valid-token");
     localStorage.setItem(
       USER_KEY,
-      JSON.stringify({ email: "test@example.com", name: "Test", provider: "email" }),
+      JSON.stringify({
+        email: "test@example.com",
+        name: "Test",
+        provider: "email",
+      }),
     );
 
     renderDashboard();
 
-    expect(document.getElementById("dashboard-content")!.style.display).toBe("block");
+    expect(document.getElementById("dashboard-content")!.style.display).toBe(
+      "block",
+    );
     expect(document.getElementById("auth-guard")!.style.display).toBe("none");
   });
 
@@ -80,7 +90,9 @@ describe("Dashboard auth gating", () => {
 
     expect(document.getElementById("user-email")!.textContent).toBe("a@b.com");
     expect(document.getElementById("user-name")!.textContent).toBe("Alice");
-    expect(document.getElementById("user-provider")!.textContent).toBe("google");
+    expect(document.getElementById("user-provider")!.textContent).toBe(
+      "google",
+    );
   });
 
   test("falls back to dash on missing user fields", () => {
@@ -103,7 +115,9 @@ describe("Dashboard auth gating", () => {
     renderDashboard();
 
     expect(document.getElementById("user-email")!.textContent).toBe("");
-    expect(warn).toHaveBeenCalledWith("Failed to parse user data from localStorage");
+    expect(warn).toHaveBeenCalledWith(
+      "Failed to parse user data from localStorage",
+    );
 
     warn.mockRestore();
   });
@@ -113,7 +127,10 @@ describe("Token refresh interceptor", () => {
   let origFetch: typeof globalThis.fetch;
   let backend: ReturnType<typeof vi.fn>;
 
-  function interceptedFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+  function interceptedFetch(
+    input: RequestInfo | URL,
+    init?: RequestInit,
+  ): Promise<Response> {
     return (async () => {
       const res = await origFetch(input, init);
       if (res.status !== 401) return res;
@@ -131,7 +148,8 @@ describe("Token refresh interceptor", () => {
         if (refreshRes.ok) {
           const data = await refreshRes.json();
           localStorage.setItem(TOKEN_KEY, data.access_token);
-          if (data.refresh_token) localStorage.setItem(REFRESH_KEY, data.refresh_token);
+          if (data.refresh_token)
+            localStorage.setItem(REFRESH_KEY, data.refresh_token);
           const newInit: RequestInit = { ...init };
           const newHeaders = new Headers(init?.headers);
           newHeaders.set("Authorization", `Bearer ${data.access_token}`);

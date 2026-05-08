@@ -196,7 +196,7 @@ configure() {
   run_in "$PROJECT_NAME" "sed -i 's|\"name\": \"frontend\"|\"name\": \"$PROJECT_NAME\"|' frontend/package.json"
 
   log "Configuring py-api/pyproject.toml (name)..."
-  run_in "$PROJECT_NAME" "sed -i 's|name = \"python-sidecar\"|name = \"$PROJECT_NAME\"|' py-api/pyproject.toml"
+  run_in "$PROJECT_NAME" "sed -i 's|name = \"py-api\"|name = \"$PROJECT_NAME\"|' py-api/pyproject.toml"
 
   log "Configuring compose files (container names, network names)..."
   for f in prod.yml dev.yml monitor.yml; do

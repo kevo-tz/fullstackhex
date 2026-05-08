@@ -88,12 +88,27 @@ async fn health_returns_json_with_status_ok() {
 
     assert_eq!(v["rust"]["status"], "ok", "rust.status must be 'ok'");
     assert_eq!(v["rust"]["service"], "api", "rust.service must be 'api'");
-    assert!(v["rust"]["version"].is_string(), "rust.version must be a string");
+    assert!(
+        v["rust"]["version"].is_string(),
+        "rust.version must be a string"
+    );
     assert!(v["db"]["status"].is_string(), "db.status must be a string");
-    assert!(v["redis"]["status"].is_string(), "redis.status must be a string");
-    assert!(v["storage"]["status"].is_string(), "storage.status must be a string");
-    assert!(v["python"]["status"].is_string(), "python.status must be a string");
-    assert!(v["auth"]["status"].is_string(), "auth.status must be a string");
+    assert!(
+        v["redis"]["status"].is_string(),
+        "redis.status must be a string"
+    );
+    assert!(
+        v["storage"]["status"].is_string(),
+        "storage.status must be a string"
+    );
+    assert!(
+        v["python"]["status"].is_string(),
+        "python.status must be a string"
+    );
+    assert!(
+        v["auth"]["status"].is_string(),
+        "auth.status must be a string"
+    );
 }
 
 #[tokio::test]

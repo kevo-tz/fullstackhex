@@ -33,14 +33,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Frontend auth UI**: login and register pages with form validation, responsive nav with hamburger menu, theme system with dark/light mode toggle
 - **OAuth provider discovery**: dynamic detection of configured OAuth providers — login page shows Google and GitHub buttons only when env vars are set
 - **Diagnostic panel**: auto-retry with backoff on degraded services, connectivity outage recovery, and visual status indicators for each service card
-- **E2E auth tests**: Bun-based end-to-end test suite in `e2e/auth.test.ts` covering register, login, refresh, logout, protected routes, and error handling
-- **Grafana auth dashboard**: `monitoring/grafana/dashboards/auth.json` with login success/failure rates, registration activity, token issuance and refresh counts, active sessions
+- **E2E auth tests**: Bun-based end-to-end test suite in \`frontend/tests/e2e/auth.test.ts\` covering register, login, refresh, logout, protected routes, and error handling
+- **Grafana auth dashboard**: \`compose/monitoring/grafana/dashboards/auth.json\` with login success/failure rates, registration activity, token issuance and refresh counts, active sessions
 - **Deploy script tests**: bats-core test suite (`tests/deploy/deploy_scripts.bats`) covering blue-green, canary, rollback, lock contention, and cleanup
 - **E2E shell test framework**: `tests/e2e.sh` for full-stack integration testing with service health polling and isolated test runs
 - **Theme vitest tests**: `frontend/tests/vitest/theme.vitest.ts` covering theme toggle, localStorage persistence, and system preference detection
 - **CI e2e job**: new GitHub Actions job that starts backend + frontend with real PostgreSQL and Redis, runs the Bun-based e2e suite
 - **SQLx offline check**: CI now verifies `cargo sqlx prepare --check` to catch stale offline metadata
-- **Socket integration tests**: CI runs `cargo test -- --ignored` for Python sidecar socket integration
+- **Socket integration tests**: CI runs `cargo test -- --ignored` for py-api socket integration
 
 ### Fixed
 - **Cookie auth mode**: added `tracing::warn!` when `AUTH_MODE=cookie` is unsupported by the current configuration — no silent fallback
@@ -52,7 +52,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - **Environment validation**: `scripts/validate-env.sh` validates `.env` against `.env.example` for missing keys, `CHANGE_ME` placeholders, and shell syntax errors — wired into `make dev`, `make up`, `make watch`
-- **Test coverage**: added 22 new tests across auth routes (`register`/`login`/`providers` validation), storage client (`build_object_url` edge cases, multipart XML body), and python-sidecar (`backoff_for_attempt` boundary cases) — coverage improved from 55% to 64%
+- **Test coverage**: added 22 new tests across auth routes (`register`/`login`/`providers` validation), storage client (`build_object_url` edge cases, multipart XML body), and py-api (`backoff_for_attempt` boundary cases) — coverage improved from 55% to 64%
 - **Project documentation**: updated AUTH.md, REDIS.md, STORAGE.md, DEPLOY.md, ARCHITECTURE.md, INDEX.md, EXAMPLES.md, INFRASTRUCTURE.md, MONITORING.md, SERVICES.md, CI.md for v0.9.0.0
 - **Makefile DRY**: extracted shared `run-dev` target from near-duplicate `dev`/`watch` targets; replaced `python3` JSON parsing with `grep`/`sed`; added missing `.PHONY` declarations
 - **`.env.example` quoting**: `REDIS_SAVE="900 1 300 10 60 10000"` quoted to prevent shell parse errors on `source`
@@ -69,8 +69,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Shared error type** (`crates/domain/`): unified `ApiError` enum with consistent HTTP status mapping (401/403/404/429/503) used across auth, cache, storage, and API crates
 - **Database migration system**: `sqlx` migrations with `make migrate` / `make migrate-revert` / `make migrate-status` targets, auto-run on API startup
 - **Auth health endpoints**: `/health/redis` and `/health/storage` added to the existing health fan-out
-- **Python sidecar HMAC verification**: middleware validates `X-Auth-Signature` header on every request using `SIDECAR_SHARED_SECRET` — rejects requests with missing or invalid signatures
-- **Nginx configs**: `nginx/upstream.conf.template` for blue-green upstream switching and `nginx/canary.conf` for `split_clients` traffic routing
+- **py-api HMAC verification**: middleware validates `X-Auth-Signature` header on every request using `SIDECAR_SHARED_SECRET` — rejects requests with missing or invalid signatures
+- **Nginx configs**: \`compose/nginx/upstream.conf.template\` for blue-green upstream switching and \`compose/nginx/canary.conf\` for \`split_clients\` traffic routing
 
 ### Fixed
 - **Storage URL safety**: object keys and prefixes are now URL-encoded via `url::Url` — prevents panics from invalid characters and query-parameter injection in list operations
@@ -81,7 +81,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - **Frontend health aggregation**: updated to include Redis and Storage service cards in the dashboard
-- **API test suite**: expanded from ~80 to ~140 tests across auth, cache, storage, domain, and Python sidecar crates
+- **API test suite**: expanded from ~80 to ~140 tests across auth, cache, storage, domain, and py-api
 - **Project structure**: `crates/core/` renamed to `crates/domain/` to avoid Rust built-in namespace conflict
 
 ---
@@ -90,9 +90,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - **Prometheus metrics stack**: `/metrics` endpoint on Rust backend exposes `http_requests_total` counter and `http_request_duration_seconds` histogram with bounded route labels — prevents cardinality explosion from dynamic paths
-- **Python sidecar metrics**: `/metrics` endpoint on FastAPI sidecar with `python_requests_total` counter and `python_request_duration_seconds` histogram — proxied through Rust backend at `/metrics/python`
+- **py-api metrics**: `/metrics` endpoint on FastAPI with `python_requests_total` counter and `python_request_duration_seconds` histogram — proxied through Rust backend at `/metrics/python`
 - **Database connection pool monitoring**: background task updates `db_pool_connections` gauge every 15 seconds with idle/active counts — abort handle ensures clean shutdown
-- **Grafana dashboards**: 5 dashboards for database, infrastructure, overview, Python sidecar, and SLO tracking — auto-provisioned from JSON files
+- **Grafana dashboards**: 5 dashboards for database, infrastructure, overview, py-api, and SLO tracking — auto-provisioned from JSON files
 - **Prometheus alerting**: alert rules for service down, high latency, and database issues — commented out by default (opt-in)
 - **Docker Compose monitoring stack**: `compose/monitor.yml` with Prometheus, Grafana, Alertmanager, node-exporter, redis-exporter, and postgres-exporter — joins existing Docker network
 - **Production Docker Compose**: `compose/prod.yml` with nginx reverse proxy, TLS termination, resource limits, health checks, and all exporters
@@ -109,23 +109,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Deploy script**: `chmod .env` on remote, try HTTPS then fall back to `-k` for health check
 
 ### Changed
-- **Python sidecar metrics recording**: added `prometheus-client` dependency with structured metric labels
+- **py-api metrics recording**: added `prometheus-client` dependency with structured metric labels
 - **CI caching**: Docker Buildx with GitHub Actions cache for Rust builds — faster CI runs
 
 ## [0.6.0.0] - 2026-05-02
 
 ### Added
 - **Structured JSON logging** across all three languages: Rust (`tracing-subscriber` JSON layer), Python (`JsonFormatter` on stderr), and TypeScript (`jsonLog()` wrapper on stdout) — every log line is a JSON object with `timestamp`, `level`, `target`, and `message` fields
-- **trace_id propagation** end-to-end: frontend generates UUIDv7 per poll cycle, Rust forwards `x-trace-id` header to Python sidecar, Python extracts and logs it in both health handler and middleware trace — developers can trace a single dashboard refresh across all three services
+- **trace_id propagation** end-to-end: frontend generates UUIDv7 per poll cycle, Rust forwards `x-trace-id` header to py-api, Python extracts and logs it in both health handler and middleware trace — developers can trace a single dashboard refresh across all three services
 - **`make dev` DX chain**: before starting services, `check-env` validates `.env`, `check-prereqs` verifies `bun`/`uv`/`cargo`/`docker` are installed, `preflight` detects port/socket conflicts and cleans up stale sockets, `verify-health` polls health endpoints every 1s for up to 30s — all three must be OK before the dashboard URL is printed
 - **Cleanup trap**: SIGINT/SIGTERM in `make dev`/`make watch` triggers `make down-dev` via PID_FILE, killing all child processes and Docker containers
-- **Socket CI support**: Python sidecar starts as a CI background step; socket integration tests run via `make test-socket-ci`
+- **Socket CI support**: py-api starts as a CI background step; socket integration tests run via `make test-socket-ci`
 - **Dashboard vitest tests** (jsdom): 13 tests covering initial loading state, all-green, mixed degradation, all-red, and CSS class transitions — mirrors the inline `setStatus()`/`setDetail()` logic from `index.astro`
 - **`docs/logging-conventions.md`**: schema documentation for the structured log format across all three languages
 
 ### Changed
 - **Rust main.rs** switched from `println!` to structured JSON tracing (`tracing-subscriber` with `.json()` layer)
-- **Python sidecar** logging rewritten: `JsonFormatter` replaces uvicorn handlers, `trace_id_middleware` logs every HTTP request with method, path, status, duration, and trace_id
+- **py-api** logging rewritten: `JsonFormatter` replaces uvicorn handlers, `trace_id_middleware` logs every HTTP request with method, path, status, duration, and trace_id
 - **Frontend `aggregateHealth()`** now emits structured JSON logs with per-endpoint status and a summary line with `duration_ms`
 - **`make watch`** updated with the same DX chain as `make dev`
 
@@ -140,7 +140,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - **Parallel health checks** in the frontend dashboard: three health endpoints are now fetched simultaneously with `Promise.allSettled` instead of sequentially, cutting worst-case load time from ~15s to ~5s
 - **`make watch` target** for hot-reload Rust development: starts all services with `cargo watch` so backend changes recompile automatically
-- **`make logs-python` target** documenting where to find Python sidecar logs (stdout of the dev/watch terminal)
+- **`make logs-python` target** documenting where to find py-api logs (stdout of the dev/watch terminal)
 - **Log locations table** in `docs/SERVICES.md` mapping each service to its log output
 - **Gitleaks custom rules** for project-specific secret patterns (RustFS key, PostgreSQL/Redis/Grafana passwords)
 
@@ -165,7 +165,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - **Default socket path** standardized to `/tmp/fullstackhex-python.sock`
 - **DB connection errors** now include the original `sqlx::Error` detail for faster diagnosis
-- **Python sidecar retries** capped at 10 to prevent multi-hour backoff from misconfigured env vars
+- **py-api retries** capped at 10 to prevent multi-hour backoff from misconfigured env vars
 
 ### Fixed
 - Response size boundary check off-by-one: exactly-1-MiB responses are no longer rejected
@@ -180,16 +180,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - **PythonSidecar client** (`backend/crates/python-sidecar`): Unix-socket HTTP/1.1 transport with retry/backoff, per-request timeout, and a 5-variant error enum
-- **`make dev` and `make down-dev`**: one-command full-stack orchestration (compose + Python sidecar + Rust backend + Astro frontend)
+- **`make dev` and `make down-dev`**: one-command full-stack orchestration (compose + py-api + Rust backend + Astro frontend)
 - **`.env` wired into Makefile**: all compose targets read `--env-file .env`
 
 ### Fixed
 - Dashboard no longer shows stale Python error messages after the sidecar recovers
 - PostgreSQL data persists correctly across container restarts (Alpine volume path fixed)
-- Python sidecar connection retries no longer risk overflow under repeated failures
+- py-api connection retries no longer risk overflow under repeated failures
 
 ### Removed
-- Dead stub code in `python-sidecar` and `db` crates
+- Dead stub code in `py-api` and `db` crates
 
 ---
 
@@ -223,14 +223,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`mock_network_calls`** helper in `common.sh` for stubbing HTTP calls in tests
 
 ### Changed
-- **CI bootstrap condition**: all three jobs now check all generated dirs (`backend/`, `python-sidecar/`, `frontend/`) before running `install.sh`, preventing silent failures when any directory is missing
+- **CI bootstrap condition**: all three jobs now check all generated dirs (`backend/`, `py-api/`, `frontend/`) before running `install.sh`, preventing silent failures when any directory is missing
 - **CI actions upgraded**: `actions/checkout@v6`, `actions/setup-python@v6`, `actions/cache@v5`, `astral-sh/setup-uv@v8`
-- **Socket path default** changed to `~/.fullstackhex/sockets/python-sidecar.sock` (user-isolated); production path documented in `.env.example`
+- **Socket path default** changed to `~/.fullstackhex/sockets/py-api.sock` (user-isolated); production path documented in `.env.example`
 - **Benchmark system simplified** to use Apache Bench only; removed Go dependency and redundant `benchmark.sh`
 - **`scripts/config.sh`** password defaults changed from `CHANGE_ME` to empty string (credentials now enforced via `make check-env` / `.env`)
 - **Secrets baseline** moved from `.secrets.baseline` to `.github/.secrets.baseline`; `gitleaks.toml` and `detect-secrets` config updated to match
 - **Architecture docs** updated to reflect `PythonSidecar` API change (no longer spawns the process; connects to a running sidecar via Unix socket)
-- **`.gitignore`** updated: added `.mcp.json`, `.backup/`, `.performance/` output dirs; removed `monitoring/` (now tracked)
+- **`.gitignore`** updated: added `.mcp.json`, `.backup/`, `.performance/` output dirs; removed \`compose/monitoring/\` (now tracked)
 
 ### Fixed
 - `make help` `@echo` lines using spaces instead of tabs (caused `missing separator` errors)
@@ -248,10 +248,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - Initial open source release of FullStackHex
 - Rust backend (Axum + Tokio) serving HTTP API on port 8001
-- Python sidecar (FastAPI + uvicorn) communicating via Unix domain socket
+- py-api (FastAPI + uvicorn) communicating via Unix domain socket
 - Astro + Bun frontend on port 4321
 - Docker Compose development stack: PostgreSQL 18, Redis 8, RustFS (S3-compatible)
-- Multi-stage Dockerfiles for Rust backend, Python sidecar, and Astro frontend
+- Multi-stage Dockerfiles for Rust backend, py-api, and Astro frontend
 - Production Docker Compose with resource limits, no optional tooling, Nginx service
 - Nginx reverse proxy with TLS termination, security headers, and HTTP→HTTPS redirect
 - GitHub Actions CI pipeline: `cargo fmt`/`clippy`/`test`, `ruff`/`pytest`, `bun lint`/`bun test`/`bun build`

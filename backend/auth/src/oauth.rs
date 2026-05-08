@@ -1,12 +1,28 @@
 //! OAuth2 provider integration (Google, GitHub).
 
 use domain::error::ApiError;
-use oauth2::basic::BasicClient;
+use oauth2::basic::{
+    BasicClient, BasicErrorResponse, BasicRevocationErrorResponse, BasicTokenIntrospectionResponse,
+    BasicTokenResponse,
+};
 use oauth2::{
-    AuthUrl, AuthorizationCode, ClientId, ClientSecret, CsrfToken, RedirectUrl, TokenResponse,
-    TokenUrl,
+    AuthUrl, AuthorizationCode, ClientId, ClientSecret, CsrfToken, EndpointNotSet, EndpointSet,
+    RedirectUrl, StandardRevocableToken, TokenResponse, TokenUrl,
 };
 use serde::{Deserialize, Serialize};
+
+type ConfiguredClient = oauth2::Client<
+    BasicErrorResponse,
+    BasicTokenResponse,
+    BasicTokenIntrospectionResponse,
+    StandardRevocableToken,
+    BasicRevocationErrorResponse,
+    EndpointSet,
+    EndpointNotSet,
+    EndpointNotSet,
+    EndpointNotSet,
+    EndpointSet,
+>;
 
 /// Supported OAuth providers.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -36,8 +52,8 @@ pub struct OAuthUserInfo {
 
 /// OAuth service for handling provider flows.
 pub struct OAuthService {
-    google_client: Option<BasicClient>,
-    github_client: Option<BasicClient>,
+    google_client: Option<ConfiguredClient>,
+    github_client: Option<ConfiguredClient>,
 }
 
 impl OAuthService {
@@ -51,30 +67,31 @@ impl OAuthService {
         let google_client = google_client_id
             .zip(google_client_secret)
             .map(|(id, secret)| {
-                BasicClient::new(
-                    ClientId::new(id),
-                    Some(ClientSecret::new(secret)),
-                    AuthUrl::new("https://accounts.google.com/o/oauth2/v2/auth".to_string())
-                        .unwrap(),
-                    Some(
+                BasicClient::new(ClientId::new(id))
+                    .set_client_secret(ClientSecret::new(secret))
+                    .set_auth_uri(
+                        AuthUrl::new("https://accounts.google.com/o/oauth2/v2/auth".to_string())
+                            .unwrap(),
+                    )
+                    .set_token_uri(
                         TokenUrl::new("https://www.googleapis.com/oauth2/v3/token".to_string())
                             .unwrap(),
-                    ),
-                )
+                    )
             });
 
         let github_client = github_client_id
             .zip(github_client_secret)
             .map(|(id, secret)| {
-                BasicClient::new(
-                    ClientId::new(id),
-                    Some(ClientSecret::new(secret)),
-                    AuthUrl::new("https://github.com/login/oauth/authorize".to_string()).unwrap(),
-                    Some(
+                BasicClient::new(ClientId::new(id))
+                    .set_client_secret(ClientSecret::new(secret))
+                    .set_auth_uri(
+                        AuthUrl::new("https://github.com/login/oauth/authorize".to_string())
+                            .unwrap(),
+                    )
+                    .set_token_uri(
                         TokenUrl::new("https://github.com/login/oauth/access_token".to_string())
                             .unwrap(),
-                    ),
-                )
+                    )
             });
 
         Self {
@@ -122,9 +139,14 @@ impl OAuthService {
     ) -> Result<OAuthUserInfo, ApiError> {
         let client = self.get_client(provider)?;
 
+        let http_client = oauth2::reqwest::ClientBuilder::new()
+            .redirect(oauth2::reqwest::redirect::Policy::none())
+            .build()
+            .map_err(|e| ApiError::InternalError(format!("HTTP client build failed: {e}")))?;
+
         let token = client
             .exchange_code(AuthorizationCode::new(code.to_string()))
-            .request_async(oauth2::reqwest::async_http_client)
+            .request_async(&http_client)
             .await
             .map_err(|e| ApiError::InternalError(format!("Token exchange failed: {e}")))?;
 
@@ -136,7 +158,7 @@ impl OAuthService {
         }
     }
 
-    fn get_client(&self, provider: &OAuthProvider) -> Result<&BasicClient, ApiError> {
+    fn get_client(&self, provider: &OAuthProvider) -> Result<&ConfiguredClient, ApiError> {
         match provider {
             OAuthProvider::Google => self.google_client.as_ref().ok_or_else(|| {
                 ApiError::ServiceUnavailable("Google OAuth not configured".to_string())

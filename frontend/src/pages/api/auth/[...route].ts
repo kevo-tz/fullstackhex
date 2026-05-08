@@ -2,7 +2,8 @@ export const prerender = false;
 
 import type { APIRoute } from "astro";
 
-const BACKEND = import.meta.env.VITE_RUST_BACKEND_URL || "http://localhost:8001";
+const BACKEND =
+  import.meta.env.VITE_RUST_BACKEND_URL || "http://localhost:8001";
 
 export const ALL: APIRoute = async ({ request, params }) => {
   const route = params.route || "";
@@ -31,7 +32,8 @@ export const ALL: APIRoute = async ({ request, params }) => {
       status: backendRes.status,
       statusText: backendRes.statusText,
       headers: {
-        "content-type": backendRes.headers.get("content-type") || "application/json",
+        "content-type":
+          backendRes.headers.get("content-type") || "application/json",
       },
     });
   } catch {

@@ -107,8 +107,10 @@ cleanup() {
 print_usage() {
   cat <<'EOF'
 Usage:
-  curl -fsSL https://raw.githubusercontent.com/kevo-tz/fullstackhex/main/install.sh | bash -s -- <project-name>
-  ./install.sh <project-name> [options]
+  curl -fsSL https://raw.githubusercontent.com/kevo-tz/fullstackhex/main/install.sh | bash
+  ./install.sh [project-name] [options]
+
+If project-name is omitted, you'll be prompted for it interactively.
 
 Options:
   --dry-run       Preview actions without executing
@@ -122,8 +124,11 @@ EOF
 
 validate() {
   if [ -z "$PROJECT_NAME" ]; then
-    error "Missing project name."
-    print_usage
+    log "No project name provided."
+    read -r -p "Enter project name: " PROJECT_NAME || true
+  fi
+  if [ -z "$PROJECT_NAME" ]; then
+    error "Project name is required."
     exit 1
   fi
   if [ -d "$PROJECT_NAME" ]; then

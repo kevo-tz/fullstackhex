@@ -31,7 +31,7 @@ A production-ready full-stack template combining a Rust/Axum backend, Python Fas
 Scaffold a new project with a single command:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/kevo-tz/fullstackhex/main/install.sh | bash -s -- my-project
+curl -fsSL https://raw.githubusercontent.com/kevo-tz/fullstackhex/main/install.sh | bash
 ```
 
 The installer validates tooling, copies all source files, renames packages and containers to match your project, installs dependencies (`uv sync`, `bun install`, `cargo build`), runs proof-of-concept checks, and initialises a git repo.

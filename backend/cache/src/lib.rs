@@ -45,7 +45,8 @@ impl RedisClient {
     /// Create a new Redis client from environment variables.
     ///
     /// Reads `REDIS_URL` for the connection string and `REDIS_POOL_SIZE`
-    /// for the connection pool size (default: 10).
+    /// for the connection pool size (default: 10). Reads `REDIS_KEY_PREFIX`
+    /// for the key namespace prefix (default: "fullstackhex").
     pub async fn from_env() -> Result<Self, CacheError> {
         let redis_url = std::env::var("REDIS_URL").map_err(|_| CacheError::NotConfigured)?;
 
@@ -70,9 +71,12 @@ impl RedisClient {
 
         tracing::info!("redis connected");
 
+        let key_prefix = std::env::var("REDIS_KEY_PREFIX")
+            .unwrap_or_else(|_| "fullstackhex".to_string());
+
         Ok(Self {
             client,
-            key_prefix: "fullstackhex".to_string(),
+            key_prefix,
         })
     }
 

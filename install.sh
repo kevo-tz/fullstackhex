@@ -124,6 +124,12 @@ EOF
 
 validate() {
   if [ -z "$PROJECT_NAME" ]; then
+    if [ ! -t 0 ]; then
+      error "Project name is required when running non-interactively."
+      echo "  Usage: curl -fsSL https://raw.githubusercontent.com/kevo-tz/fullstackhex/main/install.sh | bash -s -- <project-name>"
+      echo "  Or:    ./install.sh <project-name>"
+      exit 1
+    fi
     log "No project name provided."
     read -r -p "Enter project name: " PROJECT_NAME || true
   fi

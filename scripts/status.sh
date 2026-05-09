@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
 # status.sh — Show which development services are running and on which ports.
-# Reads PID files from /tmp/fullstackhex-dev/ written by make dev.
+# Reads PID files from the PID_DIR (config.sh) written by make dev.
 
-PID_DIR="${PID_DIR:-/tmp/fullstackhex-dev}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/config.sh"
+
 API_BASE="${API_BASE:-http://localhost:8001}"
 
 # Header

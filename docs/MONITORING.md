@@ -9,11 +9,10 @@ FullStackHex includes a monitoring stack with Prometheus and Grafana for trackin
 ### Start the Monitoring Stack
 
 ```bash
-# Using make
-make up
-
-# Or using docker compose directly
+# Start dev infrastructure
 docker compose -f compose/dev.yml up -d
+
+# Start monitoring stack
 docker compose -f compose/monitor.yml up -d
 ```
 
@@ -231,7 +230,7 @@ Add new routes to `normalize_route()` in \`backend/api/src/metrics.rs\` to track
 ### Dashboard Panels Empty
 
 1. Verify time range in Grafana (top right)
-2. Check if services are running: `make health`
+2. Check if services are running: `make status`
 3. Query Prometheus directly: http://localhost:9090/graph
 
 ## Related Docs

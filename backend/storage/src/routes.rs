@@ -298,9 +298,22 @@ mod tests {
             .await
             .unwrap();
         let v: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
-        assert_eq!(
-            v["url"],
-            "http://pub.local:9000/test-bucket/users/user-123/file.txt"
+        let url_str = v["url"].as_str().unwrap();
+        assert!(
+            url_str.starts_with("http://pub.local:9000/test-bucket/users/user-123/file.txt?"),
+            "URL should start with base and contain query params: {url_str}"
+        );
+        assert!(
+            url_str.contains("X-Amz-Algorithm=AWS4-HMAC-SHA256"),
+            "URL should contain SigV4 algorithm: {url_str}"
+        );
+        assert!(
+            url_str.contains("X-Amz-Signature="),
+            "URL should contain signature: {url_str}"
+        );
+        assert!(
+            url_str.contains("X-Amz-Expires=3600"),
+            "URL should contain expiry: {url_str}"
         );
         assert_eq!(v["method"], "GET");
         assert_eq!(v["expires_in"], 3600);

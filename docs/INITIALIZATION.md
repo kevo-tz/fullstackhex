@@ -2,7 +2,7 @@
 
 Use this as a portable template for new projects with the same Rust + Bun + Python API architecture.
 
-> **Note for this repo:** all source files already ship committed. Run `make setup` to install tools and create `.env`. See [SETUP.md](./SETUP.md) for the full guide.
+> **Note for this repo:** all source files already ship committed. Run `cp .env.example .env && make dev` to get started. See [SETUP.md](./SETUP.md) for the full guide.
 
 ## Table of Contents
 
@@ -23,11 +23,19 @@ Use this as a portable template for new projects with the same Rust + Bun + Pyth
 
 ## Initialization Script
 
-Use `install.sh` at the repo root to scaffold a new project:
+Use `install.sh` to scaffold a new project:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/kevo-tz/fullstackhex/main/install.sh | bash
+```
+
+Or from a local clone:
 
 ```bash
 ./install.sh my-new-project
 ```
+
+If no project name is given, you'll be prompted interactively.
 
 Flags:
 - `--dry-run` — preview actions without executing
@@ -35,7 +43,7 @@ Flags:
 - `--skip-git` — skip `git init` and initial commit
 - `--skip-verify` — skip `cargo check` and `bun run typecheck`
 
-The script validates tools (Cargo, Bun, uv, Docker), copies the template, installs Python 3.14 via uv, configures project names, installs dependencies, and creates a git commit.
+The script validates tools (Cargo, Bun, uv, Docker), downloads the template if needed, copies all source files, installs Python 3.14 via uv, configures project names, installs dependencies, and creates a git commit.
 
 ## Scaffold Astro Frontend
 
@@ -112,17 +120,14 @@ grep APP_NAME .env
 
 ## Portable Template
 
-To use this architecture for a new project:
+`install.sh` is self-bootstrapping — it downloads the full template from GitHub when no local checkout is detected. No manual copy needed:
 
-1. Copy `scripts/install.sh` (from the Initialization Script section above) to your new project
-2. Ensure the skeleton directory structure:
-   ```
-   your-project/
-   ├── scripts/install.sh
-   ├── .env.example
-   └── compose/
-   ```
-3. Run `chmod +x scripts/install.sh && ./scripts/install.sh`
+```bash
+# From any directory — install.sh handles the rest
+curl -fsSL https://raw.githubusercontent.com/kevo-tz/fullstackhex/main/install.sh | bash
+```
+
+This makes it trivial to use FullStackHex as a base for any new project without cloning the repo first.
 
 ## What Gets Installed (Latest Versions)
 

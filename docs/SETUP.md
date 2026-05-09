@@ -35,23 +35,15 @@ All source code, configs, and test files ship in the repo — no scaffolding ste
 git clone <repo>
 cd fullstackhex
 
-# Install tools + create .env from .env.example
-make setup
-```
-
-`make setup` runs `scripts/install-deps.sh` (installs/updates Rust, Bun, uv; validates Docker and Python) then copies `.env.example → .env` if `.env` is absent.
-
-If you only need to (re)create `.env` without touching tools:
-
-```bash
-make setup-env
+# Create .env from template
+cp .env.example .env
 ```
 
 ## Start Development
 
 ```bash
 # 1. Start infrastructure (PostgreSQL, Redis, RustFS, Grafana)
-make up
+docker compose -f compose/dev.yml up -d
 
 # 2. Start Rust API (in a separate terminal)
 cd backend && cargo run -p api
@@ -76,7 +68,7 @@ The Rust binary auto-spawns py-api over a Unix socket (`PYTHON_SIDECAR_SOCKET`).
 
 ```bash
 # All services healthy
-make health
+make status
 
 # Individual checks
 curl http://localhost:8001/health
@@ -89,14 +81,14 @@ docker compose -f compose/dev.yml ps
 
 ## Environment Configuration
 
-`.env` is created by `make setup` from `.env.example`. Key variables:
+`.env` is created from `.env.example`. Key variables:
 
 ```env
 # Database
 DATABASE_URL=postgres://app_user:CHANGE_ME@localhost:5432/app_database
 
-# py-api (Unix socket — set automatically by make setup-env)
-PYTHON_SIDECAR_SOCKET=/home/<you>/.fullstackhex/sockets/py-api.sock
+# py-api (Unix socket)
+PYTHON_SIDECAR_SOCKET=/tmp/fullstackhex-python.sock
 
 # Frontend → Rust
 VITE_RUST_BACKEND_URL=http://localhost:8001
@@ -104,7 +96,7 @@ ASTRO_PORT=4321
 PUBLIC_API_URL=http://localhost:8001
 ```
 
-Replace `CHANGE_ME` with a real password before running `make up`. `make check-env` validates this.
+Replace `CHANGE_ME` with a real password before running `docker compose -f compose/dev.yml up -d`.
 
 ## Troubleshooting
 
@@ -139,7 +131,7 @@ docker compose -f compose/dev.yml restart
 
 ### Socket path issues
 
-`PYTHON_SIDECAR_SOCKET` in `.env` must point to a directory the current user can write to. Re-run `make setup-env` to regenerate the correct path.
+`PYTHON_SIDECAR_SOCKET` in `.env` must point to a path the current user can write to. Default is `/tmp/fullstackhex-python.sock`.
 
 ## Related Docs
 

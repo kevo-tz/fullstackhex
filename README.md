@@ -18,11 +18,9 @@ A production-ready full-stack template combining a Rust/Axum backend, Python Fas
 - **Rust + Python API (`py-api/`)** — Rust backend connects to a running Python FastAPI sidecar via Unix domain socket for low-latency IPC without network overhead.
 - **Latest tooling** — Rust stable (edition 2024), Bun (latest), uv (latest), Astro v6.
 - **Ships complete** — every source file, config, and test is committed. Clone and run — no scaffolding step.
-- **`make setup`** — installs Rust, Bun, uv and creates `.env` from `.env.example`. That's all first-time setup requires.
 - **Dev infrastructure via Docker Compose** — PostgreSQL 18, Redis 8, and RustFS spin up with a single command; optional Adminer and Redis Commander behind a `tools` profile.
 - **Monitoring stack overlay** — `compose/monitor.yml` adds Prometheus + Grafana with 5 auto-provisioned dashboards (API, DB, Python, Infrastructure, SLOs).
 - **Metrics out of the box** — Rust backend exposes `/metrics` with request counters and latency histograms; Python sidecar metrics proxied via `/metrics/python`.
-- **Production deployable** — `make deploy` pushes to a VPS via SSH+rsync; nginx + TLS + certbot auto-renewal included.
 - **Full test suites committed** — Rust/Python/Frontend unit, integration, and smoke tests ship in the repo.
 - **Security automation** — local `detect-secrets` pre-commit checks plus CI `gitleaks` scanning.
 - **Dependency automation** — Dependabot updates for Rust, Python, frontend, and GitHub Actions.
@@ -30,46 +28,34 @@ A production-ready full-stack template combining a Rust/Axum backend, Python Fas
 
 ## Quick Start
 
-```bash
-# 1. Clone
-git clone https://github.com/kevo-tz/fullstackhex.git
-cd fullstackhex
-
-# 2. Install tools + create .env
-make setup
-
-# 3. Start everything (infra + Python sidecar + Rust backend + frontend)
-make dev
-```
-
-Dashboard at http://localhost:4321 — three green dots means everything is healthy.
-
-For infra-only (run backend/frontend manually): `make up`.
-
-`make dev` runs everything in the foreground — press Ctrl+C to stop all services.
-If you need services to survive terminal closure, start them individually:
-```bash
-make up                              # Docker services only
-cd backend && cargo run -p api       # Rust backend
-cd frontend && bun run dev           # Astro frontend
-```
-
-### Production Deploy
+Scaffold a new project with a single command:
 
 ```bash
-# 1. Set deploy target in .env
-#    DEPLOY_HOST=your-vps.example.com
-#    DEPLOY_USER=ubuntu
-#    DEPLOY_PATH=/opt/fullstackhex
-
-# 2. Ensure ssh-agent has your key
-ssh-add ~/.ssh/id_ed25519
-
-# 3. Deploy
-make deploy
+curl -fsSL https://raw.githubusercontent.com/kevo-tz/fullstackhex/main/install.sh | bash
 ```
 
-See [docs/INFRASTRUCTURE.md](docs/INFRASTRUCTURE.md) for full production setup including TLS certificates and PostgreSQL backups.
+The installer validates tooling, copies all source files, renames packages and containers to match your project, installs dependencies (`uv sync`, `bun install`, `cargo build`), runs proof-of-concept checks, and initialises a git repo.
+
+Make scripts executable
+
+```bash
+cd <your_project_name>
+chmod +x scripts/*.sh
+```
+
+
+### Dev Commands
+
+| Command       | Description                                        |
+|---------------|----------------------------------------------------|
+| `make dev`    | Start full stack (infra + apps)                    |
+| `make watch`  | Start full stack with Rust hot reload              |
+| `make down`   | Stop all services                                  |
+| `make test`   | Run all test suites (rust + python + frontend)     |
+| `make logs`   | Follow all stack logs                              |
+| `make bench`  | Run performance benchmarks                         |
+| `make status` | Show service status (PID, port, health)            |
+| `make clean`  | Reset to fresh state (removes volumes)             |
 
 ## Documentation
 

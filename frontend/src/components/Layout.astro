@@ -337,20 +337,51 @@ const { title } = Astro.props;
         const elMobile = document.getElementById("auth-nav-mobile");
         const user = localStorage.getItem(USER_KEY);
 
-        function userHtml(user: string) {
-          try {
-            const u = JSON.parse(user);
-            return `<span class="user-menu">${u.email}</span>
-              <button class="logout-btn" id="nav-logout">logout</button>
-              <button class="logout-btn" id="nav-logout-mobile">logout</button>`;
-          } catch {
-            return `<a href="/login">login</a>`;
+        function buildUserNav(u: Record<string, string>) {
+          const span = document.createElement("span");
+          span.className = "user-menu";
+          span.textContent = u.email;
+
+          const logoutBtn = document.createElement("button");
+          logoutBtn.className = "logout-btn";
+          logoutBtn.id = "nav-logout";
+          logoutBtn.textContent = "logout";
+
+          const logoutBtnMobile = document.createElement("button");
+          logoutBtnMobile.className = "logout-btn";
+          logoutBtnMobile.id = "nav-logout-mobile";
+          logoutBtnMobile.textContent = "logout";
+
+          return [span, logoutBtn, logoutBtnMobile];
+        }
+
+        function buildGuestNav() {
+          const a = document.createElement("a");
+          a.href = "/login";
+          a.textContent = "login";
+          return [a];
+        }
+
+        function setNav(parent: HTMLElement, children: Element[]) {
+          parent.textContent = "";
+          for (const child of children) {
+            parent.appendChild(child);
           }
         }
-        const guestHtml = `<a href="/login">login</a>`;
 
-        if (el) el.innerHTML = user ? userHtml(user) : guestHtml;
-        if (elMobile) elMobile.innerHTML = user ? userHtml(user) : guestHtml;
+        if (user) {
+          try {
+            const u = JSON.parse(user);
+            if (el) setNav(el, buildUserNav(u));
+            if (elMobile) setNav(elMobile, buildUserNav(u));
+          } catch {
+            if (el) setNav(el, buildGuestNav());
+            if (elMobile) setNav(elMobile, buildGuestNav());
+          }
+        } else {
+          if (el) setNav(el, buildGuestNav());
+          if (elMobile) setNav(elMobile, buildGuestNav());
+        }
 
         document.getElementById("nav-logout")?.addEventListener("click", logout);
         document.getElementById("nav-logout-mobile")?.addEventListener("click", logout);

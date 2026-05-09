@@ -8,6 +8,8 @@ SKIP_GIT=false
 SKIP_VERIFY=false
 PHASE=""
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+REPO_SOURCE="$SCRIPT_DIR"
+TMP_REPO=""
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -82,6 +84,9 @@ check_tool() {
 
 cleanup() {
   local exit_code=$?
+  if [ -n "$TMP_REPO" ] && [ -d "$TMP_REPO" ]; then
+    rm -rf "$TMP_REPO"
+  fi
   if [ $exit_code -eq 0 ]; then return; fi
   case "$PHASE" in
     validate|scaffold)
@@ -101,7 +106,11 @@ cleanup() {
 
 print_usage() {
   cat <<'EOF'
-Usage: ./install.sh <project-name> [options]
+Usage:
+  curl -fsSL https://raw.githubusercontent.com/kevo-tz/fullstackhex/main/install.sh | bash
+  ./install.sh [project-name] [options]
+
+If project-name is omitted, you'll be prompted for it interactively.
 
 Options:
   --dry-run       Preview actions without executing
@@ -115,8 +124,11 @@ EOF
 
 validate() {
   if [ -z "$PROJECT_NAME" ]; then
-    error "Missing project name."
-    print_usage
+    log "No project name provided."
+    read -r -p "Enter project name: " PROJECT_NAME || true
+  fi
+  if [ -z "$PROJECT_NAME" ]; then
+    error "Project name is required."
     exit 1
   fi
   if [ -d "$PROJECT_NAME" ]; then
@@ -155,6 +167,14 @@ validate() {
 # ── Phase 2 — Scaffold ──
 
 scaffold() {
+  if [ ! -f "$REPO_SOURCE/backend/Cargo.toml" ]; then
+    TMP_REPO=$(mktemp -d)
+    log "Downloading template from GitHub..."
+    curl -fsSL "https://github.com/kevo-tz/fullstackhex/archive/main.tar.gz" | tar xz -C "$TMP_REPO" --strip-components=1
+    REPO_SOURCE="$TMP_REPO"
+    ok "Template downloaded."
+  fi
+
   log "Creating $PROJECT_NAME..."
   run "mkdir -p \"$PROJECT_NAME\""
 
@@ -162,20 +182,20 @@ scaffold() {
   rsync_excludes="--exclude=.git/ --exclude=target/ --exclude=node_modules/ --exclude=.venv/ --exclude='*.lock' --exclude=dist/ --exclude=.gitignore --exclude=.dockerignore"
 
   log "Copying backend/..."
-  run "rsync -a $rsync_excludes \"$SCRIPT_DIR/backend/\" \"$PROJECT_NAME/backend/\""
+  run "rsync -a $rsync_excludes \"$REPO_SOURCE/backend/\" \"$PROJECT_NAME/backend/\""
   log "Copying compose/..."
-  run "rsync -a $rsync_excludes \"$SCRIPT_DIR/compose/\" \"$PROJECT_NAME/compose/\""
+  run "rsync -a $rsync_excludes \"$REPO_SOURCE/compose/\" \"$PROJECT_NAME/compose/\""
   log "Copying frontend/..."
-  run "rsync -a $rsync_excludes \"$SCRIPT_DIR/frontend/\" \"$PROJECT_NAME/frontend/\""
+  run "rsync -a $rsync_excludes \"$REPO_SOURCE/frontend/\" \"$PROJECT_NAME/frontend/\""
   log "Copying py-api/..."
-  run "rsync -a $rsync_excludes \"$SCRIPT_DIR/py-api/\" \"$PROJECT_NAME/py-api/\""
+  run "rsync -a $rsync_excludes \"$REPO_SOURCE/py-api/\" \"$PROJECT_NAME/py-api/\""
   log "Copying scripts/..."
-  run "rsync -a $rsync_excludes \"$SCRIPT_DIR/scripts/\" \"$PROJECT_NAME/scripts/\""
+  run "rsync -a $rsync_excludes \"$REPO_SOURCE/scripts/\" \"$PROJECT_NAME/scripts/\""
 
   log "Copying root files..."
-  for f in .env.example .gitignore .dockerignore Makefile AGENTS.md CLAUDE.md CONTRIBUTING.md CODE_OF_CONDUCT.md LICENSE; do
-    if [ -f "$SCRIPT_DIR/$f" ]; then
-      run "cp \"$SCRIPT_DIR/$f\" \"$PROJECT_NAME/$f\""
+  for f in .env.example .gitignore .dockerignore Makefile LICENSE; do
+    if [ -f "$REPO_SOURCE/$f" ]; then
+      run "cp \"$REPO_SOURCE/$f\" \"$PROJECT_NAME/$f\""
     fi
   done
 
@@ -203,9 +223,6 @@ configure() {
     run_in "$PROJECT_NAME" "sed -i 's|fullstackhex_|${PROJECT_NAME}_|g' compose/$f"
     run_in "$PROJECT_NAME" "sed -i 's|fullstackhex-network|${PROJECT_NAME}-network|g' compose/$f"
   done
-
-  log "Configuring Makefile (APP_NAME)..."
-  run_in "$PROJECT_NAME" "sed -i 's|^APP_NAME ?= fullstackhex|APP_NAME ?= $PROJECT_NAME|' Makefile"
 
   ok "Configuration complete."
 }
@@ -282,13 +299,13 @@ print_next_steps() {
   echo
   echo -e "${BOLD}Next steps:${NC}"
   echo "  cd $PROJECT_NAME"
-  echo "  make up          # Start Docker services (PostgreSQL, Redis, RustFS)"
-  echo "  make dev         # Start everything (infra + backend + frontend)"
+  echo "  docker compose -f compose/dev.yml up -d   # Start Docker services"
+  echo "  make dev                                  # Start everything (infra + apps)"
   echo
   echo "  Or run components individually:"
   echo "  cd $PROJECT_NAME/backend && cargo run -p api"
   echo "  cd $PROJECT_NAME/frontend && bun run dev"
-  echo "  cd $PROJECT_NAME/py-api && uv run uvicorn main:app --uds /tmp/$PROJECT_NAME-python.sock"
+  echo "  cd $PROJECT_NAME/py-api && uv run uvicorn app.main:app --uds /tmp/$PROJECT_NAME-python.sock"
   echo
   echo "  See docs/ for detailed documentation."
   echo

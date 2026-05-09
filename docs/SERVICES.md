@@ -144,7 +144,7 @@ app = FastAPI()
 
 @app.get("/health")
 def health() -> dict[str, str]:
-    return {"status": "ok", "service": "py-api"}
+    return {"status": "ok", "service": "py-api", "version": "0.7.0"}
 ```
 
 > **Note:** Add new routes here as Python business logic grows. py-api runs
@@ -244,7 +244,7 @@ const response = await fetch('/api/health');
 ### Environment Configuration
 
 ```env
-# .env (frontend)
+# Root .env (used by both backend and frontend)
 ASTRO_PORT=4321
 PUBLIC_API_URL=http://localhost:8001
 VITE_RUST_BACKEND_URL=http://localhost:8001

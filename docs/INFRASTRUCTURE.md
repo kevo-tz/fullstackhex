@@ -21,7 +21,7 @@ Canonical reference for recreating the development infrastructure from scratch.
 11. [Volumes](#volumes)
 12. [Migration to Production](#migration-to-production)
 13. [Nginx Configuration](#nginx-configuration)
- 14. [Monitoring Stack](#monitoring-stack)
+14. [Monitoring Stack](#monitoring-stack)
 15. [Compose Directory Layout](#compose-directory-layout)
 16. [Updates](#updates)
 

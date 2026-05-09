@@ -82,7 +82,7 @@ Start here for the FullStackHex documentation. Documents are listed in recommend
 
 ## Related Docs
 
-- [Previous: performance-budget.md](./performance-budget.md) - Performance targets and CI gates
+- [Previous: logging-conventions.md](./logging-conventions.md) - Structured log format schema
 - [MONITORING.md](./MONITORING.md) - Prometheus + Grafana setup and dashboards
 - [CI.md](./CI.md) - CI/CD pipeline and debugging
 - [logging-conventions.md](./logging-conventions.md) - Structured log format across languages

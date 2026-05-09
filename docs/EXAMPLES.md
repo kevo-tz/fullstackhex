@@ -99,7 +99,7 @@ CREATE INDEX idx_notes_user_id ON notes(user_id);
 ### 3. Run the migration
 
 ```bash
-make migrate
+cd backend && cargo sqlx migrate run
 ```
 
 ### 4. Query from Rust

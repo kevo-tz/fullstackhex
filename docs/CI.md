@@ -102,9 +102,9 @@ bun run lint  # If configured
 make test
 
 # Or individually
-make test-rust
-make test-python
-make test-frontend
+cd backend && cargo test
+cd py-api && uv run pytest
+cd frontend && bun test && bun run test:vitest
 
 # Run with verbose output
 cd backend && cargo test -- --nocapture
@@ -124,7 +124,7 @@ export PYTHON_SIDECAR_SOCKET="${RUNNER_TEMP}/py-api.sock"
 To debug socket issues locally:
 
 ```bash
-./scripts/verify-health.sh
+make status
 ```
 
 ### Performance Issues
@@ -207,7 +207,7 @@ jobs:
 
 3. **Benchmark failures**
    - Check if services are running before benchmarks
-   - Use `./scripts/verify-health.sh` to debug
+   - Use `make status` to debug
 
 4. **Docker build failures**
    - Ensure Dockerfiles exist in `compose/`

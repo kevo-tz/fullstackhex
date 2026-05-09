@@ -333,11 +333,11 @@ docker compose ps
 
 | Service | Log destination | How to tail |
 |---------|----------------|-------------|
-| Rust backend | stdout (runs directly) | `make logs-backend` |
-| py-api | stdout (runs directly) | `make logs-python` |
-| Frontend (Astro) | stdout (runs directly) | `make logs-frontend` |
-| PostgreSQL | Docker container stdout | `make logs-db` |
-| Redis | Docker container stdout | `make logs-redis` |
+| Rust backend | stdout (runs directly) | `make logs` |
+| py-api | stdout (runs directly) | `make logs` |
+| Frontend (Astro) | stdout (runs directly) | `make logs` |
+| PostgreSQL | Docker container stdout | `make logs` |
+| Redis | Docker container stdout | `make logs` |
 | RustFS | Docker container stdout | `docker compose -f compose/dev.yml logs -f rustfs` |
 | Prometheus | Docker container stdout | `docker compose -f compose/monitor.yml logs -f prometheus` |
 | Grafana | Docker container stdout | `docker compose -f compose/monitor.yml logs -f grafana` |

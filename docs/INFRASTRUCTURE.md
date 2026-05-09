@@ -658,7 +658,7 @@ docker compose -f compose/prod.yml up -d
 
 ### Deploy to a VPS
 
-The `make deploy` target pushes the stack to a remote server via SSH + rsync.
+Sync the stack to a remote server via SSH + rsync and run `docker compose`.
 
 **Prerequisites:**
 1. SSH key loaded in `ssh-agent` (or set `DEPLOY_SSH_KEY` in `.env`)
@@ -672,17 +672,13 @@ The `make deploy` target pushes the stack to a remote server via SSH + rsync.
 
 **Deploy:**
 ```bash
-make deploy
+rsync -avz compose/ nginx/ .env "$DEPLOY_USER@$DEPLOY_HOST:$DEPLOY_PATH/"
+ssh "$DEPLOY_USER@$DEPLOY_HOST" "cd $DEPLOY_PATH && docker compose -f compose/prod.yml up -d --wait"
 ```
-
-This runs:
-1. `rsync` compose files, nginx config, and `.env` to the VPS
-2. `ssh` to run `docker compose -f compose/prod.yml up -d --wait`
-3. `make deploy-check` polls `https://$DEPLOY_HOST/health` until OK
 
 **Restart (pull latest images):**
 ```bash
-make prod-restart
+ssh "$DEPLOY_USER@$DEPLOY_HOST" "cd $DEPLOY_PATH && docker compose pull && docker compose -f compose/prod.yml up -d"
 ```
 
 **PostgreSQL backups:**

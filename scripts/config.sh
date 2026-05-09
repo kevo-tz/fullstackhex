@@ -37,6 +37,19 @@ FRONTEND_TTFB_THRESHOLD="${FRONTEND_TTFB_THRESHOLD:-100}" # in milliseconds
 BASELINE_DIR="${BASELINE_DIR:-.performance}"
 HTML_REPORT_DIR="${HTML_REPORT_DIR:-.performance}"
 
+# Process state
+PID_DIR="${PID_DIR:-/tmp/fullstackhex-dev}"
+PYTHON_SOCK="${PYTHON_SOCK:-/tmp/fullstackhex-python.sock}"
+
+# Startup timing
+POSTGRES_RETRIES="${POSTGRES_RETRIES:-6}"
+POSTGRES_POLL_INTERVAL="${POSTGRES_POLL_INTERVAL:-5}"
+POST_START_DELAY="${POST_START_DELAY:-2}"
+
+# Docker compose
+COMPOSE_DEV="docker compose -f compose/dev.yml --env-file .env"
+COMPOSE_MON="docker compose -f compose/monitor.yml --env-file .env -p fullstackhex-monitor"
+
 # Export all variables for use in subshells
 export REPO_ROOT
 export RUST_BACKEND_URL
@@ -56,3 +69,10 @@ export RUST_HEALTH_P99_THRESHOLD
 export FRONTEND_TTFB_THRESHOLD
 export BASELINE_DIR
 export HTML_REPORT_DIR
+export PID_DIR
+export PYTHON_SOCK
+export POSTGRES_RETRIES
+export POSTGRES_POLL_INTERVAL
+export POST_START_DELAY
+export COMPOSE_DEV
+export COMPOSE_MON

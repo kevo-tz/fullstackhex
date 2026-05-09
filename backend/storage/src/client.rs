@@ -234,17 +234,75 @@ pub async fn list(
     Ok(objects)
 }
 
-/// Generate a presigned URL for upload or download.
+/// Generate an AWS SigV4 presigned URL scoped to a specific method and expiry.
+///
+/// The returned URL includes signed query parameters (X-Amz-Algorithm,
+/// X-Amz-Credential, X-Amz-Date, X-Amz-Expires, X-Amz-SignedHeaders,
+/// X-Amz-Signature) that restrict the HTTP method and time window.
 pub fn presigned_url(
     config: &super::StorageConfig,
     key: &str,
-    _method: &str,
-    _expiry: Duration,
+    method: &str,
+    expiry: Duration,
 ) -> Result<String, ApiError> {
-    // For presigned URLs, use the public endpoint
     let url = build_object_url(&config.public_endpoint, &config.bucket, key)
         .map_err(|e| ApiError::InternalError(format!("Invalid URL: {e}")))?;
-    Ok(url.to_string())
+
+    let host = url.host_str().unwrap_or("localhost").to_string();
+    let amz_date = chrono::Utc::now().format("%Y%m%dT%H%M%SZ").to_string();
+    let date_stamp = amz_date[..8].to_string();
+    let expires = expiry.as_secs();
+
+    let algorithm = "AWS4-HMAC-SHA256";
+    let credential_scope = format!("{}/{}/{}/aws4_request", date_stamp, config.region, "s3");
+    let credential = format!("{}/{}", config.access_key, credential_scope);
+
+    // Canonical query string (sorted alphabetically, Signature appended at the end)
+    let mut query_params = [
+        ("X-Amz-Algorithm", algorithm.to_string()),
+        ("X-Amz-Credential", credential.replace('/', "%2F")),
+        ("X-Amz-Date", amz_date.clone()),
+        ("X-Amz-Expires", expires.to_string()),
+        ("X-Amz-SignedHeaders", "host".to_string()),
+    ];
+    query_params.sort_by(|a, b| a.0.cmp(b.0));
+
+    let canonical_query_string = query_params
+        .iter()
+        .map(|(k, v)| format!("{}={}", k, v))
+        .collect::<Vec<_>>()
+        .join("&");
+
+    // Canonical request
+    let canonical_headers = format!("host:{}\n", host.to_lowercase());
+    let signed_headers = "host";
+    let payload_hash = "UNSIGNED-PAYLOAD";
+
+    let canonical_request = format!(
+        "{}\n{}\n{}\n{}\n{}\n{}",
+        method, url.path(), canonical_query_string, canonical_headers, signed_headers, payload_hash
+    );
+
+    // String to sign
+    let string_to_sign = format!(
+        "{}\n{}\n{}\n{}",
+        algorithm,
+        amz_date,
+        credential_scope,
+        sha256_hex(canonical_request.as_bytes())
+    );
+
+    // Derive signing key
+    let k_date = hmac_sha256(format!("AWS4{}", config.secret_key).as_bytes(), &date_stamp);
+    let k_region = hmac_sha256(&k_date, &config.region);
+    let k_service = hmac_sha256(&k_region, "s3");
+    let k_signing = hmac_sha256(&k_service, "aws4_request");
+    let signature = hex(&hmac_sha256(&k_signing, &string_to_sign));
+
+    Ok(format!(
+        "{}?{}&X-Amz-Signature={}",
+        url, canonical_query_string, signature
+    ))
 }
 
 // ── Multipart upload ──────────────────────────────────────────────────────
@@ -670,7 +728,22 @@ mod tests {
             std::time::Duration::from_secs(3600),
         )
         .unwrap();
-        assert_eq!(url, "http://pub.local:9000/test-bucket/file.txt");
+        assert!(
+            url.starts_with("http://pub.local:9000/test-bucket/file.txt?"),
+            "should have query params: {url}"
+        );
+        assert!(
+            url.contains("X-Amz-Algorithm=AWS4-HMAC-SHA256"),
+            "should contain SigV4 algorithm: {url}"
+        );
+        assert!(
+            url.contains("X-Amz-Signature="),
+            "should contain signature: {url}"
+        );
+        assert!(
+            url.contains("X-Amz-Expires=3600"),
+            "should contain expiry: {url}"
+        );
     }
 
     #[test]

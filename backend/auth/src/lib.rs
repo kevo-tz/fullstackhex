@@ -120,32 +120,19 @@ mod tests {
     use super::*;
 
     #[test]
-    fn auth_config_from_env_missing_jwt_secret_returns_none() {
-        // Clean env and verify None
-        let old = std::env::var("JWT_SECRET").ok();
+    fn auth_config_from_env_env_variants() {
+        let secret_old = std::env::var("JWT_SECRET").ok();
+        let mode_old = std::env::var("AUTH_MODE").ok();
+
+        // 1. Missing JWT_SECRET => None
         unsafe { std::env::remove_var("JWT_SECRET") };
         assert!(AuthConfig::from_env().is_none());
-        if let Some(v) = old {
-            unsafe { std::env::set_var("JWT_SECRET", v) };
-        }
-    }
 
-    #[test]
-    fn auth_config_from_env_change_me_returns_none() {
-        let old = std::env::var("JWT_SECRET").ok();
+        // 2. CHANGE_ME => None
         unsafe { std::env::set_var("JWT_SECRET", "CHANGE_ME") };
         assert!(AuthConfig::from_env().is_none());
-        if let Some(v) = old {
-            unsafe { std::env::set_var("JWT_SECRET", v) };
-        } else {
-            unsafe { std::env::remove_var("JWT_SECRET") };
-        }
-    }
 
-    #[test]
-    fn auth_config_from_env_valid_secret_returns_some() {
-        let old = std::env::var("JWT_SECRET").ok();
-        let old_mode = std::env::var("AUTH_MODE").ok();
+        // 3. Valid secret => Some(...)
         unsafe {
             std::env::set_var("JWT_SECRET", "test-secret-for-tests");
             std::env::set_var("AUTH_MODE", "bearer");
@@ -155,16 +142,16 @@ mod tests {
         let c = config.unwrap();
         assert_eq!(c.jwt_secret, "test-secret-for-tests");
         assert_eq!(c.auth_mode, AuthMode::Bearer);
-        assert_eq!(c.jwt_issuer, "fullstackhex"); // default
+        assert_eq!(c.jwt_issuer, "fullstackhex");
         assert_eq!(c.jwt_expiry, 900);
         assert_eq!(c.refresh_expiry, 604800);
-        // Restore
-        if let Some(v) = old {
+
+        if let Some(v) = secret_old {
             unsafe { std::env::set_var("JWT_SECRET", v) };
         } else {
             unsafe { std::env::remove_var("JWT_SECRET") };
         }
-        if let Some(v) = old_mode {
+        if let Some(v) = mode_old {
             unsafe { std::env::set_var("AUTH_MODE", v) };
         } else {
             unsafe { std::env::remove_var("AUTH_MODE") };

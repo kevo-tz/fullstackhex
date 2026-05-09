@@ -1,6 +1,6 @@
 # Deploy
 
-Production deployment with blue-green, canary, rollback, and health verification.
+Production deployment — use `docker compose` directly. Previous Makefile targets for blue-green, canary, rollback, and health verification have been removed.
 
 ## Configuration
 
@@ -10,45 +10,20 @@ Production deployment with blue-green, canary, rollback, and health verification
 | `DEPLOY_USER` | SSH user on target server. |
 | `DEPLOY_PATH` | Deployment directory on target. |
 
-## Deploy Lock
+## Manual Deploy
 
-All deploy commands use `flock`-based locking to prevent concurrent deployments. The lock file is at `.deploy-state/lock`.
-
-## Commands
-
-### Blue-Green
+Sync files and start the production stack:
 
 ```bash
-make blue-green
+rsync -avz compose/ nginx/ .env "$DEPLOY_USER@$DEPLOY_HOST:$DEPLOY_PATH/"
+ssh "$DEPLOY_USER@$DEPLOY_HOST" "cd $DEPLOY_PATH && docker compose -f compose/prod.yml up -d --wait"
 ```
 
-Deploys to the inactive environment (blue/green), runs health checks, then switches nginx upstream. Zero-downtime deployment.
-
-### Canary
+## Stop Production
 
 ```bash
-make canary          # Deploy to canary (10% traffic)
-make canary-promote  # Promote canary to 100%
-make canary-rollback # Roll back canary
+ssh "$DEPLOY_USER@$DEPLOY_HOST" "cd $DEPLOY_PATH && docker compose -f compose/prod.yml down"
 ```
-
-Deploys a canary instance receiving 10% of traffic via nginx `split_clients`. Monitor the canary, then promote or roll back.
-
-### Rollback
-
-```bash
-make rollback
-```
-
-Switches back to the previous deployment. Relies on the deploy state file at `.deploy-state/current`.
-
-### Health Verification
-
-```bash
-make deploy-verify
-```
-
-Polls health endpoints until all services report healthy or timeout. Used automatically by blue-green and canary before traffic switch.
 
 ## Nginx Config
 
@@ -66,21 +41,14 @@ Polls health endpoints until all services report healthy or timeout. Used automa
 - Prometheus, Grafana, Alertmanager
 - Redis and PostgreSQL exporters
 
+## Deploy Lock
+
+Use `flock` if you need to prevent concurrent deployments manually. The lock file convention is at `.deploy-state/lock`.
+
+## Health Verification
+
+Poll health endpoints until all services report healthy:
+
 ```bash
-make prod-up    # Start production stack
-make prod-down  # Stop production stack
+ssh "$DEPLOY_USER@$DEPLOY_HOST" "curl -f https://localhost/health"
 ```
-
-## State File
-
-`.deploy-state/` tracks the current deployment state:
-- `current` — active environment (blue/green).
-- `lock` — deploy mutex.
-- `canary_active` — whether a canary is deployed.
-
-## Safety
-
-- Deploy lock prevents concurrent deploys.
-- Health verification gates traffic switching.
-- Rollback is a single command — no manual steps.
-- Canary limits blast radius to 10% of traffic.

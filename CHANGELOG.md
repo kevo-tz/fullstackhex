@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.11.1] - 2026-05-09
+
+### Added
+- **`REDIS_KEY_PREFIX` env var**: Redis client reads namespace prefix from env with fallback to `"fullstackhex"` — enables multi-tenant deployments sharing a single Redis instance
+
+### Fixed
+- **Documentation consistency sweep**: cross-referenced all 15 docs against actual codebase — fixed 30+ inaccuracies across STORAGE.md, SETUP.md, ARCHITECTURE.md, SERVICES.md, AUTH.md, INFRASTRUCTURE.md, CI.md, DEPLOY.md, MONITORING.md, EXAMPLES.md, performance-budget.md, INDEX.md, and README.md
+
+### Removed
+- **Root `tests/` directory**: manual-only shell test suite (`tests/e2e.sh`, `tests/deploy/`) — not used by CI, all coverage is in backend/frontend/py-api test suites
+
+### Changed
+- **Health stack commands**: AGENTS.md updated — `tsc` → `npx tsc`, `pytest` → `uv run pytest`, shellcheck gets `--source-path=scripts/`
+
+---
+
 ## [0.11.0.0] - 2026-05-09
 
 ### Added

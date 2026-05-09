@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.11.0.0] - 2026-05-09
+
+### Added
+- **JWT blacklist check**: Redis-backed JTI blacklist in auth middleware — checks `BL_<jti>` before allowing any authenticated request
+- **AWS SigV4 presigned URLs**: storage client generates proper `X-Amz-Algorithm`, `X-Amz-Signature`, `X-Amz-Expires=3600` — replaces stub presigned URL
+- **Dev scripts**: `scripts/dev.sh`, `scripts/down.sh`, `scripts/logs.sh`, `scripts/test.sh`, `scripts/clean.sh` — standalone scripts with shared `config.sh` for PID_DIR, PYTHON_SOCK, compose vars
+- **install.sh self-bootstrapping**: `curl | bash` works without cloning first — script clones repo, copies template, substitutes project name
+- **install.sh interactive project name**: prompts for project name when not provided via `$1`
+- **QA regression tests**: `auth-error-handling.regression-1.test.ts` — verifies `[object Object]` and `{action}` button text never regress
+
+### Changed
+- **Makefile**: stripped from ~470 lines to 40-line dispatcher with 7 targets (`dev`, `down`, `test`, `logs`, `bench`, `status`, `clean`) — everything else delegates to `scripts/*.sh`
+- **Scripts refactored**: `config.sh` now exports all shared vars; `status.sh` sources it instead of doing its own PID_DIR; `common.sh` test helpers trimmed (from `test_example.sh` which was deleted)
+- **Removed 15 unused scripts**: deploy scripts (blue-green, canary, rollback, verify), setup scripts (install-deps, setup-env, sync-env, validate-env), test demo scripts, baseline profiler
+
+### Fixed
+- **XSS in nav**: `Layout.astro` replaced `innerHTML` with `document.createElement`/`appendChild` — guest nav renders `<a href="/login">login</a>` via DOM API
+- **AuthForm error display**: no more `[object Object]` — nested `ApiError.message` extracted correctly
+- **AuthForm button text**: no more literal `{action}` after form submit — button correctly resets to "Sign in" / "Create account"
+- **install.sh**: works with deleted Makefile targets (uvicorn module path fix)
+
+### Security
+- **XSS-safe nav rendering**: nav links use DOM API instead of `innerHTML` — prevents XSS if user-controlled data ever enters nav context
+
+---
+
 ## [0.10.1.0] - 2026-05-08
 
 ### Added

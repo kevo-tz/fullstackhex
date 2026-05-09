@@ -26,6 +26,16 @@ A production-ready full-stack template combining a Rust/Axum backend, Python Fas
 - **Dependency automation** — Dependabot updates for Rust, Python, frontend, and GitHub Actions.
 - **MIT licensed** — permissive license, use freely as a project starter.
 
+## Use as a Template
+
+Scaffold a new project with a single command:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/kevo-tz/fullstackhex/main/install.sh | bash -s -- my-project
+```
+
+The installer validates tooling, copies all source files, renames packages and containers to match your project, installs dependencies (`uv sync`, `bun install`, `cargo build`), runs proof-of-concept checks, and initialises a git repo.
+
 ## Quick Start
 
 ```bash

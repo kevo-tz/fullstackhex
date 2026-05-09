@@ -280,7 +280,12 @@ pub fn presigned_url(
 
     let canonical_request = format!(
         "{}\n{}\n{}\n{}\n{}\n{}",
-        method, url.path(), canonical_query_string, canonical_headers, signed_headers, payload_hash
+        method,
+        url.path(),
+        canonical_query_string,
+        canonical_headers,
+        signed_headers,
+        payload_hash
     );
 
     // String to sign

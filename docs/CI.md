@@ -102,9 +102,9 @@ bun run lint  # If configured
 make test
 
 # Or individually
-make test-rust
-make test-python
-make test-frontend
+cd backend && cargo test
+cd py-api && uv run pytest
+cd frontend && bun test && bun run test:vitest
 
 # Run with verbose output
 cd backend && cargo test -- --nocapture

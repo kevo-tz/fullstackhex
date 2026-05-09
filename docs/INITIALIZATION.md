@@ -2,7 +2,7 @@
 
 Use this as a portable template for new projects with the same Rust + Bun + Python API architecture.
 
-> **Note for this repo:** all source files already ship committed. Run `make setup` to install tools and create `.env`. See [SETUP.md](./SETUP.md) for the full guide.
+> **Note for this repo:** all source files already ship committed. Run `cp .env.example .env` and `scripts/install-deps.sh` to install tools and create `.env`. See [SETUP.md](./SETUP.md) for the full guide.
 
 ## Table of Contents
 

@@ -205,7 +205,7 @@ async fn cache_user(client: &RedisClient, user_id: &str, data: &User) {
 
 ## Add a Grafana dashboard panel
 
-Add to `monitoring/grafana/dashboards/overview.json`:
+Add to `compose/monitoring/grafana/dashboards/overview.json`:
 
 ```json
 {

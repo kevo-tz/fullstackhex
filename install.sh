@@ -204,8 +204,7 @@ configure() {
     run_in "$PROJECT_NAME" "sed -i 's|fullstackhex-network|${PROJECT_NAME}-network|g' compose/$f"
   done
 
-  log "Configuring Makefile (APP_NAME)..."
-  run_in "$PROJECT_NAME" "sed -i 's|^APP_NAME ?= fullstackhex|APP_NAME ?= $PROJECT_NAME|' Makefile"
+  # Makefile is a thin dispatcher with no project-specific vars.
 
   ok "Configuration complete."
 }
@@ -282,13 +281,13 @@ print_next_steps() {
   echo
   echo -e "${BOLD}Next steps:${NC}"
   echo "  cd $PROJECT_NAME"
-  echo "  make up          # Start Docker services (PostgreSQL, Redis, RustFS)"
-  echo "  make dev         # Start everything (infra + backend + frontend)"
+  echo "  docker compose -f compose/dev.yml up -d   # Start Docker services"
+  echo "  make dev                                  # Start everything (infra + apps)"
   echo
   echo "  Or run components individually:"
   echo "  cd $PROJECT_NAME/backend && cargo run -p api"
   echo "  cd $PROJECT_NAME/frontend && bun run dev"
-  echo "  cd $PROJECT_NAME/py-api && uv run uvicorn main:app --uds /tmp/$PROJECT_NAME-python.sock"
+  echo "  cd $PROJECT_NAME/py-api && uv run uvicorn app.main:app --uds /tmp/$PROJECT_NAME-python.sock"
   echo
   echo "  See docs/ for detailed documentation."
   echo

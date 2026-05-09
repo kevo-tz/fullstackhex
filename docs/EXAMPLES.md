@@ -265,17 +265,6 @@ test("GET /hello returns 200", async () => {
 });
 ```
 
-### Shell test (`tests/my-feature.sh`)
-
-```bash
-#!/bin/bash
-set -euo pipefail
-BACKEND_URL="${BACKEND_URL:-http://localhost:8001}"
-
-resp=$(curl -sk "$BACKEND_URL/hello")
-echo "$resp" | grep -q "Hello" && echo "PASS" || echo "FAIL"
-```
-
 ---
 
 ## Add a CI check

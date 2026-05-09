@@ -79,8 +79,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Diagnostic panel**: auto-retry with backoff on degraded services, connectivity outage recovery, and visual status indicators for each service card
 - **E2E auth tests**: Bun-based end-to-end test suite in \`frontend/tests/e2e/auth.test.ts\` covering register, login, refresh, logout, protected routes, and error handling
 - **Grafana auth dashboard**: \`compose/monitoring/grafana/dashboards/auth.json\` with login success/failure rates, registration activity, token issuance and refresh counts, active sessions
-- **Deploy script tests**: bats-core test suite (`tests/deploy/deploy_scripts.bats`) covering blue-green, canary, rollback, lock contention, and cleanup
-- **E2E shell test framework**: `tests/e2e.sh` for full-stack integration testing with service health polling and isolated test runs
 - **Theme vitest tests**: `frontend/tests/vitest/theme.vitest.ts` covering theme toggle, localStorage persistence, and system preference detection
 - **CI e2e job**: new GitHub Actions job that starts backend + frontend with real PostgreSQL and Redis, runs the Bun-based e2e suite
 - **SQLx offline check**: CI now verifies `cargo sqlx prepare --check` to catch stale offline metadata

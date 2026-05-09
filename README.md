@@ -26,7 +26,7 @@ A production-ready full-stack template combining a Rust/Axum backend, Python Fas
 - **Dependency automation** — Dependabot updates for Rust, Python, frontend, and GitHub Actions.
 - **MIT licensed** — permissive license, use freely as a project starter.
 
-## Use as a Template
+## Quick Start
 
 Scaffold a new project with a single command:
 
@@ -36,32 +36,13 @@ curl -fsSL https://raw.githubusercontent.com/kevo-tz/fullstackhex/main/install.s
 
 The installer validates tooling, copies all source files, renames packages and containers to match your project, installs dependencies (`uv sync`, `bun install`, `cargo build`), runs proof-of-concept checks, and initialises a git repo.
 
-## Quick Start
+Make scripts executable
 
 ```bash
-# 1. Clone
-git clone https://github.com/kevo-tz/fullstackhex.git
-cd fullstackhex
-
-# 2. Create .env and install dependencies
-cp .env.example .env          # then edit .env with your values
-cd frontend && bun install
-cd ../backend && cargo build
-cd ../py-api && uv sync
-
-# 3. Start everything (infra + Python sidecar + Rust backend + frontend)
-cd .. && make dev
+cd <your_project_name>
+chmod +x scripts/*.sh
 ```
 
-Dashboard at http://localhost:4321 — three green dots means everything is healthy.
-
-`make dev` runs everything in the foreground — press Ctrl+C to stop all services.
-If you need services to survive terminal closure, start them individually:
-```bash
-docker compose -f compose/dev.yml up -d    # Docker services only
-cd backend && cargo run -p api             # Rust backend
-cd frontend && bun run dev                 # Astro frontend
-```
 
 ### Dev Commands
 

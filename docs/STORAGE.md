@@ -22,13 +22,15 @@ For local development without an S3 server, set `STORAGE_ENDPOINT=rustfs` to use
 
 ## Endpoints
 
-| Method | Path | Auth | Description |
-|--------|------|------|-------------|
-| POST | `/storage/upload` | Required | Upload a file. |
-| GET | `/storage/download/{key}` | Required | Download a file. |
-| GET | `/storage/presign` | Required | Generate a presigned URL. |
-| DELETE | `/storage/delete/{key}` | Required | Delete a file. |
-| GET | `/storage/list` | Required | List objects with optional prefix. |
+All storage routes are nested under `/storage` (e.g. `PUT /storage/{key}`) and require authentication.
+
+| Method | Path | Description |
+|--------|------|-------------|
+| PUT | `/storage/{key}` | Upload a file (streaming body). |
+| GET | `/storage/{key}` | Download a file. |
+| DELETE | `/storage/{key}` | Delete a file. |
+| GET | `/storage/` | List objects with optional `?prefix=`. |
+| POST | `/storage/presign` | Generate a presigned URL. |
 
 ## Presigned URLs
 
@@ -51,13 +53,14 @@ Upload and download stream data directly — no buffering of entire files in mem
 ## Multipart Upload
 
 For files larger than 5 MB, use multipart upload:
-- `POST /storage/multipart/initiate` — start multipart upload.
-- `POST /storage/multipart/part` — upload a part.
-- `POST /storage/multipart/complete` — finalize and assemble.
+- `POST /storage/multipart/init` — start multipart upload.
+- `PUT /storage/multipart/{key}/{upload_id}/part/{part_number}` — upload a part.
+- `POST /storage/multipart/{key}/{upload_id}/complete` — finalize and assemble.
+- `DELETE /storage/multipart/{key}/{upload_id}` — abort an in-progress upload.
 
 ## Size Limits
 
-- Maximum single upload: 100 MB
+- Maximum single upload: 10 MB (configurable via `DefaultBodyLimit` in the router)
 - Download size limit: 100 MB (prevents OOM from unbounded S3 responses)
 - Multipart parts: 5 MB minimum, 5 GB maximum per part
 

@@ -12,8 +12,8 @@
 
 ## Architecture Overview
 
-- **Rust Backend**: Main API server, manages py-api
-- **py-api**: Managed subprocess of Rust, internal-only communication via Unix socket
+- **Rust Backend**: Main API server
+- **py-api**: Independent process alongside Rust, internal-only communication via Unix socket
 - **Frontend**: Communicates exclusively with Rust API (port 8001)
 
 ---
@@ -30,7 +30,7 @@ backend/
 ├── cache/             # Redis caching, rate limiting, sessions
 ├── db/                # Database layer (sqlx)
 ├── domain/            # Business logic and shared types
-├── py-sidecar/        # Sidecar process manager
+├── py-sidecar/        # Unix socket client for Python IPC
 └── storage/           # S3-compatible object storage
 └── target/
 ```
@@ -102,7 +102,7 @@ GET /metrics/python
 Proxies py-api metrics. Returns `503` if Python is unreachable.
 
 ```
-ANY /api/python/{path}  → Forwards request method/path/body to py-api via Unix socket
+GET /metrics/python  → Proxies py-api /metrics endpoint via Unix socket
 ```
 
 ### Running Rust with Sidecar
@@ -114,8 +114,8 @@ cd backend
 cargo run -p api
 
 # The py-sidecar crate (py-sidecar/) contains the
-# Unix socket client; wire it into main.rs to spawn and connect
-# to py-api.
+# Unix socket client; wire it into main.rs to connect
+# to the running py-api.
 ```
 
 ---
@@ -147,14 +147,14 @@ def health() -> dict[str, str]:
     return {"status": "ok", "service": "py-api"}
 ```
 
-> **Note:** Add new routes here as Python business logic grows. py-api is
-> started by Rust — run it directly only for debugging:
+> **Note:** Add new routes here as Python business logic grows. py-api runs
+> independently — run it directly for development or debugging:
 > `uv run uvicorn app.main:app --uds /tmp/fullstackhex-python.sock`
 
 ### Key Difference from Standalone
 
 - **No direct external access**: Only accessible via Rust proxy through Unix socket
-- **Independent lifecycle**: Python runs independently (started by `make dev` or `make watch`)
+- **Independent process**: Python runs as a separate process alongside Rust (started by `make dev` or `make watch`)
 - **Internal networking**: Communicates via `/tmp/fullstackhex-python.sock`
 
 ---

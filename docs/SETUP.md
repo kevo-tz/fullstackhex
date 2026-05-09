@@ -75,7 +75,7 @@ make status
 
 # Individual checks
 curl http://localhost:8001/health
-curl http://localhost:8001/api/python/health
+curl http://localhost:8001/health/python
 curl http://localhost:4321
 
 # Infrastructure

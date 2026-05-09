@@ -6,19 +6,19 @@ S3-compatible object storage via \`storage/\`. Backed by RustFS (local) or any S
 
 | Env Var | Default | Description |
 |---------|---------|-------------|
-| `STORAGE_ENDPOINT` | — | S3 endpoint. Example: `http://localhost:9000` |
-| `STORAGE_PUBLIC_ENDPOINT` | — | Public endpoint for presigned URLs. |
-| `STORAGE_ACCESS_KEY` | — | S3 access key. |
-| `STORAGE_SECRET_KEY` | — | S3 secret key. |
-| `STORAGE_BUCKET` | — | Bucket name. |
-| `STORAGE_REGION` | `us-east-1` | Bucket region. |
-| `STORAGE_AUTO_CREATE_BUCKET` | `false` | Create bucket on startup if missing. |
+| `RUSTFS_ENDPOINT` | — | S3 endpoint. Example: `http://localhost:9000` |
+| `RUSTFS_PUBLIC_ENDPOINT` | — | Public endpoint for presigned URLs. |
+| `RUSTFS_ACCESS_KEY` | — | S3 access key. |
+| `RUSTFS_SECRET_KEY` | — | S3 secret key. |
+| `RUSTFS_BUCKET` | `fullstackhex` | Bucket name. |
+| `RUSTFS_REGION` | `us-east-1` | Bucket region. |
+| `RUSTFS_AUTO_CREATE_BUCKET` | `true` | Create bucket on startup if missing. |
 
-Storage is optional — when `STORAGE_ENDPOINT` is unset, storage endpoints return 503.
+Storage is optional — when `RUSTFS_ENDPOINT` is unset, storage endpoints return 503.
 
 ## RustFS (Local Development)
 
-For local development without an S3 server, set `STORAGE_ENDPOINT=rustfs` to use the built-in RustFS backend. Files are stored on local disk.
+For local development without an S3 server, set `RUSTFS_ENDPOINT` to point at the Docker RustFS container (`http://localhost:9000`). Files are stored on local Docker volumes.
 
 ## Endpoints
 

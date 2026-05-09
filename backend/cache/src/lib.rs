@@ -71,13 +71,10 @@ impl RedisClient {
 
         tracing::info!("redis connected");
 
-        let key_prefix = std::env::var("REDIS_KEY_PREFIX")
-            .unwrap_or_else(|_| "fullstackhex".to_string());
+        let key_prefix =
+            std::env::var("REDIS_KEY_PREFIX").unwrap_or_else(|_| "fullstackhex".to_string());
 
-        Ok(Self {
-            client,
-            key_prefix,
-        })
+        Ok(Self { client, key_prefix })
     }
 
     /// Create a Redis client for testing with explicit URL.

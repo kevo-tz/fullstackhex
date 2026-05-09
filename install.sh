@@ -204,8 +204,6 @@ configure() {
     run_in "$PROJECT_NAME" "sed -i 's|fullstackhex-network|${PROJECT_NAME}-network|g' compose/$f"
   done
 
-  # Makefile is a thin dispatcher with no project-specific vars.
-
   ok "Configuration complete."
 }
 

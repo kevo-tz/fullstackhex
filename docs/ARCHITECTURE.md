@@ -126,7 +126,7 @@ backend/
 ├── cache/             # Redis caching, rate limiting, sessions
 ├── db/                # Database layer (sqlx)
 ├── domain/            # Business logic and shared types
-├── py-sidecar/        # Sidecar process manager
+├── py-sidecar/        # Unix socket client for Python IPC
 └── storage/           # S3-compatible object storage
 └── target/
 ```

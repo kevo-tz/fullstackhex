@@ -318,7 +318,7 @@ async function getHealth() {
 curl http://localhost:8001/health
 
 # py-api (via Rust)
-curl http://localhost:8001/api/python/health
+curl http://localhost:8001/health/python
 
 # Frontend
 curl -I http://localhost:4321

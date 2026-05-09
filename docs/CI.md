@@ -175,7 +175,7 @@ bun outdated               # Check for outdated packages
 
 ## Workflow File Structure
 
-The CI workflow (`.github/workflows/ci.yml`) runs six jobs: `rust`, `python`, `frontend`, `smoke` (cross-layer), `e2e` (full-stack end-to-end with real services), and `security`.
+The CI workflow (`.github/workflows/ci.yml`) runs seven jobs: `rust`, `python`, `frontend`, `smoke` (cross-layer), `e2e` (full-stack end-to-end with real services), `infra`, and `security`.
 
 All source files, configs, and tests ship in the repo. CI jobs check out the repo and run directly — no scaffolding step required.
 

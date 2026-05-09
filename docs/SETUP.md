@@ -35,9 +35,8 @@ All source code, configs, and test files ship in the repo — no scaffolding ste
 git clone <repo>
 cd fullstackhex
 
-# Install tools + create .env from .env.example
+# Create .env from template
 cp .env.example .env
-# Run scripts/install-deps.sh to install/update Rust, Bun, uv and validate Docker/Python
 ```
 
 ## Start Development
@@ -88,8 +87,8 @@ docker compose -f compose/dev.yml ps
 # Database
 DATABASE_URL=postgres://app_user:CHANGE_ME@localhost:5432/app_database
 
-# py-api (Unix socket — set automatically by install-deps.sh)
-PYTHON_SIDECAR_SOCKET=/home/<you>/.fullstackhex/sockets/py-api.sock  # set by install-deps.sh
+# py-api (Unix socket)
+PYTHON_SIDECAR_SOCKET=/tmp/fullstackhex-python.sock
 
 # Frontend → Rust
 VITE_RUST_BACKEND_URL=http://localhost:8001
@@ -132,7 +131,7 @@ docker compose -f compose/dev.yml restart
 
 ### Socket path issues
 
-`PYTHON_SIDECAR_SOCKET` in `.env` must point to a directory the current user can write to. Re-run `scripts/install-deps.sh` to regenerate the correct path.
+`PYTHON_SIDECAR_SOCKET` in `.env` must point to a path the current user can write to. Default is `/tmp/fullstackhex-python.sock`.
 
 ## Related Docs
 

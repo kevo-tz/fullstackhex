@@ -124,7 +124,7 @@ export PYTHON_SIDECAR_SOCKET="${RUNNER_TEMP}/py-api.sock"
 To debug socket issues locally:
 
 ```bash
-./scripts/verify-health.sh
+make status
 ```
 
 ### Performance Issues
@@ -207,7 +207,7 @@ jobs:
 
 3. **Benchmark failures**
    - Check if services are running before benchmarks
-   - Use `./scripts/verify-health.sh` to debug
+   - Use `make status` to debug
 
 4. **Docker build failures**
    - Ensure Dockerfiles exist in `compose/`

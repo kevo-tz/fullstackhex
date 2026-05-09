@@ -36,10 +36,10 @@ ssh "$DEPLOY_USER@$DEPLOY_HOST" "cd $DEPLOY_PATH && docker compose -f compose/pr
 
 `compose/prod.yml` includes:
 - nginx reverse proxy with TLS termination
+- Redis, PostgreSQL, and Nginx Prometheus exporters
 - Resource limits per service
 - Health checks on all containers
-- Prometheus, Grafana, Alertmanager
-- Redis and PostgreSQL exporters
+- Certbot for automatic TLS renewal
 
 ## Deploy Lock
 

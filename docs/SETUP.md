@@ -42,13 +42,16 @@ cp .env.example .env
 ## Start Development
 
 ```bash
-# 1. Start infrastructure (PostgreSQL, Redis, RustFS, Grafana)
+# 1. Start infrastructure (PostgreSQL, Redis, RustFS)
 docker compose -f compose/dev.yml up -d
 
-# 2. Start Rust API (in a separate terminal)
+# 2. (Optional) Start monitoring stack (Prometheus + Grafana)
+docker compose -f compose/monitor.yml up -d
+
+# 3. Start Rust API (in a separate terminal)
 cd backend && cargo run -p api
 
-# 3. Start Astro frontend (in a separate terminal)
+# 4. Start Astro frontend (in a separate terminal)
 cd frontend && bun run dev
 ```
 
@@ -58,11 +61,11 @@ Ports:
 |---------|-----|
 | Rust API | http://localhost:8001 |
 | Frontend | http://localhost:4321 |
-| Grafana | http://localhost:3000 |
+| Grafana | http://localhost:3000 (requires monitor.yml) |
 | PostgreSQL | localhost:5432 |
 | Redis | localhost:6379 |
 
-The Rust binary auto-spawns py-api over a Unix socket (`PYTHON_SIDECAR_SOCKET`). You do not need to start Python separately.
+The Python sidecar runs as an independent process alongside Rust. Start it together via `make dev` or `make watch`, or manually with `cd py-api && uv run uvicorn app.main:app --uds /tmp/fullstackhex-python.sock`.
 
 ## Verify Installation
 
@@ -72,7 +75,7 @@ make status
 
 # Individual checks
 curl http://localhost:8001/health
-curl http://localhost:8001/api/python/health
+curl http://localhost:8001/health/python
 curl http://localhost:4321
 
 # Infrastructure

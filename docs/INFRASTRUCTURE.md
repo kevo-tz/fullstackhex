@@ -21,7 +21,7 @@ Canonical reference for recreating the development infrastructure from scratch.
 11. [Volumes](#volumes)
 12. [Migration to Production](#migration-to-production)
 13. [Nginx Configuration](#nginx-configuration)
- 14. [Monitoring Stack](#monitoring-stack)
+14. [Monitoring Stack](#monitoring-stack)
 15. [Compose Directory Layout](#compose-directory-layout)
 16. [Updates](#updates)
 
@@ -84,7 +84,7 @@ GRAFANA_ADMIN_PASSWORD=CHANGE_ME
 └─────────────────────────────────────────────────────────────────┘
 
 Volumes (persistent data):
-  - postgres_data  → /var/lib/postgresql/data
+  - postgres_data  → /var/lib/postgresql
   - redis_data     → /data
   - rustfs_data    → /data
 ```
@@ -108,7 +108,7 @@ Primary relational database for the application.
 
 **Health check:** Uses `pg_isready` (10s interval, 5 retries)
 
-**Data persistence:** Volume `postgres_data` → `/var/lib/postgresql/data`
+**Data persistence:** Volume `postgres_data` → `/var/lib/postgresql`
 
 ### Redis 8 (Alpine)
 
@@ -277,7 +277,7 @@ services:
       # Tune for development (not production)
       POSTGRES_INITDB_ARGS: "--encoding=UTF-8 --locale=C"
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - postgres_data:/var/lib/postgresql
       # Optional: mount init scripts
       # - ./scripts/db/init:/docker-entrypoint-initdb.d
     healthcheck:
@@ -595,7 +595,7 @@ Persistent data stored in Docker volumes:
 
 ```bash
 # List volumes
-docker volume ls | grep bare
+docker volume ls | grep fullstackhex
 
 # Inspect volume
 docker volume inspect <volume_name>
@@ -766,21 +766,34 @@ compose/
 ├── Dockerfile.rust              # Multi-stage Rust backend build
 ├── Dockerfile.python           # Multi-stage py-api build
 ├── Dockerfile.frontend         # Multi-stage Astro frontend build (with nginx)
+├── dev.yml                     # Development infrastructure
+├── prod.yml                    # Production deployment
+├── monitor.yml                 # Monitoring stack overlay
 ├── nginx/
 │   ├── nginx.conf             # Nginx reverse proxy configuration
-│   └── certs/                # TLS certificates (gitignored)
+│   ├── canary.conf            # Canary traffic split config
+│   ├── upstream.conf.template # Blue-green upstream switching template
+│   └── certs/                 # TLS certificates (gitignored)
 │       ├── fullchain.pem      # Full certificate chain (gitignored)
 │       ├── privkey.pem        # Private key (gitignored)
 │       └── README.md          # Instructions for obtaining certificates
-├── prometheus.yml            # Prometheus scrape configuration
-└── grafana/
-    ├── provisioning/
-    │   ├── datasources/      # Grafana datasource definitions
-    │   │   └── prometheus.yml
-    │   └── dashboards/       # Dashboard discovery config
-    │       └── dashboards.yml
-    └── dashboards/            # Pre-built dashboards
-        └── overview.json      # Starter dashboard (p99, error rate, RPS)
+└── monitoring/
+    ├── prometheus.yml         # Prometheus scrape configuration
+    ├── alerts.yml             # Alert rules (opt-in)
+    ├── alertmanager.yml       # Alertmanager config
+    └── grafana/
+        ├── provisioning/
+        │   ├── datasources/   # Grafana datasource definitions
+        │   │   └── prometheus.yml
+        │   └── dashboards/    # Dashboard discovery config
+        │       └── dashboards.yml
+        └── dashboards/        # Pre-built dashboards
+            ├── overview.json  # Starter dashboard (p99, error rate, RPS)
+            ├── auth.json      # Auth metrics dashboard
+            ├── database.json  # Database metrics dashboard
+            ├── python.json    # Python sidecar dashboard
+            ├── infra.json     # Infrastructure dashboard
+            └── slo.json       # SLO dashboard
 ```
 
 ### Dockerfiles
@@ -822,10 +835,10 @@ backend:
 
 | File | Purpose |
 |------|---------|
-| `compose/prometheus.yml` | Defines scrape targets (Rust backend, node-exporter) |
-| `compose/grafana/provisioning/datasources/prometheus.yml` | Auto-provisions Prometheus as Grafana datasource |
-| `compose/grafana/provisioning/dashboards/dashboards.yml` | Tells Grafana where to find dashboards |
-| `compose/grafana/dashboards/overview.json` | Pre-built dashboard with key metrics |
+| `compose/monitoring/prometheus.yml` | Defines scrape targets (Rust backend) |
+| `compose/monitoring/grafana/provisioning/datasources/prometheus.yml` | Auto-provisions Prometheus as Grafana datasource |
+| `compose/monitoring/grafana/provisioning/dashboards/dashboards.yml` | Tells Grafana where to find dashboards |
+| `compose/monitoring/grafana/dashboards/overview.json` | Pre-built dashboard with key metrics |
 
 ---
 

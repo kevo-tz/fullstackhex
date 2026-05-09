@@ -206,7 +206,7 @@ In production, the `/metrics` endpoint is restricted to the internal Docker netw
 ### Route label normalization
 
 To prevent cardinality explosion, the middleware normalizes paths:
-- `/health`, `/health/db`, `/health/python` → exact match
+- Known routes (`/health`, `/health/db`, `/health/redis`, `/health/storage`, `/health/python`, `/metrics`, `/metrics/python`, auth routes, storage routes) → exact match
 - Everything else → `unknown`
 
 Add new routes to `normalize_route()` in \`backend/api/src/metrics.rs\` to track them correctly.

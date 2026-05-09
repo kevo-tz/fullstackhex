@@ -49,4 +49,4 @@ Key routing rules:
 - test: cd frontend && bun test
 - test: cd py-api && pytest
 - deadcode: cd frontend && npx knip
-- shell: shellcheck -x scripts/*.sh tests/*.sh
+- shell: shellcheck -x scripts/*.sh

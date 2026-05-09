@@ -205,7 +205,7 @@ async fn cache_user(client: &RedisClient, user_id: &str, data: &User) {
 
 ## Add a Grafana dashboard panel
 
-Add to `monitoring/grafana/dashboards/overview.json`:
+Add to `compose/monitoring/grafana/dashboards/overview.json`:
 
 ```json
 {
@@ -263,17 +263,6 @@ test("GET /hello returns 200", async () => {
   const data = await res.json();
   expect(data.message).toContain("Hello");
 });
-```
-
-### Shell test (`tests/my-feature.sh`)
-
-```bash
-#!/bin/bash
-set -euo pipefail
-BACKEND_URL="${BACKEND_URL:-http://localhost:8001}"
-
-resp=$(curl -sk "$BACKEND_URL/hello")
-echo "$resp" | grep -q "Hello" && echo "PASS" || echo "FAIL"
 ```
 
 ---

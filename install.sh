@@ -124,6 +124,12 @@ EOF
 
 validate() {
   if [ -z "$PROJECT_NAME" ]; then
+    if [ ! -t 0 ]; then
+      error "Project name is required when running non-interactively."
+      echo "  Usage: curl -fsSL https://raw.githubusercontent.com/kevo-tz/fullstackhex/main/install.sh | bash -s -- <project-name>"
+      echo "  Or:    ./install.sh <project-name>"
+      exit 1
+    fi
     log "No project name provided."
     read -r -p "Enter project name: " PROJECT_NAME || true
   fi
@@ -179,7 +185,7 @@ scaffold() {
   run "mkdir -p \"$PROJECT_NAME\""
 
   local rsync_excludes
-  rsync_excludes="--exclude=.git/ --exclude=target/ --exclude=node_modules/ --exclude=.venv/ --exclude='*.lock' --exclude=dist/ --exclude=.gitignore --exclude=.dockerignore"
+  rsync_excludes="--exclude=.git/ --exclude=target/ --exclude=node_modules/ --exclude=.venv/ --exclude=dist/ --exclude=.gitignore --exclude=.dockerignore"
 
   log "Copying backend/..."
   run "rsync -a $rsync_excludes \"$REPO_SOURCE/backend/\" \"$PROJECT_NAME/backend/\""
@@ -193,11 +199,14 @@ scaffold() {
   run "rsync -a $rsync_excludes \"$REPO_SOURCE/scripts/\" \"$PROJECT_NAME/scripts/\""
 
   log "Copying root files..."
-  for f in .env.example .gitignore .dockerignore Makefile LICENSE; do
+  for f in .env.example .gitignore .dockerignore Makefile LICENSE README.md; do
     if [ -f "$REPO_SOURCE/$f" ]; then
       run "cp \"$REPO_SOURCE/$f\" \"$PROJECT_NAME/$f\""
     fi
   done
+
+  log "Resetting VERSION to 0.1.0.0..."
+  run "echo '0.1.0.0' > \"$PROJECT_NAME/VERSION\""
 
   ok "Scaffold complete."
 }
@@ -207,10 +216,11 @@ scaffold() {
 configure() {
   log "Generating .env..."
   run_in "$PROJECT_NAME" "cp .env.example .env"
-  run_in "$PROJECT_NAME" "sed -i '1s|^|# Application\\nAPP_NAME=$PROJECT_NAME\\n\\n|' .env"
 
   log "Configuring backend/Cargo.toml (repository URL)..."
-  run_in "$PROJECT_NAME" "sed -i 's|https://github.com/kevo-tz/fullstackhex|https://github.com/kevo-tz/$PROJECT_NAME|' backend/Cargo.toml"
+  read -r -p "GitHub username (for repository URL) [kevo-tz]: " GITHUB_USER
+  GITHUB_USER=${GITHUB_USER:-kevo-tz}
+  run_in "$PROJECT_NAME" "sed -i 's|https://github.com/kevo-tz/fullstackhex|https://github.com/${GITHUB_USER}/${PROJECT_NAME}|' backend/Cargo.toml"
 
   log "Configuring frontend/package.json (name)..."
   run_in "$PROJECT_NAME" "sed -i 's|\"name\": \"frontend\"|\"name\": \"$PROJECT_NAME\"|' frontend/package.json"
@@ -223,6 +233,20 @@ configure() {
     run_in "$PROJECT_NAME" "sed -i 's|fullstackhex_|${PROJECT_NAME}_|g' compose/$f"
     run_in "$PROJECT_NAME" "sed -i 's|fullstackhex-network|${PROJECT_NAME}-network|g' compose/$f"
   done
+
+  log "Configuring scripts/config.sh (project paths)..."
+  run_in "$PROJECT_NAME" "sed -i 's|/tmp/fullstackhex-dev|/tmp/${PROJECT_NAME}-dev|g' scripts/config.sh"
+  run_in "$PROJECT_NAME" "sed -i 's|/tmp/fullstackhex-python.sock|/tmp/${PROJECT_NAME}-python.sock|g' scripts/config.sh"
+  run_in "$PROJECT_NAME" "sed -i 's|-p fullstackhex-monitor|-p ${PROJECT_NAME}-monitor|g' scripts/config.sh"
+
+  log "Configuring .env (project-specific defaults)..."
+  run_in "$PROJECT_NAME" "sed -i 's|JWT_ISSUER=fullstackhex|JWT_ISSUER=${PROJECT_NAME}|' .env"
+  run_in "$PROJECT_NAME" "sed -i 's|RUSTFS_BUCKET=fullstackhex|RUSTFS_BUCKET=${PROJECT_NAME}|' .env"
+  run_in "$PROJECT_NAME" "sed -i 's|/opt/fullstackhex|/opt/${PROJECT_NAME}|' .env"
+  run_in "$PROJECT_NAME" "sed -i 's|REDIS_KEY_PREFIX=fullstackhex|REDIS_KEY_PREFIX=${PROJECT_NAME}|' .env"
+
+  log "Configuring README.md..."
+  run_in "$PROJECT_NAME" "sed -i '1s|# FullStackHex|# ${PROJECT_NAME}|' README.md"
 
   ok "Configuration complete."
 }

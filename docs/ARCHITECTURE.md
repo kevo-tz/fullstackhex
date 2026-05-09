@@ -30,7 +30,7 @@
 │  ├── cache/        Redis caching, rate limiting      │
 │  ├── db/           sqlx + PostgreSQL                 │
 │  ├── domain/       Business logic and shared types   │
-│   ├── py-sidecar/ Sidecar manager                 │
+│  ├── py-sidecar/   Unix socket client for Python IPC │
 │  └── storage/      S3-compatible object storage      │
 │                        │                              │
 │                        │ Unix domain socket            │
@@ -69,7 +69,7 @@
 
 | Decision | Rationale |
 |----------|-----------|
-| Python as Rust sidecar | Single entry point, Rust controls lifecycle |
+| Python as Rust sidecar | Single entry point, Python runs independently alongside Rust |
 | Frontend → Rust only | Simplified networking, Rust proxies to Python |
 | Rust workspace | Modular crates, clear boundaries |
 | Unix domain socket | Fast IPC on Linux/macOS, no TCP overhead |
@@ -126,7 +126,7 @@ backend/
 ├── cache/             # Redis caching, rate limiting, sessions
 ├── db/                # Database layer (sqlx)
 ├── domain/            # Business logic and shared types
-├── py-sidecar/        # Sidecar process manager
+├── py-sidecar/        # Unix socket client for Python IPC
 └── storage/           # S3-compatible object storage
 └── target/
 ```
@@ -141,8 +141,8 @@ py-api binds to `/tmp/fullstackhex-python.sock`. Rust communicates through this 
 ### PythonSidecar (implemented in v0.3.1.0)
 
 The \`PythonSidecar\` struct in \`backend/py-sidecar/src/lib.rs\` handles
-HTTP communication with py-api via a Unix domain socket. The service
-runs independently — start it with `uv run uvicorn app.main:app --uds /tmp/fullstackhex-python.sock`.
+HTTP communication with a running py-api process via a Unix domain socket. The service
+runs independently — start it with `uv run uvicorn app.main:app --uds /tmp/fullstackhex-python.sock` (or use `make dev` to start everything).
 
 ```rust
 // Key API:

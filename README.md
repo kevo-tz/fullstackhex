@@ -19,7 +19,7 @@ A production-ready full-stack template combining a Rust/Axum backend, Python Fas
 - **Latest tooling** — Rust stable (edition 2024), Bun (latest), uv (latest), Astro v6.
 - **Ships complete** — every source file, config, and test is committed. Clone and run — no scaffolding step.
 - **Dev infrastructure via Docker Compose** — PostgreSQL 18, Redis 8, and RustFS spin up with a single command; optional Adminer and Redis Commander behind a `tools` profile.
-- **Monitoring stack overlay** — `compose/monitor.yml` adds Prometheus + Grafana with 5 auto-provisioned dashboards (API, DB, Python, Infrastructure, SLOs).
+- **Monitoring stack overlay** — `compose/monitor.yml` adds Prometheus + Grafana with 6 auto-provisioned dashboards (Overview, Auth, DB, Python, Infrastructure, SLOs).
 - **Metrics out of the box** — Rust backend exposes `/metrics` with request counters and latency histograms; Python sidecar metrics proxied via `/metrics/python`.
 - **Full test suites committed** — Rust/Python/Frontend unit, integration, and smoke tests ship in the repo.
 - **Security automation** — local `detect-secrets` pre-commit checks plus CI `gitleaks` scanning.

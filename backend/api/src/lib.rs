@@ -186,6 +186,10 @@ fn build_router(state: Arc<AppState>) -> Router {
         router = router
             .layer(middleware::from_fn(auth::middleware::auth_middleware))
             .layer(Extension(auth_svc.clone()));
+        // Also inject Redis so the middleware can check JWT blacklist
+        if let Some(ref redis) = state.redis {
+            router = router.layer(Extension(redis.clone()));
+        }
     }
 
     router

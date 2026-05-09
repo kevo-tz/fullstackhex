@@ -66,24 +66,46 @@ impl IntoResponse for AuthRejection {
 /// - `cookie`: extract session cookie only
 /// - `bearer`: extract Authorization header only
 /// - `both`: bearer takes precedence, cookie is fallback
+///
+/// When Redis is available (injected via request extensions), the middleware
+/// also checks whether the token's JTI has been blacklisted (e.g., after logout).
+/// Blacklisted tokens are treated as unauthenticated — the request continues
+/// without an AuthUser extension, and handlers using `AuthUser` extractor will
+/// return 401.
 pub async fn auth_middleware(
     mut req: axum::http::Request<axum::body::Body>,
     next: axum::middleware::Next,
 ) -> Response {
     let auth_service = req.extensions().get::<Arc<AuthService>>().cloned();
+    let redis = req.extensions().get::<Arc<cache::RedisClient>>().cloned();
 
     let Some(auth_service) = auth_service else {
-        // No auth service — pass through (auth disabled)
         return next.run(req).await;
     };
 
     let auth_user = extract_auth_user(&req, &auth_service);
 
+    // JWT blacklist check: if Redis is available and the token JTI has
+    // been blacklisted (user logged out), drop the auth context so the
+    // handler returns 401. Fails open on Redis errors (availability > revocation).
+    if let (Some(user), Some(redis)) = (&auth_user, &redis) {
+        let is_blacklisted: Option<bool> = redis
+            .cache_get("blacklist", &user.jti)
+            .await
+            .unwrap_or(None);
+        if is_blacklisted.unwrap_or(false) {
+            tracing::debug!(
+                jti = %user.jti,
+                user_id = %user.user_id,
+                "blacklisted token rejected"
+            );
+            return next.run(req).await;
+        }
+    }
+
     if let Some(user) = auth_user {
         req.extensions_mut().insert(user);
     }
-    // If no auth user, the request continues — individual handlers
-    // can use AuthUser extractor to require authentication.
 
     next.run(req).await
 }

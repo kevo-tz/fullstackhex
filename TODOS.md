@@ -156,7 +156,7 @@ Replaces `clean` Makefile target.
 
 ### Phase 3: Rewrite Makefile
 
-Replace the entire Makefile (~470 lines) with:
+**Completed:** v0.10.1.0 (2026-05-08)
 
 ```makefile
 .PHONY: dev down test logs bench status clean
@@ -205,6 +205,8 @@ clean:
 
 ### Phase 4: Update Existing Scripts
 
+### Phase 4: Update Existing Scripts
+
 #### 4a. `scripts/status.sh`
 
 Currently self-contained with its own `PID_DIR` default. Source `config.sh` for consistency:
@@ -222,13 +224,50 @@ No changes needed. Already sources `config.sh` and `common.sh`.
 
 The test helpers (`assert_*`, `mock_*`, test lifecycle) occupy ~180 lines and are only used by `test_example.sh` (which is being deleted). Trim them to keep `common.sh` focused on operational utilities.
 
+---
+
+### Directory copies for installer
+
+   | Directory | Destination |
+   |-----------|-------------|
+   | `backend/` | `$PROJECT_NAME/backend/` — Rust workspace |
+   | `compose/` | `$PROJECT_NAME/compose/` — Docker Compose + nginx + monitoring |
+   | `frontend/` | `$PROJECT_NAME/frontend/` — Bun + React app |
+   | `py-api/` | `$PROJECT_NAME/py-api/` — Python FastAPI sidecar |
+   | `scripts/` | `$PROJECT_NAME/scripts/` — deploy, health, rollback, env utilities |
+
+### File replacements in installer template
+
+   | File | What to replace |
+   |------|-----------------|
+   | `backend/Cargo.toml` | `repository` URL, `authors` |
+   | `backend/*/Cargo.toml` | workspace metadata (inherited, so only root) |
+   | `backend/py-sidecar/Cargo.toml` | `name` → keep as `py-sidecar` |
+   | `frontend/package.json` | `name` field |
+   | `py-api/pyproject.toml` | `name` field |
+   | `compose/prod.yml` | container names (`fullstackhex_` → `$PROJECT_NAME_`) |
+   | `compose/dev.yml` | container names (`fullstackhex_` → `$PROJECT_NAME_`) |
+   | `compose/monitor.yml` | container names (`fullstackhex_` → `$PROJECT_NAME_`) |
+   | `compose/Dockerfile.rust` | crate pod paths |
+   | `Makefile` | `APP_NAME` variable at top |
+
+#### Phase 5 — Install (install.sh)
+8. `cd $PROJECT_NAME/py-api && uv sync`
+9. `cd $PROJECT_NAME/frontend && bun install`
+
+#### Phase 5 (install.sh)
+
+10. `cd $PROJECT_NAME/backend && cargo check`
+11. `cd $PROJECT_NAME/frontend && bun run typecheck`
+12. Optional: `cd $PROJECT_NAME/py-api && uv run pytest`
+
 Remove these functions (lines ~320-487):
 - `test_mode()` / `mock_command()` / `mock_read_file()` / `mock_write_file()` / `mock_env()` / `mock_network_calls()`
 - `assert_equals()` / `assert_contains()` / `assert_file_exists()` / `assert_command_exists()` / `assert_not_contains()` / `assert_exit_code()`
 
 ---
 
-### Phase 5: Delete Unused Scripts
+### Phase 6: Delete Unused Scripts
 
 | Script | Deletes? | Reason |
 |--------|----------|--------|

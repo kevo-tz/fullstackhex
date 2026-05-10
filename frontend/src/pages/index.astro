@@ -255,20 +255,7 @@ make status</pre>
         if (el) el.classList.toggle("visible", visible);
       }
 
-      function isFullOutage(data: Record<string, unknown>): boolean {
-        return checkFullOutage(data);
-      }
-
-      function getDiagnostics(data: Record<string, unknown>): { id: string; fix: string }[] {
-        const result: { id: string; fix: string }[] = [];
-        for (const svc of SERVICE_IDS) {
-          const entry = data[svc] as Record<string, unknown> | undefined;
-          if (!entry || entry.status === "ok") continue;
-          const fix = (entry.fix as string) || (entry.error as string) || null;
-          if (fix) result.push({ id: svc, fix });
-        }
-        return result;
-      }
+      const isFullOutage = checkFullOutage;
 
       let retryTimer: ReturnType<typeof setTimeout> | null = null;
       let retryDelay = 1000;

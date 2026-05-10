@@ -18,7 +18,7 @@ RUN apt-get update && apt-get install -y \
 COPY py-api/pyproject.toml ./
 
 # Install Python dependencies into a prefix
-RUN uv pip install --system --no-cache fastapi uvicorn
+RUN uv pip install --system --no-cache fastapi uvicorn prometheus-client
 
 # Stage2: Runtime - Minimal image
 FROM python:3.14-slim-bookworm

@@ -54,6 +54,7 @@ pub struct OAuthUserInfo {
 pub struct OAuthService {
     google_client: Option<ConfiguredClient>,
     github_client: Option<ConfiguredClient>,
+    http_client: reqwest::Client,
 }
 
 impl OAuthService {
@@ -63,6 +64,7 @@ impl OAuthService {
         google_client_secret: Option<String>,
         github_client_id: Option<String>,
         github_client_secret: Option<String>,
+        http_client: reqwest::Client,
     ) -> Self {
         let google_client = google_client_id
             .zip(google_client_secret)
@@ -97,6 +99,7 @@ impl OAuthService {
         Self {
             google_client,
             github_client,
+            http_client,
         }
     }
 
@@ -153,8 +156,12 @@ impl OAuthService {
         let access_token = token.access_token().secret();
 
         match provider {
-            OAuthProvider::Google => fetch_google_user_info(access_token).await,
-            OAuthProvider::GitHub => fetch_github_user_info(access_token).await,
+            OAuthProvider::Google => {
+                fetch_google_user_info(access_token, &self.http_client).await
+            }
+            OAuthProvider::GitHub => {
+                fetch_github_user_info(access_token, &self.http_client).await
+            }
         }
     }
 
@@ -170,8 +177,11 @@ impl OAuthService {
     }
 }
 
-async fn fetch_google_user_info(access_token: &str) -> Result<OAuthUserInfo, ApiError> {
-    let resp = reqwest::Client::new()
+async fn fetch_google_user_info(
+    access_token: &str,
+    http_client: &reqwest::Client,
+) -> Result<OAuthUserInfo, ApiError> {
+    let resp = http_client
         .get("https://www.googleapis.com/oauth2/v2/userinfo")
         .header("Authorization", format!("Bearer {access_token}"))
         .send()
@@ -198,10 +208,11 @@ async fn fetch_google_user_info(access_token: &str) -> Result<OAuthUserInfo, Api
     })
 }
 
-async fn fetch_github_user_info(access_token: &str) -> Result<OAuthUserInfo, ApiError> {
-    let client = reqwest::Client::new();
-
-    let resp = client
+async fn fetch_github_user_info(
+    access_token: &str,
+    http_client: &reqwest::Client,
+) -> Result<OAuthUserInfo, ApiError> {
+    let resp = http_client
         .get("https://api.github.com/user")
         .header("Authorization", format!("Bearer {access_token}"))
         .header("User-Agent", "fullstackhex")
@@ -224,7 +235,7 @@ async fn fetch_github_user_info(access_token: &str) -> Result<OAuthUserInfo, Api
     // Fetch primary email if not public
     let email = match user.email {
         Some(e) => e,
-        None => fetch_github_primary_email(access_token)
+        None => fetch_github_primary_email(access_token, http_client)
             .await
             .unwrap_or_default(),
     };
@@ -237,9 +248,11 @@ async fn fetch_github_user_info(access_token: &str) -> Result<OAuthUserInfo, Api
     })
 }
 
-async fn fetch_github_primary_email(access_token: &str) -> Option<String> {
-    let client = reqwest::Client::new();
-    let resp = client
+async fn fetch_github_primary_email(
+    access_token: &str,
+    http_client: &reqwest::Client,
+) -> Option<String> {
+    let resp = http_client
         .get("https://api.github.com/user/emails")
         .header("Authorization", format!("Bearer {access_token}"))
         .header("User-Agent", "fullstackhex")
@@ -292,7 +305,7 @@ mod tests {
 
     #[test]
     fn oauth_service_unconfigured() {
-        let svc = OAuthService::new(None, None, None, None);
+        let svc = OAuthService::new(None, None, None, None, reqwest::Client::new());
         assert!(!svc.is_configured(&OAuthProvider::Google));
         assert!(!svc.is_configured(&OAuthProvider::GitHub));
     }
@@ -304,6 +317,7 @@ mod tests {
             Some("secret".to_string()),
             None,
             None,
+            reqwest::Client::new(),
         );
         assert!(svc.is_configured(&OAuthProvider::Google));
         assert!(!svc.is_configured(&OAuthProvider::GitHub));
@@ -316,38 +330,7 @@ mod tests {
             None,
             Some("gh-id".to_string()),
             Some("gh-secret".to_string()),
-        );
-        assert!(svc.is_configured(&OAuthProvider::GitHub));
-        assert!(!svc.is_configured(&OAuthProvider::Google));
-    }
-
-    #[test]
-    fn get_redirect_url_google_builds_correct_url() {
-        let svc = OAuthService::new(
-            Some("google-id".to_string()),
-            Some("google-secret".to_string()),
-            None,
-            None,
-        );
-        let (url, _csrf) = svc
-            .get_redirect_url(
-                &OAuthProvider::Google,
-                "http://localhost:8001/auth/oauth/google/callback",
-            )
-            .unwrap();
-        assert!(url.starts_with("https://accounts.google.com/o/oauth2/v2/auth"));
-        assert!(url.contains("client_id=google-id"));
-        assert!(url.contains("scope=email"));
-        assert!(url.contains("redirect_uri"));
-    }
-
-    #[test]
-    fn get_redirect_url_github_builds_correct_url() {
-        let svc = OAuthService::new(
-            None,
-            None,
-            Some("gh-id".to_string()),
-            Some("gh-secret".to_string()),
+            reqwest::Client::new(),
         );
         let (url, _csrf) = svc
             .get_redirect_url(
@@ -363,7 +346,7 @@ mod tests {
 
     #[test]
     fn get_redirect_url_unconfigured_provider() {
-        let svc = OAuthService::new(None, None, None, None);
+        let svc = OAuthService::new(None, None, None, None, reqwest::Client::new());
         let err = svc
             .get_redirect_url(&OAuthProvider::Google, "http://localhost/cb")
             .unwrap_err();

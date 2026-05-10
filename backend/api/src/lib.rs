@@ -127,6 +127,13 @@ fn build_router(state: Arc<AppState>) -> Router {
             auth: auth_svc.clone(),
             db: pool.clone(),
             redis: redis.clone(),
+            oauth: Arc::new(auth::oauth::OAuthService::new(
+                auth_svc.config.google_client_id.clone(),
+                auth_svc.config.google_client_secret.clone(),
+                auth_svc.config.github_client_id.clone(),
+                auth_svc.config.github_client_secret.clone(),
+                reqwest::Client::new(),
+            )),
         };
         let auth_router = Router::new()
             .route("/register", axum::routing::post(auth::routes::register))

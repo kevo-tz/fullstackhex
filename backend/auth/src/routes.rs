@@ -22,6 +22,7 @@ pub struct AuthState {
     pub auth: Arc<AuthService>,
     pub db: sqlx::PgPool,
     pub redis: Arc<cache::RedisClient>,
+    pub oauth: Arc<super::oauth::OAuthService>,
 }
 
 /// Extract client IP from request headers (X-Forwarded-For, X-Real-IP fallback).
@@ -453,14 +454,8 @@ pub async fn oauth_redirect(
     Path(provider): Path<String>,
 ) -> Result<impl IntoResponse, ApiError> {
     let provider = parse_provider(&provider)?;
-    let oauth_service = super::oauth::OAuthService::new(
-        state.auth.config.google_client_id.clone(),
-        state.auth.config.google_client_secret.clone(),
-        state.auth.config.github_client_id.clone(),
-        state.auth.config.github_client_secret.clone(),
-    );
 
-    if !oauth_service.is_configured(&provider) {
+    if !state.oauth.is_configured(&provider) {
         return Err(ApiError::ServiceUnavailable(format!(
             "{provider} OAuth not configured"
         )));
@@ -473,7 +468,7 @@ pub async fn oauth_redirect(
         .clone()
         .unwrap_or_else(|| format!("http://localhost:8001/auth/oauth/{provider}/callback"));
 
-    let (url, csrf) = oauth_service.get_redirect_url(&provider, &redirect_url)?;
+    let (url, csrf) = state.oauth.get_redirect_url(&provider, &redirect_url)?;
 
     // Store CSRF token in Redis with 10-minute TTL for callback validation
     state
@@ -520,14 +515,8 @@ pub async fn oauth_callback(
     state.redis.cache_delete("oauth_csrf", &query.state).await?;
 
     // Exchange code for access token
-    let oauth_service = super::oauth::OAuthService::new(
-        state.auth.config.google_client_id.clone(),
-        state.auth.config.google_client_secret.clone(),
-        state.auth.config.github_client_id.clone(),
-        state.auth.config.github_client_secret.clone(),
-    );
-
-    let user_info = oauth_service
+    let user_info = state
+        .oauth
         .exchange_code(&provider, &query.code)
         .await
         .map_err(|_e| ApiError::Unauthorized("OAuth authentication failed".to_string()))?;

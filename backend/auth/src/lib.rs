@@ -36,6 +36,9 @@ pub struct AuthConfig {
     pub oauth_redirect_url: Option<String>,
     /// HMAC shared secret for Python sidecar trust.
     pub sidecar_shared_secret: Option<String>,
+    /// When true (default), allow requests through when blacklist check fails (Redis unavailable).
+    /// When false, reject the request if the blacklist check cannot complete.
+    pub fail_open_on_redis_error: bool,
 }
 
 /// Auth mode determines how authentication is extracted from requests.
@@ -45,7 +48,16 @@ pub enum AuthMode {
     Cookie,
     /// Bearer JWT header only. No CSRF needed.
     Bearer,
-    /// Both modes. Bearer takes precedence if present.
+    /// Both cookie and bearer auth. Bearer takes precedence when both are present.
+    ///
+    /// # Security considerations
+    ///
+    /// When both a cookie and a Bearer token are sent, the Bearer token is used.
+    /// This means CSRF protection is bypassed for requests that include a Bearer
+    /// header. This is safe because:
+    /// 1. Bearer tokens can't be sent cross-origin without JS access
+    /// 2. The `SameSite=Lax` cookie attribute provides additional CSRF protection
+    /// 3. Cookie-auth requests still require CSRF validation for state-changing methods
     Both,
 }
 
@@ -87,6 +99,10 @@ impl AuthConfig {
             sidecar_shared_secret: std::env::var("SIDECAR_SHARED_SECRET")
                 .ok()
                 .filter(|s| !s.is_empty()),
+            fail_open_on_redis_error: std::env::var("AUTH_FAIL_OPEN_ON_REDIS_ERROR")
+                .ok()
+                .and_then(|v| v.parse::<bool>().ok())
+                .unwrap_or(true),
         })
     }
 }
@@ -172,6 +188,7 @@ mod tests {
             github_client_secret: None,
             oauth_redirect_url: None,
             sidecar_shared_secret: None,
+            fail_open_on_redis_error: true,
         };
         let svc = AuthService::new(config);
         let token = svc

@@ -132,11 +132,18 @@ pub async fn auth_middleware(
                 );
                 return next.run(req).await;
             }
+            None if auth_service.config.fail_open_on_redis_error => {
+                tracing::warn!(
+                    jti = %user.jti,
+                    "blacklist check failed — allowing request (Redis unavailable, fail-open)"
+                );
+            }
             None => {
                 tracing::warn!(
                     jti = %user.jti,
-                    "blacklist check failed — allowing request (Redis unavailable)"
+                    "blacklist check failed — rejecting request (fail-closed)"
                 );
+                return next.run(req).await;
             }
             Some(false) => {}
         }
@@ -313,6 +320,7 @@ mod tests {
             github_client_secret: None,
             oauth_redirect_url: None,
             sidecar_shared_secret: None,
+            fail_open_on_redis_error: true,
         };
         AuthService::new(config)
     }

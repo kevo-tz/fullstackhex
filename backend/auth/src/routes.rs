@@ -178,24 +178,20 @@ pub async fn register(
         )
         .await?;
 
+    let jwt_expiry = state.auth.config.jwt_expiry;
+    let refresh_expiry = state.auth.config.refresh_expiry;
     let mut headers = HeaderMap::new();
     headers.insert(
         header::SET_COOKIE,
-        format!(
-            "access_token={}; HttpOnly; Path=/; Max-Age={}; SameSite=Lax",
-            access_token, state.auth.config.jwt_expiry
-        )
-        .parse()
-        .unwrap(),
+        format!("access_token={access_token}; HttpOnly; Path=/; Max-Age={jwt_expiry}; SameSite=Lax")
+            .parse()
+            .unwrap(),
     );
     headers.insert(
         header::SET_COOKIE,
-        format!(
-            "refresh_token={}; HttpOnly; Path=/; Max-Age={}; SameSite=Lax",
-            refresh_token, state.auth.config.refresh_expiry
-        )
-        .parse()
-        .unwrap(),
+        format!("refresh_token={refresh_token}; HttpOnly; Path=/; Max-Age={refresh_expiry}; SameSite=Lax")
+            .parse()
+            .unwrap(),
     );
 
     let response = TokenResponse {
@@ -332,24 +328,20 @@ pub async fn login(
         },
     };
 
+    let jwt_expiry = state.auth.config.jwt_expiry;
+    let refresh_expiry = state.auth.config.refresh_expiry;
     let mut headers = HeaderMap::new();
     headers.insert(
         header::SET_COOKIE,
-        format!(
-            "access_token={}; HttpOnly; Path=/; Max-Age={}; SameSite=Lax",
-            response.access_token, state.auth.config.jwt_expiry
-        )
-        .parse()
-        .unwrap(),
+        format!("access_token={}; HttpOnly; Path=/; Max-Age={jwt_expiry}; SameSite=Lax", response.access_token)
+            .parse()
+            .unwrap(),
     );
     headers.insert(
         header::SET_COOKIE,
-        format!(
-            "refresh_token={}; HttpOnly; Path=/; Max-Age={}; SameSite=Lax",
-            response.refresh_token, state.auth.config.refresh_expiry
-        )
-        .parse()
-        .unwrap(),
+        format!("refresh_token={}; HttpOnly; Path=/; Max-Age={refresh_expiry}; SameSite=Lax", response.refresh_token)
+            .parse()
+            .unwrap(),
     );
 
     Ok((headers, Json(response)))
@@ -831,6 +823,7 @@ mod route_tests {
             github_client_secret: None,
             oauth_redirect_url: None,
             sidecar_shared_secret: None,
+            fail_open_on_redis_error: true,
         };
         let list = list_providers(&config);
         assert!(list.is_empty());
@@ -850,6 +843,7 @@ mod route_tests {
             github_client_secret: None,
             oauth_redirect_url: None,
             sidecar_shared_secret: None,
+            fail_open_on_redis_error: true,
         };
         let list = list_providers(&config);
         assert_eq!(list, vec!["google"]);
@@ -869,6 +863,7 @@ mod route_tests {
             github_client_secret: Some("gh-secret".to_string()),
             oauth_redirect_url: None,
             sidecar_shared_secret: None,
+            fail_open_on_redis_error: true,
         };
         let list = list_providers(&config);
         assert_eq!(list, vec!["github"]);
@@ -888,6 +883,7 @@ mod route_tests {
             github_client_secret: Some("gh-secret".to_string()),
             oauth_redirect_url: None,
             sidecar_shared_secret: None,
+            fail_open_on_redis_error: true,
         };
         let list = list_providers(&config);
         assert_eq!(list, vec!["google", "github"]);

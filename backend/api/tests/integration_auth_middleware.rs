@@ -26,6 +26,7 @@ fn test_auth_service() -> Arc<AuthService> {
         github_client_secret: None,
         oauth_redirect_url: None,
         sidecar_shared_secret: None,
+        fail_open_on_redis_error: true,
     };
     Arc::new(AuthService::new(config))
 }

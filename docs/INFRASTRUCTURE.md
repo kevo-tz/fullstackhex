@@ -705,13 +705,11 @@ Handles TLS termination and routing:
 Key features:
 - HTTP → HTTPS redirect (port 80 → 443)
 - TLS 1.2 / 1.3 only with strong cipher suite
-- HSTS, X-Content-Type-Options, X-Frame-Options headers
+- Security headers: HSTS, X-Content-Type-Options, X-Frame-Options, CSP, Referrer-Policy
 - Gzip compression for text, CSS, JS, JSON
 - OCSP stapling
 
-### \`compose/nginx/static.conf\` — Optional static file serving
-
-Minimal config for serving an Astro **static** build (no SSR) at port 4321. Not used when running Astro in SSR mode with the Node adapter.
+The main Nginx config is at `compose/nginx/nginx.conf`.
 
 ---
 

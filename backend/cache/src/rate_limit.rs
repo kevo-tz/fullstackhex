@@ -156,7 +156,9 @@ impl RedisClient {
         }
 
         // TTL expired — clean up the stale key
-        let _ = self.client.del::<(), _>(&key).await;
+        if let Err(e) = self.client.del::<(), _>(&key).await {
+            tracing::warn!(key = %key, error = %e, "backoff stale key cleanup failed");
+        }
         Ok(())
     }
 

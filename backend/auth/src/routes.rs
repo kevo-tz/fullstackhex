@@ -127,7 +127,10 @@ pub async fn register(
         .bind(&body.email)
         .fetch_optional(&state.db)
         .await
-        .map_err(|_e| ApiError::InternalError("Internal server error".to_string()))?;
+        .map_err(|e| {
+            tracing::error!(error = %e, "database query failed");
+            ApiError::InternalError("Internal server error".to_string())
+        })?;
 
     if existing.is_some() {
         return Err(ApiError::ValidationError("Invalid credentials".to_string()));
@@ -145,7 +148,10 @@ pub async fn register(
     .bind(&password_hash)
     .fetch_one(&state.db)
     .await
-    .map_err(|_e| ApiError::InternalError("Internal server error".to_string()))?;
+    .map_err(|e| {
+            tracing::error!(error = %e, "database query failed");
+            ApiError::InternalError("Internal server error".to_string())
+        })?;
 
     // Create JWT
     let access_token =
@@ -236,12 +242,17 @@ pub async fn login(
     .bind(&body.email)
     .fetch_optional(&state.db)
     .await
-    .map_err(|_e| ApiError::InternalError("Internal server error".to_string()))?;
+    .map_err(|e| {
+            tracing::error!(error = %e, "database query failed");
+            ApiError::InternalError("Internal server error".to_string())
+        })?;
 
     let (user_id, email, name, provider, password_hash) = match user {
         Some(u) => u,
         None => {
-            let _ = state.redis.backoff_increment(&ip, "login").await;
+            if let Err(e) = state.redis.backoff_increment(&ip, "login").await {
+    tracing::warn!(ip = %ip, error = %e, "backoff_increment failed");
+}
             return Err(ApiError::Unauthorized("Invalid credentials".to_string()));
         }
     };
@@ -250,13 +261,17 @@ pub async fn login(
     let hash = match password_hash {
         Some(h) => h,
         None => {
-            let _ = state.redis.backoff_increment(&ip, "login").await;
+            if let Err(e) = state.redis.backoff_increment(&ip, "login").await {
+    tracing::warn!(ip = %ip, error = %e, "backoff_increment failed");
+}
             return Err(ApiError::Unauthorized("Invalid credentials".to_string()));
         }
     };
 
     if !password::verify_password(&body.password, &hash)? {
-        let _ = state.redis.backoff_increment(&ip, "login").await;
+        if let Err(e) = state.redis.backoff_increment(&ip, "login").await {
+    tracing::warn!(ip = %ip, error = %e, "backoff_increment failed");
+}
         return Err(ApiError::Unauthorized("Invalid credentials".to_string()));
     }
 
@@ -309,7 +324,9 @@ pub async fn logout(
     // Destroy session if present (cookie auth mode)
     if let Some(ref session_id) = auth_user.session_id {
         // Best-effort: session might already be expired or destroyed
-        let _ = state.redis.session_destroy(session_id).await;
+        if let Err(e) = state.redis.session_destroy(session_id).await {
+    tracing::warn!(session = %session_id, error = %e, "session_destroy failed");
+}
     }
 
     tracing::info!(user_id = %auth_user.user_id, jti = %auth_user.jti, "user logged out");
@@ -355,7 +372,10 @@ pub async fn refresh(
             .bind(&user_id)
             .fetch_optional(&state.db)
             .await
-            .map_err(|_e| ApiError::InternalError("Internal server error".to_string()))?;
+            .map_err(|e| {
+            tracing::error!(error = %e, "database query failed");
+            ApiError::InternalError("Internal server error".to_string())
+        })?;
 
     let (user_id, email, name, provider) =
         user.ok_or_else(|| ApiError::Unauthorized("Invalid credentials".to_string()))?;
@@ -528,10 +548,16 @@ pub async fn oauth_callback(
             .bind(provider.to_string())
             .execute(&state.db)
             .await
-            .map_err(|_e| ApiError::InternalError("Internal server error".to_string()))?;
+            .map_err(|e| {
+            tracing::error!(error = %e, "database query failed");
+            ApiError::InternalError("Internal server error".to_string())
+        })?;
             id
         }
-        Err(_e) => return Err(ApiError::InternalError("Internal server error".to_string())),
+        Err(e) => {
+            tracing::error!(error = %e, "database query failed during OAuth callback");
+            return Err(ApiError::InternalError("Internal server error".to_string()));
+        }
     };
 
     // Create JWT

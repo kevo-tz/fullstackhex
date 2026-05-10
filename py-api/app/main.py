@@ -46,6 +46,8 @@ PYTHON_REQUEST_DURATION = Histogram(
 
 
 class JsonFormatter(logging.Formatter):
+    """Structured JSON log formatter for production logging."""
+
     def format(self, record: logging.LogRecord) -> str:
         ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
         obj = {
@@ -62,6 +64,7 @@ class JsonFormatter(logging.Formatter):
 
 
 def setup_logging() -> None:
+    """Configure root logger with JSON formatter for structured output."""
     handler = logging.StreamHandler(sys.stderr)
     handler.setFormatter(JsonFormatter())
     root = logging.getLogger()

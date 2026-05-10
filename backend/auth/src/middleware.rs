@@ -123,13 +123,22 @@ pub async fn auth_middleware(
             .cache_get("blacklist", &user.jti)
             .await
             .unwrap_or(None);
-        if is_blacklisted.unwrap_or(false) {
-            tracing::debug!(
-                jti = %user.jti,
-                user_id = %user.user_id,
-                "blacklisted token rejected"
-            );
-            return next.run(req).await;
+        match is_blacklisted {
+            Some(true) => {
+                tracing::debug!(
+                    jti = %user.jti,
+                    user_id = %user.user_id,
+                    "blacklisted token rejected"
+                );
+                return next.run(req).await;
+            }
+            None => {
+                tracing::warn!(
+                    jti = %user.jti,
+                    "blacklist check failed — allowing request (Redis unavailable)"
+                );
+            }
+            Some(false) => {}
         }
     }
 

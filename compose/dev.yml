@@ -71,7 +71,7 @@ services:
     ports:
       - "127.0.0.1:${REDIS_PORT:-6379}:6379"
     command: >
-      redis-server --maxmemory ${REDIS_MAX_MEMORY:-512mb} --maxmemory-policy ${REDIS_MAXMEMORY_POLICY:-allkeys-lru} --appendonly ${REDIS_APPENDONLY:-yes} --save ${REDIS_SAVE:-900 1 300 10 60 10000}
+      redis-server --maxmemory ${REDIS_MAX_MEMORY:-512mb} --maxmemory-policy ${REDIS_MAXMEMORY_POLICY:-allkeys-lru} --appendonly ${REDIS_APPENDONLY:-yes} --save ${REDIS_SAVE:-900 1 300 10 60 10000} --requirepass ${REDIS_PASSWORD:?REDIS_PASSWORD must be set in .env}
     volumes:
       - redis_data:/data
     healthcheck:
@@ -159,13 +159,13 @@ services:
       - tools
 
   redis-commander:
-    image: rediscommander/redis-commander:latest
+    image: rediscommander/redis-commander:0.8.0
     container_name: fullstackhex_redis_commander
     restart: unless-stopped
     ports:
       - "${REDIS_COMMANDER_PORT:-8081}:8081"
     environment:
-      REDIS_HOSTS: local:fullstackhex_redis:6379
+      REDIS_HOSTS: local:fullstackhex_redis:6379:0:${REDIS_PASSWORD:?REDIS_PASSWORD must be set in .env}
     depends_on:
       redis:
         condition: service_healthy
@@ -192,7 +192,7 @@ services:
       - "${REDIS_EXPORTER_PORT:-9121}:9121"
     environment:
       REDIS_ADDR: "redis://fullstackhex_redis:6379"
-      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD must be set in .env}
     depends_on:
       redis:
         condition: service_healthy

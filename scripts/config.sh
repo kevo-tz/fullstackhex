@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # FullStackHex Configuration
 # Centralized configuration for all scripts
 
@@ -55,13 +55,11 @@ export REPO_ROOT
 export RUST_BACKEND_URL
 export FRONTEND_URL
 export POSTGRES_USER
-export POSTGRES_PASSWORD
 export POSTGRES_DB
 export POSTGRES_PORT
 export POSTGRES_HOST
 export REDIS_HOST
 export REDIS_PORT
-export REDIS_PASSWORD
 export BENCHLITE_REQUESTS
 export BENCHLITE_CONCURRENT
 export RUST_HEALTH_P50_THRESHOLD

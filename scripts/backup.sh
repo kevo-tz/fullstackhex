@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 set -euo pipefail
 # backup.sh — Backup PostgreSQL database and Redis data.
 # Usage: ./scripts/backup.sh [backup-dir]

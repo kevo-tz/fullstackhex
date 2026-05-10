@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # status.sh — Show which development services are running and on which ports.
 # Reads PID files from the PID_DIR (config.sh) written by make dev.
 

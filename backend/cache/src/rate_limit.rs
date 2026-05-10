@@ -182,8 +182,8 @@ impl RedisClient {
     ///
     /// # Errors
     ///
-    /// Returns `CacheError::BackoffBlocked` when the IP is blocked,
-    /// or `CacheError::CommandFailed` on Redis errors.
+    /// Returns `CacheError::CommandFailed` on Redis errors.
+    /// Note: this function does NOT return `BackoffBlocked` — use `backoff_check` for that.
     pub async fn backoff_increment(&self, ip: &str, endpoint: &str) -> Result<(), CacheError> {
         let key = self.make_key("backoff", &format!("{ip}:{endpoint}"));
 

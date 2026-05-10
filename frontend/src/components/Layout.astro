@@ -136,7 +136,6 @@ const { title } = Astro.props;
           const refreshRes = await origFetch("/api/auth/refresh", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({}),
           });
           if (refreshRes.ok) {
             return true;
@@ -162,7 +161,8 @@ const { title } = Astro.props;
             try {
               const retryReq = new Request(input, init);
               return origFetch(retryReq);
-            } catch {
+            } catch (retryErr) {
+              console.warn("Retry failed:", retryErr instanceof Error ? retryErr.message : String(retryErr));
               return res;
             }
           }

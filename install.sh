@@ -1,6 +1,15 @@
 #!/bin/bash
 set -euo pipefail
 
+if [ -t 0 ]; then
+  READ_INPUT=/dev/stdin
+elif ( true < /dev/tty ) 2>/dev/null; then
+  READ_INPUT=/dev/tty
+else
+  READ_INPUT=/dev/stdin
+  NONINTERACTIVE=true
+fi
+
 PROJECT_NAME=""
 DRY_RUN=false
 SKIP_DEPS=false
@@ -124,14 +133,14 @@ EOF
 
 validate() {
   if [ -z "$PROJECT_NAME" ]; then
-    if [ ! -t 0 ]; then
+    if [ "${NONINTERACTIVE:-}" = true ]; then
       error "Project name is required when running non-interactively."
       echo "  Usage: curl -fsSL https://raw.githubusercontent.com/kevo-tz/fullstackhex/main/install.sh | bash -s -- <project-name>"
       echo "  Or:    ./install.sh <project-name>"
       exit 1
     fi
     log "No project name provided."
-    read -r -p "Enter project name: " PROJECT_NAME || true
+    read -r -p "Enter project name: " PROJECT_NAME < "$READ_INPUT" || true
   fi
   if [ -z "$PROJECT_NAME" ]; then
     error "Project name is required."
@@ -218,7 +227,7 @@ configure() {
   run_in "$PROJECT_NAME" "cp .env.example .env"
 
   log "Configuring backend/Cargo.toml (repository URL)..."
-  read -r -p "GitHub username (for repository URL) [kevo-tz]: " GITHUB_USER
+  read -r -p "GitHub username (for repository URL) [kevo-tz]: " GITHUB_USER < "$READ_INPUT" || true
   GITHUB_USER=${GITHUB_USER:-kevo-tz}
   run_in "$PROJECT_NAME" "sed -i 's|https://github.com/kevo-tz/fullstackhex|https://github.com/${GITHUB_USER}/${PROJECT_NAME}|' backend/Cargo.toml"
 

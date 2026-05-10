@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 set -euo pipefail
 
 if [ -t 0 ]; then
@@ -75,7 +75,7 @@ check_tool() {
   fi
   if [ -n "$min_version" ]; then
     local version_str
-    version_str=$(eval "$get_version_cmd" 2>/dev/null || true)
+    version_str=$(bash -c "$get_version_cmd" 2>/dev/null || true)
     if [ -n "$version_str" ]; then
       if ! version_ge "$version_str" "$min_version"; then
         error "$name $version_str is too old. Minimum: $min_version"

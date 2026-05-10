@@ -2,46 +2,45 @@
 # Build context: repository root (.. when invoked from compose/)
 # Usage: docker build -f compose/Dockerfile.python -t fullstackhex/py-api:latest .
 
-# Stage1: Builder - Install Python dependencies
+# Stage1: Builder - Install Python dependencies into a venv
 FROM python:3.14-slim-bookworm AS builder
 
 WORKDIR /app
 
-# Install system build dependencies and uv
-RUN apt-get update && apt-get install -y \
-    build-essential \
-    pkg-config \
-    && rm -rf /var/lib/apt/lists/* \
-    && pip install --no-cache-dir uv
+# Install uv
+RUN pip install --no-cache-dir uv
 
 # Copy pyproject.toml first (leverage Docker cache)
 COPY py-api/pyproject.toml ./
 
-# Install Python dependencies into a prefix
-RUN uv pip install --system --no-cache fastapi uvicorn prometheus-client
+# Install all runtime dependencies into a venv
+RUN uv venv /app/.venv && \
+    uv pip install --python /app/.venv/bin/python --no-cache \
+    fastapi uvicorn "prometheus-client>=0.21,<0.26"
 
 # Stage2: Runtime - Minimal image
 FROM python:3.14-slim-bookworm
 
 WORKDIR /app
 
-# Install uv for runtime installs and fastapi/uvicorn
-RUN pip install --no-cache-dir uv && \
-    uv pip install --system --no-cache fastapi uvicorn
+# Copy venv from builder
+COPY --from=builder /app/.venv /app/.venv
 
 # Copy application source
 COPY py-api/ ./py-api/
 
 WORKDIR /app/py-api
 
-# Create socket directory
-RUN mkdir -p /tmp/sidecar
-
-RUN useradd -m -s /bin/bash appuser && chown -R appuser:appuser /app
+# Create socket directory and non-root user
+RUN mkdir -p /tmp/sidecar && \
+    useradd -m -s /bin/bash appuser && chown -R appuser:appuser /app
 USER appuser
 
+ENV PATH="/app/.venv/bin:$PATH"
+
 # Sidecar communicates over Unix socket — no TCP port exposed
+ENV PYTHON_SIDECAR_SOCKET=/tmp/sidecar/py-api.sock
 HEALTHCHECK --interval=30s --timeout=5s --retries=3 \
-    CMD python -c "import socket,os; s=socket.socket(socket.AF_UNIX); s.connect(os.getenv('PYTHON_SIDECAR_SOCKET','/tmp/sidecar/py-api.sock'))" || exit 1
+    CMD python -c "import socket,os; s=socket.socket(socket.AF_UNIX); s.connect(os.environ.get('PYTHON_SIDECAR_SOCKET','/tmp/sidecar/py-api.sock'))" || exit 1
 
 CMD ["uvicorn", "app.main:app", "--uds", "/tmp/sidecar/py-api.sock"]

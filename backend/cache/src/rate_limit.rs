@@ -7,7 +7,16 @@ use super::{CacheError, RedisClient};
 use fred::interfaces::LuaInterface;
 use fred::prelude::*;
 use fred::types::sorted_sets::ZRange;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::Duration;
+
+/// Returns the current time as ms since Unix epoch, or 0 if the system clock
+/// is before the epoch (never panics).
+fn unix_epoch_ms() -> u64 {
+    (std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or(Duration::ZERO)
+        .as_millis()) as u64
+}
 
 /// Rate limit check result.
 pub struct RateLimitResult {
@@ -36,10 +45,7 @@ impl RedisClient {
         max_requests: u64,
     ) -> Result<RateLimitResult, CacheError> {
         let full_key = self.make_key("ratelimit", key);
-        let now_ms = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_millis() as u64;
+        let now_ms = unix_epoch_ms();
         let window_start = now_ms - window.as_millis() as u64;
 
         // Lua script: atomic check + add + cleanup
@@ -90,10 +96,7 @@ impl RedisClient {
     /// Get the current rate limit count for a key (without incrementing).
     pub async fn rate_limit_count(&self, key: &str, window: Duration) -> Result<u64, CacheError> {
         let full_key = self.make_key("ratelimit", key);
-        let now_ms = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_millis() as u64;
+        let now_ms = unix_epoch_ms();
         let window_start = now_ms - window.as_millis() as u64;
 
         // Clean old entries: remove all members with score <= window_start

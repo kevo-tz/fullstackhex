@@ -54,10 +54,7 @@ impl JwtService {
         name: Option<&str>,
         provider: &str,
     ) -> Result<String, ApiError> {
-        let now = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_secs();
+        let now = domain::time::unix_timestamp_secs();
 
         let claims = Claims {
             sub: user_id.to_string(),

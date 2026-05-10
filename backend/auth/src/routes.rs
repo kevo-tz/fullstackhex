@@ -51,12 +51,7 @@ async fn check_rate_limit(
     if !result.allowed {
         return Err(ApiError::RateLimited(format!(
             "Rate limit exceeded. Try again after {} seconds.",
-            (result.reset_at.saturating_sub(
-                std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .unwrap_or_default()
-                    .as_millis() as u64
-            )) / 1000
+            (result.reset_at.saturating_sub(domain::time::unix_timestamp_ms())) / 1000
         )));
     }
     Ok(())

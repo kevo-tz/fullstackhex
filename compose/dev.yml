@@ -33,7 +33,7 @@ services:
     container_name: fullstackhex_db
     restart: unless-stopped
     ports:
-      - "${POSTGRES_PORT:-5432}:5432"
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-app_user}
       # POSTGRES_PASSWORD must be set in .env — no default is intentional
@@ -64,7 +64,7 @@ services:
     container_name: fullstackhex_redis
     restart: unless-stopped
     ports:
-      - "${REDIS_PORT:-6379}:6379"
+      - "127.0.0.1:${REDIS_PORT:-6379}:6379"
     command: >
       redis-server --maxmemory ${REDIS_MAX_MEMORY:-512mb} --maxmemory-policy ${REDIS_MAXMEMORY_POLICY:-allkeys-lru} --appendonly ${REDIS_APPENDONLY:-yes} --save ${REDIS_SAVE:-900 1 300 10 60 10000}
     volumes:
@@ -88,8 +88,8 @@ services:
     container_name: fullstackhex_rustfs
     restart: unless-stopped
     ports:
-      - "${RUSTFS_API_PORT:-9000}:9000"
-      - "${RUSTFS_CONSOLE_PORT:-9001}:9001"
+      - "127.0.0.1:${RUSTFS_API_PORT:-9000}:9000"
+      - "127.0.0.1:${RUSTFS_CONSOLE_PORT:-9001}:9001"
     environment:
       # RustFS configuration
       RUSTFS_VOLUMES: /data
@@ -157,6 +157,7 @@ services:
       - "${REDIS_EXPORTER_PORT:-9121}:9121"
     environment:
       REDIS_ADDR: "redis://fullstackhex_redis:6379"
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
     depends_on:
       redis:
         condition: service_healthy

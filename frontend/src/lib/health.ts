@@ -1,4 +1,14 @@
 export const SERVICE_IDS = ["rust", "db", "redis", "storage", "python", "auth"] as const;
+export type ServiceId = (typeof SERVICE_IDS)[number];
+
+export const SERVICE_LABELS: Record<ServiceId, string> = {
+  rust: "Rust API",
+  db: "PostgreSQL",
+  redis: "Redis",
+  storage: "RustFS Storage",
+  python: "Python sidecar",
+  auth: "Auth",
+};
 
 export interface HealthEntry {
   status: string;
@@ -24,7 +34,6 @@ function jsonLog(obj: Record<string, unknown>): void {
 
 export function isFullOutage(data: Record<string, unknown>): boolean {
   for (const svc of SERVICE_IDS) {
-  for (const svc of services) {
     const entry = data[svc] as Record<string, unknown> | undefined;
     if (!entry || entry.status === "ok") return false;
   }
@@ -34,20 +43,12 @@ export function isFullOutage(data: Record<string, unknown>): boolean {
 export function getDiagnostics(
   data: Record<string, unknown>,
 ): { service: string; status: string; fix: string | null }[] {
-  const labels: Record<string, string> = {
-    rust: "Rust API",
-    db: "PostgreSQL",
-    redis: "Redis",
-    storage: "RustFS Storage",
-    python: "Python sidecar",
-    auth: "Auth",
-  };
   const result: { service: string; status: string; fix: string | null }[] = [];
   for (const svc of SERVICE_IDS) {
     const entry = data[svc] as Record<string, unknown> | undefined;
     if (!entry || entry.status === "ok") continue;
     result.push({
-      service: labels[svc] || svc,
+      service: SERVICE_LABELS[svc] || svc,
       status: String(entry.status),
       fix: (entry.fix as string) || (entry.error as string) || null,
     });

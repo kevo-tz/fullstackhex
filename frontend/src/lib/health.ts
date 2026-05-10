@@ -27,7 +27,7 @@ export interface HealthResponse {
 }
 
 function jsonLog(obj: Record<string, unknown>): void {
-  if (import.meta.env.DEV) {
+  if (typeof window === "undefined" && import.meta.env.DEV) {
     console.log(JSON.stringify(obj));
   }
 }
@@ -164,9 +164,11 @@ async function handleRustHealth(
   }
 }
 
+export const API_BASE = import.meta.env.VITE_RUST_BACKEND_URL || "http://localhost:8001";
+
 export async function aggregateHealth(
   fetchImpl: typeof fetch,
-  apiBase = "http://localhost:8001",
+  apiBase = API_BASE,
 ): Promise<Record<string, unknown>> {
   const traceId = crypto.randomUUID();
   const start = performance.now();

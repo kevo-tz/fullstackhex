@@ -2,6 +2,7 @@ export const prerender = false;
 
 import type { APIRoute } from "astro";
 
+// Dev fallback; production uses VITE_RUST_BACKEND_URL env var
 const BACKEND =
   import.meta.env.VITE_RUST_BACKEND_URL || "http://localhost:8001";
 

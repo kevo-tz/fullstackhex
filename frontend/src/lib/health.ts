@@ -27,7 +27,7 @@ export interface HealthResponse {
 }
 
 function jsonLog(obj: Record<string, unknown>): void {
-  if (typeof window !== "undefined" || import.meta.env.DEV) {
+  if (import.meta.env.DEV) {
     console.log(JSON.stringify(obj));
   }
 }

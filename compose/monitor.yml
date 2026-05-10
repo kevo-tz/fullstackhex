@@ -29,6 +29,11 @@ services:
       - "--storage.tsdb.retention.time=15d"
     extra_hosts:
       - "backend:host-gateway"
+    deploy:
+      resources:
+        limits:
+          cpus: "1"
+          memory: 512M
     networks:
       - fullstackhex-network
     healthcheck:
@@ -107,6 +112,12 @@ services:
       - "--path.rootfs=/host/rootfs"
       - "--path.procfs=/host/proc"
       - "--path.sysfs=/host/sys"
+      - "--collector.filesystem.mount-points-exclude=^/(dev|proc|sys|host)($$|/)"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:9100/-/healthy"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
     networks:
       - fullstackhex-network
     deploy:
@@ -116,7 +127,7 @@ services:
           memory: 64M
 
   redis-exporter:
-    image: oliver006/redis_exporter:latest
+    image: oliver006/redis_exporter:v1.67.0
     container_name: fullstackhex_redis_exporter_mon
     restart: unless-stopped
     expose:
@@ -133,7 +144,7 @@ services:
           memory: 64M
 
   postgres-exporter:
-    image: prometheuscommunity/postgres-exporter:latest
+    image: prometheuscommunity/postgres-exporter:v0.16.0
     container_name: fullstackhex_postgres_exporter_mon
     restart: unless-stopped
     expose:

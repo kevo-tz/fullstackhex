@@ -345,5 +345,10 @@ services:
       - ./nginx/certs:/etc/letsencrypt
       - ./nginx/certbot-data:/var/lib/certbot
     entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew; sleep 12h; done'"
+    deploy:
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: 128M
     networks:
       - fullstackhex-network

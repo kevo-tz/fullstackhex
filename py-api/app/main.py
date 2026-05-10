@@ -7,6 +7,7 @@ import json
 import os
 import sys
 import time
+from typing import Awaitable, Callable
 
 from prometheus_client import (
     Counter,
@@ -18,18 +19,17 @@ from prometheus_client import (
 app = FastAPI()
 
 
-def _get_shared_secret() -> str:
-    """Read SIDECAR_SHARED_SECRET from environment at startup.
+class Settings:
+    """Application settings, sourced from environment at startup."""
 
-    Cached as module-level constant so env changes require a restart.
-    """
-    secret = os.environ.get("SIDECAR_SHARED_SECRET", "")
-    if not secret:
-        logging.warning("SIDECAR_SHARED_SECRET is empty — all requests will be rejected")
-    return secret
+    def __init__(self) -> None:
+        secret = os.environ.get("SIDECAR_SHARED_SECRET", "")
+        if not secret:
+            logging.warning("SIDECAR_SHARED_SECRET is empty — all requests will be rejected")
+        self.shared_secret: str = secret
 
 
-SHARED_SECRET: str = _get_shared_secret()
+settings = Settings()
 
 # Prometheus metrics
 PYTHON_REQUESTS_TOTAL = Counter(
@@ -80,7 +80,7 @@ logger = logging.getLogger("py-api")
 
 
 @app.middleware("http")
-async def trace_id_middleware(request: Request, call_next) -> Response:
+async def trace_id_middleware(request: Request, call_next: Callable[[Request], Awaitable[Response]]) -> Response:
     """FastAPI middleware that logs request duration and increments Prometheus counters."""
     trace_id = request.headers.get("x-trace-id", "")
     start = time.monotonic()
@@ -104,14 +104,14 @@ async def trace_id_middleware(request: Request, call_next) -> Response:
 
 
 @app.middleware("http")
-async def hmac_auth_middleware(request: Request, call_next) -> Response:
+async def hmac_auth_middleware(request: Request, call_next: Callable[[Request], Awaitable[Response]]) -> Response:
     """FastAPI middleware that validates HMAC-SHA256 signatures on auth headers forwarded from the Rust backend."""
     path = request.url.path
     # Skip HMAC for public routes
     if path in ("/health", "/metrics"):
         return await call_next(request)
 
-    if not SHARED_SECRET:
+    if not settings.shared_secret:
         # Fail closed — never trust auth headers if shared secret is missing
         return Response(
             content=json.dumps(
@@ -136,7 +136,7 @@ async def hmac_auth_middleware(request: Request, call_next) -> Response:
     # Compute expected signature: HMAC-SHA256(secret, JSON payload)
     payload = json.dumps({"user_id": user_id, "email": email, "name": name}, sort_keys=True)
     expected = hmac.new(
-        SHARED_SECRET.encode("utf-8"),
+        settings.shared_secret.encode("utf-8"),
         payload.encode("utf-8"),
         hashlib.sha256,
     ).hexdigest()

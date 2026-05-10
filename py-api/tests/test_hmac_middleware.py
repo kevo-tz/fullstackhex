@@ -52,7 +52,7 @@ async def _call_next_ok(request: Request) -> Response:
 def test_hmac_missing_signature_returns_401(monkeypatch):
     monkeypatch.setenv("SIDECAR_SHARED_SECRET", "dummy_sidecar_secret")
     import app.main
-    app.main.SHARED_SECRET = "dummy_sidecar_secret"
+    app.main.settings.shared_secret = "dummy_sidecar_secret"
     req = _make_request(
         headers={
             "X-User-Id": "user-123",
@@ -68,7 +68,7 @@ def test_hmac_missing_signature_returns_401(monkeypatch):
 def test_hmac_invalid_signature_returns_401(monkeypatch):
     monkeypatch.setenv("SIDECAR_SHARED_SECRET", "dummy_sidecar_secret")
     import app.main
-    app.main.SHARED_SECRET = "dummy_sidecar_secret"
+    app.main.settings.shared_secret = "dummy_sidecar_secret"
     req = _make_request(
         headers={
             "X-User-Id": "user-123",
@@ -87,7 +87,7 @@ def test_hmac_valid_signature_passes(monkeypatch):
     secret = "dummy_sidecar_secret"
     monkeypatch.setenv("SIDECAR_SHARED_SECRET", secret)
     import app.main
-    app.main.SHARED_SECRET = secret
+    app.main.settings.shared_secret = secret
     # Use JSON-based HMAC payload matching production middleware
     payload = json.dumps({"user_id": "user-123", "email": "test@example.com", "name": "Test User"}, sort_keys=True)
     sig = hmac.new(
@@ -127,7 +127,7 @@ def test_hmac_missing_secret_rejects_all_requests():
 def test_hmac_public_routes_skip_auth(monkeypatch):
     monkeypatch.setenv("SIDECAR_SHARED_SECRET", "dummy_sidecar_secret")
     import app.main
-    app.main.SHARED_SECRET = "dummy_sidecar_secret"
+    app.main.settings.shared_secret = "dummy_sidecar_secret"
     for path in ("/health", "/metrics"):
         req = _make_request(path=path)
         response = asyncio.run(hmac_auth_middleware(req, _call_next_ok))

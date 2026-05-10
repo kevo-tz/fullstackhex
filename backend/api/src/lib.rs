@@ -44,7 +44,7 @@ pub async fn router(
                     std::env::var("DB_MAX_CONNECTIONS")
                         .ok()
                         .and_then(|v| v.parse().ok())
-                        .unwrap_or(5),
+                        .unwrap_or(20),
                 )
                 .acquire_timeout(Duration::from_secs(2))
                 .connect(&url)

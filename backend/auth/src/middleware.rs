@@ -16,9 +16,13 @@ use tracing;
 /// Authenticated user context extracted from the request.
 #[derive(Debug, Clone)]
 pub struct AuthUser {
+    /// Unique user identifier.
     pub user_id: String,
+    /// User email address.
     pub email: String,
+    /// Optional display name.
     pub name: Option<String>,
+    /// Authentication provider (local, google, github).
     pub provider: String,
     /// JWT ID from the access token claims — used for logout blacklisting.
     pub jti: String,

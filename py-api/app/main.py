@@ -65,6 +65,7 @@ logger = logging.getLogger("py-api")
 
 @app.middleware("http")
 async def trace_id_middleware(request: Request, call_next):
+    """FastAPI middleware that logs request duration and increments Prometheus counters."""
     trace_id = request.headers.get("x-trace-id", "")
     start = time.monotonic()
     response = await call_next(request)
@@ -88,6 +89,7 @@ async def trace_id_middleware(request: Request, call_next):
 
 @app.middleware("http")
 async def hmac_auth_middleware(request: Request, call_next):
+    """FastAPI middleware that validates HMAC-SHA256 signatures on auth headers forwarded from the Rust backend."""
     path = request.url.path
     # Skip HMAC for public routes
     if path in ("/health", "/metrics"):
@@ -135,6 +137,7 @@ async def hmac_auth_middleware(request: Request, call_next):
 
 @app.get("/health")
 def health(request: Request) -> dict[str, str]:
+    """Health check endpoint. Returns service status and version."""
     trace_id = request.headers.get("x-trace-id", "")
     logger.info("health check", extra={"trace_id": trace_id})
     # Bump this version together with VERSION file at repo root
@@ -143,6 +146,7 @@ def health(request: Request) -> dict[str, str]:
 
 @app.get("/metrics")
 def metrics() -> Response:
+    """Prometheus metrics endpoint — returns raw metrics in OpenMetrics format."""
     return Response(
         content=generate_latest(),
         media_type=CONTENT_TYPE_LATEST,

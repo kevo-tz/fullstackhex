@@ -1,5 +1,21 @@
 export const SERVICE_IDS = ["rust", "db", "redis", "storage", "python", "auth"] as const;
 
+export interface HealthEntry {
+  status: string;
+  error?: string;
+  fix?: string;
+  detail?: unknown;
+}
+
+export interface HealthResponse {
+  rust: HealthEntry;
+  db: HealthEntry;
+  redis: HealthEntry;
+  storage: HealthEntry;
+  python: HealthEntry;
+  auth: HealthEntry;
+}
+
 function jsonLog(obj: Record<string, unknown>): void {
   if (typeof window !== "undefined" || import.meta.env.DEV) {
     console.log(JSON.stringify(obj));

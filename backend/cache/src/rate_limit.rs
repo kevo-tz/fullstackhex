@@ -38,6 +38,10 @@ impl RedisClient {
     /// - `key`: unique key for this rate limit (e.g., "login:192.168.1.1")
     /// - `window`: time window duration
     /// - `max_requests`: maximum requests allowed in the window
+    ///
+    /// # Errors
+    ///
+    /// Returns `CacheError::CommandFailed` on Redis errors.
     pub async fn rate_limit_check(
         &self,
         key: &str,
@@ -94,6 +98,10 @@ impl RedisClient {
     }
 
     /// Get the current rate limit count for a key (without incrementing).
+    ///
+    /// # Errors
+    ///
+    /// Returns `CacheError::CommandFailed` on Redis errors.
     pub async fn rate_limit_count(&self, key: &str, window: Duration) -> Result<u64, CacheError> {
         let full_key = self.make_key("ratelimit", key);
         let now_ms = unix_epoch_ms();
@@ -127,6 +135,11 @@ impl RedisClient {
     ///
     /// Returns an error with the remaining cooldown seconds if the IP is blocked.
     /// Call this BEFORE the rate limit check on login endpoints.
+    ///
+    /// # Errors
+    ///
+    /// Returns `CacheError::BackoffBlocked` when the IP is blocked,
+    /// or `CacheError::CommandFailed` on Redis errors.
     pub async fn backoff_check(&self, ip: &str, endpoint: &str) -> Result<(), CacheError> {
         let key = self.make_key("backoff", &format!("{ip}:{endpoint}"));
         let count: Option<u64> = self
@@ -166,6 +179,11 @@ impl RedisClient {
     ///
     /// Call this AFTER a failed login (wrong password, invalid credentials).
     /// The TTL is set based on the current failure count threshold.
+    ///
+    /// # Errors
+    ///
+    /// Returns `CacheError::BackoffBlocked` when the IP is blocked,
+    /// or `CacheError::CommandFailed` on Redis errors.
     pub async fn backoff_increment(&self, ip: &str, endpoint: &str) -> Result<(), CacheError> {
         let key = self.make_key("backoff", &format!("{ip}:{endpoint}"));
 

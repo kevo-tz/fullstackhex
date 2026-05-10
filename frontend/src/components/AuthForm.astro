@@ -78,9 +78,14 @@ const altText = isLogin ? "Need an account? Register" : "Already have an account
       return;
     }
     oauthSection.style.display = "block";
-    oauthButtons.innerHTML = providers
-      .map(p => `<a href="/api/auth/oauth/${p}" class="btn btn-oauth">${p[0].toUpperCase() + p.slice(1)}</a>`)
-      .join("");
+    oauthButtons.replaceChildren();
+    for (const p of providers) {
+      const a = document.createElement("a");
+      a.href = `/api/auth/oauth/${p}`;
+      a.className = "btn btn-oauth";
+      a.textContent = p[0].toUpperCase() + p.slice(1);
+      oauthButtons.appendChild(a);
+    }
   }
 
   renderOAuth();

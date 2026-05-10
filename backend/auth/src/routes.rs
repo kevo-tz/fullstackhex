@@ -101,6 +101,11 @@ fn validate_registration(body: &RegisterRequest) -> Result<(), ApiError> {
             "Password must be at least 8 characters".to_string(),
         ));
     }
+    if body.password.len() > 1024 {
+        return Err(ApiError::ValidationError(
+            "Password must be at most 1024 characters".to_string(),
+        ));
+    }
     Ok(())
 }
 

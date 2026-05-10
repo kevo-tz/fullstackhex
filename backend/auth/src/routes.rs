@@ -178,6 +178,26 @@ pub async fn register(
         )
         .await?;
 
+    let mut headers = HeaderMap::new();
+    headers.insert(
+        header::SET_COOKIE,
+        format!(
+            "access_token={}; HttpOnly; Path=/; Max-Age={}; SameSite=Lax",
+            access_token, state.auth.config.jwt_expiry
+        )
+        .parse()
+        .unwrap(),
+    );
+    headers.insert(
+        header::SET_COOKIE,
+        format!(
+            "refresh_token={}; HttpOnly; Path=/; Max-Age={}; SameSite=Lax",
+            refresh_token, state.auth.config.refresh_expiry
+        )
+        .parse()
+        .unwrap(),
+    );
+
     let response = TokenResponse {
         access_token,
         refresh_token,
@@ -191,7 +211,7 @@ pub async fn register(
         },
     };
 
-    Ok((StatusCode::CREATED, Json(response)))
+    Ok((StatusCode::CREATED, headers, Json(response)))
 }
 
 /// POST /auth/login — authenticate with email/password, return JWT.
@@ -312,7 +332,27 @@ pub async fn login(
         },
     };
 
-    Ok(Json(response))
+    let mut headers = HeaderMap::new();
+    headers.insert(
+        header::SET_COOKIE,
+        format!(
+            "access_token={}; HttpOnly; Path=/; Max-Age={}; SameSite=Lax",
+            response.access_token, state.auth.config.jwt_expiry
+        )
+        .parse()
+        .unwrap(),
+    );
+    headers.insert(
+        header::SET_COOKIE,
+        format!(
+            "refresh_token={}; HttpOnly; Path=/; Max-Age={}; SameSite=Lax",
+            response.refresh_token, state.auth.config.refresh_expiry
+        )
+        .parse()
+        .unwrap(),
+    );
+
+    Ok((headers, Json(response)))
 }
 
 /// POST /auth/logout — destroy session, blacklist token, delete refresh token.
@@ -354,18 +394,38 @@ pub async fn logout(
 /// Refresh token request.
 #[derive(Debug, Deserialize)]
 pub struct RefreshRequest {
+    #[serde(default)]
     pub refresh_token: String,
 }
 
 /// POST /auth/refresh — refresh access token using refresh token.
 pub async fn refresh(
     State(state): State<AuthState>,
-    Json(body): Json<RefreshRequest>,
-) -> Result<Json<TokenResponse>, ApiError> {
+    headers: HeaderMap,
+    body: Option<Json<RefreshRequest>>,
+) -> Result<(HeaderMap, Json<TokenResponse>), ApiError> {
+    // Read refresh token from JSON body first, fall back to cookie
+    let refresh_token_str = body
+        .as_ref()
+        .map(|b| b.refresh_token.clone())
+        .filter(|t| !t.is_empty())
+        .or_else(|| {
+            headers
+                .get("cookie")
+                .and_then(|v| v.to_str().ok())
+                .and_then(|cookies| {
+                    cookies.split(';').find_map(|c| {
+                        let c = c.trim();
+                        c.strip_prefix("refresh_token=").map(|s| s.to_string())
+                    })
+                })
+        })
+        .ok_or_else(|| ApiError::Unauthorized("Invalid or expired refresh token".to_string()))?;
+
     // Atomically read and delete the refresh token (prevents token family leak)
     let user_id = state
         .redis
-        .refresh_token_rotate(&body.refresh_token)
+        .refresh_token_rotate(&refresh_token_str)
         .await?
         .ok_or_else(|| {
             metrics::counter!("token_refresh_total", "status" => "failure").increment(1);
@@ -407,7 +467,27 @@ pub async fn refresh(
 
     metrics::counter!("token_refresh_total", "status" => "success").increment(1);
 
-    Ok(Json(TokenResponse {
+    let mut resp_headers = HeaderMap::new();
+    resp_headers.insert(
+        header::SET_COOKIE,
+        format!(
+            "access_token={}; HttpOnly; Path=/; Max-Age={}; SameSite=Lax",
+            access_token, state.auth.config.jwt_expiry
+        )
+        .parse()
+        .unwrap(),
+    );
+    resp_headers.insert(
+        header::SET_COOKIE,
+        format!(
+            "refresh_token={}; HttpOnly; Path=/; Max-Age={}; SameSite=Lax",
+            new_refresh_token, state.auth.config.refresh_expiry
+        )
+        .parse()
+        .unwrap(),
+    );
+
+    Ok((resp_headers, Json(TokenResponse {
         access_token,
         refresh_token: new_refresh_token,
         token_type: "Bearer".to_string(),
@@ -418,7 +498,7 @@ pub async fn refresh(
             name,
             provider,
         },
-    }))
+    })))
 }
 
 /// List configured OAuth providers from the auth config.

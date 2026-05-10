@@ -52,13 +52,14 @@ def setup_logging() -> None:
     handler = logging.StreamHandler(sys.stderr)
     handler.setFormatter(JsonFormatter())
     root = logging.getLogger()
-    # Clear uvicorn handlers to avoid duplicate output
-    root.handlers.clear()
     root.addHandler(handler)
     root.setLevel(logging.INFO)
 
 
-setup_logging()
+@app.on_event("startup")
+async def _startup() -> None:
+    setup_logging()
+
 logger = logging.getLogger("py-api")
 
 

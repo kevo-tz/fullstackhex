@@ -10,11 +10,16 @@ export const ALL: APIRoute = async ({ request, params }) => {
   const url = `${BACKEND}/auth/${route}${new URL(request.url).search}`;
 
   const headers = new Headers();
-  // Forward content-type and authorization headers
   const ct = request.headers.get("content-type");
   if (ct) headers.set("content-type", ct);
   const auth = request.headers.get("authorization");
   if (auth) headers.set("authorization", auth);
+  const cookie = request.headers.get("cookie");
+  if (cookie) headers.set("cookie", cookie);
+  const traceId = request.headers.get("x-trace-id");
+  if (traceId) headers.set("x-trace-id", traceId);
+  const xForwardedFor = request.headers.get("x-forwarded-for");
+  if (xForwardedFor) headers.set("x-forwarded-for", xForwardedFor);
 
   const init: RequestInit = {
     method: request.method,

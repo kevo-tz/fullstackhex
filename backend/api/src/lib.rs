@@ -40,7 +40,12 @@ pub async fn router(
     let db = match std::env::var("DATABASE_URL") {
         Ok(url) => {
             match PgPoolOptions::new()
-                .max_connections(5)
+                .max_connections(
+                    std::env::var("DB_MAX_CONNECTIONS")
+                        .ok()
+                        .and_then(|v| v.parse().ok())
+                        .unwrap_or(5),
+                )
                 .acquire_timeout(Duration::from_secs(2))
                 .connect(&url)
                 .await

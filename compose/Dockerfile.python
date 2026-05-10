@@ -42,6 +42,6 @@ USER appuser
 
 # Sidecar communicates over Unix socket — no TCP port exposed
 HEALTHCHECK --interval=30s --timeout=5s --retries=3 \
-    CMD python -c "import socket; s=socket.socket(socket.AF_UNIX); s.connect('/tmp/sidecar/py-api.sock')" || exit 1
+    CMD python -c "import socket,os; s=socket.socket(socket.AF_UNIX); s.connect(os.getenv('PYTHON_SIDECAR_SOCKET','/tmp/sidecar/py-api.sock'))" || exit 1
 
 CMD ["uvicorn", "app.main:app", "--uds", "/tmp/sidecar/py-api.sock"]

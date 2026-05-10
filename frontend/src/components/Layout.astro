@@ -398,7 +398,10 @@ const { title } = Astro.props;
         document.cookie = "fullstackhex_refresh_token=; path=/; max-age=0";
         window.location.href = "/login";
       }
-      (window as any).logout = logout;
+      interface CustomWindow extends Window {
+        logout?: () => void;
+      }
+      (window as CustomWindow).logout = logout;
 
       const origFetch = window.fetch.bind(window);
       let refreshPromise: Promise<string | null> | null = null;

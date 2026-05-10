@@ -85,8 +85,10 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      rustfs:
+        condition: service_healthy
       py-api:
-        condition: service_started
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
       interval: 30s
@@ -118,6 +120,13 @@ services:
       PYTHON_SIDECAR_SOCKET: /tmp/sidecar/py-api.sock
     volumes:
       - sidecar_socket:/tmp/sidecar
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rustfs:
+        condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "test -S /tmp/sidecar/py-api.sock"]
       interval: 10s
@@ -148,6 +157,9 @@ services:
     restart: unless-stopped
     expose:
       - "4321"
+    depends_on:
+      backend:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://localhost:4321/"]
       interval: 30s

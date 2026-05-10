@@ -332,7 +332,7 @@ impl PythonSidecar {
                     None
                 }
             })
-            .unwrap_or(200);
+            .unwrap_or(502);
 
         Ok((status_code, body))
     }

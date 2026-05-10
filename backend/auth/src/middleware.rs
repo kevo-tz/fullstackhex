@@ -235,8 +235,8 @@ async fn resolve_cookie_user(
 
 /// Compute HMAC-SHA256 signature for forwarding auth headers to Python sidecar.
 ///
-/// Signs: "{user_id}|{email}|{name}" using the shared secret.
-/// Returns an error if the secret is empty (which would panic Hmac::new_from_slice).
+/// Signs a JSON payload: `{"user_id":"...","email":"...","name":"..."}` sorted by key,
+/// using the shared secret. Returns an error if the secret is empty.
 pub fn compute_auth_signature(
     secret: &str,
     user_id: &str,
@@ -248,7 +248,12 @@ pub fn compute_auth_signature(
             "SIDECAR_SHARED_SECRET is empty".to_string(),
         ));
     }
-    let payload = format!("{user_id}|{email}|{name}");
+    let payload = serde_json::json!({
+        "user_id": user_id,
+        "email": email,
+        "name": name,
+    })
+    .to_string();
     let mut mac = Hmac::<Sha256>::new_from_slice(secret.as_bytes())
         .map_err(|e| domain::error::ApiError::InternalError(format!("HMAC init failed: {e}")))?;
     mac.update(payload.as_bytes());

@@ -399,7 +399,12 @@ make status</pre>
       }
 
       document.addEventListener("visibilitychange", () => {
-        if (document.hidden) cancelRetry();
+        if (document.hidden) {
+          cancelRetry();
+        } else {
+          resetRetry();
+          fetchHealth();
+        }
       });
 
       document.getElementById("refresh-btn")?.addEventListener("click", () => {

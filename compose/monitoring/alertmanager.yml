@@ -22,12 +22,11 @@ route:
 
 receivers:
   - name: 'default'
-    # Example: uncomment and configure to enable Slack notifications
+    # Log alerts to stdout for visibility — configure Slack/PagerDuty below
+    # for production notification routing.
     # slack_configs:
     #   - api_url: 'https://hooks.slack.com/services/YOUR/WEBHOOK/URL'
     #     channel: '#alerts'
-    #     title: '{% raw %}{{ .GroupLabels.alertname }}{% endraw %}'
-    #     text: '{% raw %}{{ range .Alerts }}{{ .Annotations.summary }}{{ end }}{% endraw %}'
 
 inhibit_rules:
   - source_match:

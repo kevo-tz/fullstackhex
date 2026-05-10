@@ -466,7 +466,9 @@ pub async fn oauth_redirect(
         .config
         .oauth_redirect_url
         .clone()
-        .unwrap_or_else(|| format!("http://localhost:8001/auth/oauth/{provider}/callback"));
+        .ok_or_else(|| {
+            ApiError::InternalError("OAUTH_REDIRECT_URL not configured".to_string())
+        })?;
 
     let (url, csrf) = state.oauth.get_redirect_url(&provider, &redirect_url)?;
 

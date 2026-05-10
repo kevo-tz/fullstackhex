@@ -130,6 +130,9 @@ const altText = isLogin ? "Need an account? Register" : "Already have an account
       }
 
       const data = await res.json();
+      if (!data.access_token || !data.user) {
+        throw new Error("Invalid auth response from server");
+      }
       localStorage.setItem("fullstackhex_token", data.access_token);
       if (data.refresh_token) localStorage.setItem("fullstackhex_refresh_token", data.refresh_token);
       localStorage.setItem("fullstackhex_user", JSON.stringify(data.user));

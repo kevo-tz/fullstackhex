@@ -16,6 +16,7 @@ from prometheus_client import (
 )
 
 app = FastAPI()
+SHARED_SECRET = os.environ.get("SIDECAR_SHARED_SECRET", "")
 
 # Prometheus metrics
 PYTHON_REQUESTS_TOTAL = Counter(
@@ -91,8 +92,7 @@ async def hmac_auth_middleware(request: Request, call_next):
     if path in ("/health", "/metrics"):
         return await call_next(request)
 
-    shared_secret = os.environ.get("SIDECAR_SHARED_SECRET", "")
-    if not shared_secret:
+    if not SHARED_SECRET:
         # Fail closed — never trust auth headers if shared secret is missing
         return Response(
             content=json.dumps(
@@ -114,10 +114,10 @@ async def hmac_auth_middleware(request: Request, call_next):
             media_type="application/json",
         )
 
-    # Compute expected signature: HMAC-SHA256(secret, "user_id|email|name")
-    payload = f"{user_id}|{email}|{name}"
+    # Compute expected signature: HMAC-SHA256(secret, JSON payload)
+    payload = json.dumps({"user_id": user_id, "email": email, "name": name}, sort_keys=True)
     expected = hmac.new(
-        shared_secret.encode("utf-8"),
+        SHARED_SECRET.encode("utf-8"),
         payload.encode("utf-8"),
         hashlib.sha256,
     ).hexdigest()
@@ -137,7 +137,7 @@ def health(request: Request) -> dict[str, str]:
     trace_id = request.headers.get("x-trace-id", "")
     logger.info("health check", extra={"trace_id": trace_id})
     # Bump this version together with VERSION file at repo root
-    return {"status": "ok", "service": "py-api", "version": "0.7.0"}
+    return {"status": "ok", "service": "py-api", "version": "0.11.2"}
 
 
 @app.get("/metrics")

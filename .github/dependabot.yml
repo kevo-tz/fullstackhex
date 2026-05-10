@@ -49,3 +49,11 @@ updates:
           - "*"
         update-types:
           - "patch"
+
+  - package-ecosystem: "docker"
+    directory: "/compose"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:40"
+    open-pull-requests-limit: 5

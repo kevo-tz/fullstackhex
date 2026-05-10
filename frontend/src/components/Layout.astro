@@ -439,15 +439,19 @@ const { title } = Astro.props;
           }
           const newToken = await refreshPromise;
           if (newToken) {
-            const body = init?.body;
-            if (body && typeof body !== "string") {
-              return res;
-            }
             const newInit: RequestInit = { ...init };
             const newHeaders = new Headers(init?.headers);
             newHeaders.set("Authorization", `Bearer ${newToken}`);
             newInit.headers = newHeaders;
-            return origFetch(input, newInit);
+            if (typeof init?.body === "string") {
+              return origFetch(input, newInit);
+            }
+            try {
+              const retryReq = new Request(input, newInit);
+              return origFetch(retryReq);
+            } catch {
+              return res;
+            }
           }
         }
         return res;

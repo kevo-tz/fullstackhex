@@ -1,9 +1,13 @@
+export const SERVICE_IDS = ["rust", "db", "redis", "storage", "python", "auth"] as const;
+
 function jsonLog(obj: Record<string, unknown>): void {
-  console.log(JSON.stringify(obj));
+  if (typeof window !== "undefined" || import.meta.env.DEV) {
+    console.log(JSON.stringify(obj));
+  }
 }
 
 export function isFullOutage(data: Record<string, unknown>): boolean {
-  const services = ["rust", "db", "redis", "storage", "python", "auth"];
+  for (const svc of SERVICE_IDS) {
   for (const svc of services) {
     const entry = data[svc] as Record<string, unknown> | undefined;
     if (!entry || entry.status === "ok") return false;
@@ -14,7 +18,6 @@ export function isFullOutage(data: Record<string, unknown>): boolean {
 export function getDiagnostics(
   data: Record<string, unknown>,
 ): { service: string; status: string; fix: string | null }[] {
-  const services = ["rust", "db", "redis", "storage", "python", "auth"];
   const labels: Record<string, string> = {
     rust: "Rust API",
     db: "PostgreSQL",
@@ -24,7 +27,7 @@ export function getDiagnostics(
     auth: "Auth",
   };
   const result: { service: string; status: string; fix: string | null }[] = [];
-  for (const svc of services) {
+  for (const svc of SERVICE_IDS) {
     const entry = data[svc] as Record<string, unknown> | undefined;
     if (!entry || entry.status === "ok") continue;
     result.push({

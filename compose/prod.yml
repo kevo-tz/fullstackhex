@@ -33,7 +33,7 @@ volumes:
 
 services:
   nginx:
-    image: nginx:alpine
+    image: nginx:1.27-alpine
     user: "101"
     container_name: fullstackhex_nginx
     restart: unless-stopped
@@ -236,7 +236,7 @@ services:
         max-file: "3"
 
   rustfs:
-    image: rustfs/rustfs:latest
+    image: rustfs/rustfs:0.8.1
     container_name: fullstackhex_rustfs
     restart: unless-stopped
     expose:
@@ -274,7 +274,7 @@ services:
         max-file: "3"
 
   redis-exporter:
-    image: oliver006/redis_exporter:latest
+    image: oliver006/redis_exporter:v1.67.0
     container_name: fullstackhex_redis_exporter
     restart: unless-stopped
     expose:
@@ -294,7 +294,7 @@ services:
           memory: 64M
 
   postgres-exporter:
-    image: prometheuscommunity/postgres-exporter:latest
+    image: prometheuscommunity/postgres-exporter:v0.16.0
     container_name: fullstackhex_postgres_exporter
     restart: unless-stopped
     expose:
@@ -319,7 +319,7 @@ services:
           memory: 64M
 
   nginx-exporter:
-    image: nginx/nginx-prometheus-exporter:latest
+    image: nginx/nginx-prometheus-exporter:1.4.1
     container_name: fullstackhex_nginx_exporter
     restart: unless-stopped
     expose:
@@ -338,7 +338,7 @@ services:
           memory: 64M
 
   certbot:
-    image: certbot/certbot:latest
+    image: certbot/certbot:v3.4.0
     container_name: fullstackhex_certbot
     restart: unless-stopped
     volumes:

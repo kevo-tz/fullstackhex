@@ -42,10 +42,7 @@ def _valid_signature(secret: str, user_id: str, email: str, name: str) -> str:
     ).hexdigest()
 
 
-@pytest.fixture(autouse=True)
-def _clean_env(monkeypatch):
-    """Remove SIDECAR_SHARED_SECRET before each test."""
-    monkeypatch.delenv("SIDECAR_SHARED_SECRET", raising=False)
+
 
 
 async def _call_next_ok(request: Request) -> Response:

@@ -363,7 +363,7 @@ async fn health_python_value(state: &AppState) -> serde_json::Value {
     }
 }
 
-fn sidecar_error_json(e: &py_sidecar::SidecarError, socket_path: std::path::PathBuf) -> serde_json::Value {
+fn sidecar_error_json(e: &py_sidecar::SidecarError, socket_path: &std::path::Path) -> serde_json::Value {
     let sock_display = socket_path.display();
     let (error_msg, fix_msg) = match e {
         py_sidecar::SidecarError::SocketNotFound(_) => (

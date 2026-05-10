@@ -166,12 +166,11 @@ pub async fn download_streaming(
         .get("content-length")
         .and_then(|v| v.to_str().ok())
         .and_then(|v| v.parse::<u64>().ok())
+        && len > 500 * 1024 * 1024
     {
-        if len > 500 * 1024 * 1024 {
-            return Err(ApiError::ValidationError(format!(
-                "Object too large for streaming download: {key} ({len} bytes, max 500MB)"
-            )));
-        }
+        return Err(ApiError::ValidationError(format!(
+            "Object too large for streaming download: {key} ({len} bytes, max 500MB)"
+        )));
     }
     Ok(resp)
 }

@@ -19,7 +19,7 @@ services:
     container_name: fullstackhex_prometheus
     restart: unless-stopped
     ports:
-      - "${PROMETHEUS_PORT:-9090}:9090"
+      - "127.0.0.1:${PROMETHEUS_PORT:-9090}:9090"
     volumes:
       - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - prometheus_data:/prometheus
@@ -48,7 +48,7 @@ services:
     container_name: fullstackhex_grafana
     restart: unless-stopped
     ports:
-      - "${GRAFANA_PORT:-3000}:3000"
+      - "127.0.0.1:${GRAFANA_PORT:-3000}:3000"
     environment:
       GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
       GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?GRAFANA_ADMIN_PASSWORD must be set in .env}
@@ -80,7 +80,7 @@ services:
     container_name: fullstackhex_alertmanager
     restart: unless-stopped
     ports:
-      - "${ALERTMANAGER_PORT:-9093}:9093"
+      - "127.0.0.1:${ALERTMANAGER_PORT:-9093}:9093"
     volumes:
       - ./monitoring/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
     command:
@@ -103,7 +103,7 @@ services:
     container_name: fullstackhex_node_exporter
     restart: unless-stopped
     ports:
-      - "${NODE_EXPORTER_PORT:-9100}:9100"
+      - "127.0.0.1:${NODE_EXPORTER_PORT:-9100}:9100"
     volumes:
       - /proc:/host/proc:ro
       - /sys:/host/sys:ro

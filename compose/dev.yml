@@ -139,7 +139,7 @@ services:
     container_name: fullstackhex_adminer
     restart: unless-stopped
     ports:
-      - "${ADMINER_PORT:-8080}:8080"
+      - "127.0.0.1:${ADMINER_PORT:-8080}:8080"
     depends_on:
       postgres:
         condition: service_healthy
@@ -163,7 +163,7 @@ services:
     container_name: fullstackhex_redis_commander
     restart: unless-stopped
     ports:
-      - "${REDIS_COMMANDER_PORT:-8081}:8081"
+      - "127.0.0.1:${REDIS_COMMANDER_PORT:-8081}:8081"
     environment:
       REDIS_HOSTS: local:fullstackhex_redis:6379:0:${REDIS_PASSWORD:?REDIS_PASSWORD must be set in .env}
     depends_on:
@@ -189,7 +189,7 @@ services:
     container_name: fullstackhex_redis_exporter
     restart: unless-stopped
     ports:
-      - "${REDIS_EXPORTER_PORT:-9121}:9121"
+      - "127.0.0.1:${REDIS_EXPORTER_PORT:-9121}:9121"
     environment:
       REDIS_ADDR: "redis://fullstackhex_redis:6379"
       REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD must be set in .env}
@@ -214,7 +214,7 @@ services:
     container_name: fullstackhex_postgres_exporter
     restart: unless-stopped
     ports:
-      - "${POSTGRES_EXPORTER_PORT:-9187}:9187"
+      - "127.0.0.1:${POSTGRES_EXPORTER_PORT:-9187}:9187"
     environment:
       # Use individual vars to avoid shell injection if password contains special chars
       DATA_SOURCE_USER: ${POSTGRES_USER:-app_user}

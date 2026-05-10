@@ -352,13 +352,17 @@ async fn health_storage(State(state): State<Arc<AppState>>) -> impl IntoResponse
     (status, no_cache(), Json(value))
 }
 
+fn format_health_value(v: &serde_json::Value) -> serde_json::Value {
+    json!({
+        "status": v.get("status").and_then(|s| s.as_str()).unwrap_or("unknown"),
+        "service": v.get("service").and_then(|s| s.as_str()).unwrap_or("unknown"),
+        "version": v.get("version").and_then(|s| s.as_str()).unwrap_or("unknown"),
+    })
+}
+
 async fn health_python_value(state: &AppState) -> serde_json::Value {
     match state.sidecar.health().await {
-        Ok(v) => json!({
-            "status": v.get("status").and_then(|s| s.as_str()).unwrap_or("unknown"),
-            "service": v.get("service").and_then(|s| s.as_str()).unwrap_or("unknown"),
-            "version": v.get("version").and_then(|s| s.as_str()).unwrap_or("unknown"),
-        }),
+        Ok(v) => format_health_value(&v),
         Err(e) => sidecar_error_json(&e, state.sidecar.socket_path()),
     }
 }
@@ -416,11 +420,7 @@ async fn health_python(
             .get_with_trace_id("/health", trace_id, None)
             .await
         {
-            Ok(v) => json!({
-                "status": v.get("status").and_then(|s| s.as_str()).unwrap_or("unknown"),
-                "service": v.get("service").and_then(|s| s.as_str()).unwrap_or("unknown"),
-                "version": v.get("version").and_then(|s| s.as_str()).unwrap_or("unknown"),
-            }),
+            Ok(v) => format_health_value(&v),
             Err(e) => sidecar_error_json(&e, state.sidecar.socket_path()),
         }
     };

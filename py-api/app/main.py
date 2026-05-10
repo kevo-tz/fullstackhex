@@ -16,7 +16,20 @@ from prometheus_client import (
 )
 
 app = FastAPI()
-SHARED_SECRET = os.environ.get("SIDECAR_SHARED_SECRET", "")
+
+
+def _get_shared_secret() -> str:
+    """Read SIDECAR_SHARED_SECRET from environment at startup.
+
+    Cached as module-level constant so env changes require a restart.
+    """
+    secret = os.environ.get("SIDECAR_SHARED_SECRET", "")
+    if not secret:
+        logging.warning("SIDECAR_SHARED_SECRET is empty — all requests will be rejected")
+    return secret
+
+
+SHARED_SECRET: str = _get_shared_secret()
 
 # Prometheus metrics
 PYTHON_REQUESTS_TOTAL = Counter(
@@ -64,7 +77,7 @@ logger = logging.getLogger("py-api")
 
 
 @app.middleware("http")
-async def trace_id_middleware(request: Request, call_next):
+async def trace_id_middleware(request: Request, call_next) -> Response:
     """FastAPI middleware that logs request duration and increments Prometheus counters."""
     trace_id = request.headers.get("x-trace-id", "")
     start = time.monotonic()
@@ -88,7 +101,7 @@ async def trace_id_middleware(request: Request, call_next):
 
 
 @app.middleware("http")
-async def hmac_auth_middleware(request: Request, call_next):
+async def hmac_auth_middleware(request: Request, call_next) -> Response:
     """FastAPI middleware that validates HMAC-SHA256 signatures on auth headers forwarded from the Rust backend."""
     path = request.url.path
     # Skip HMAC for public routes

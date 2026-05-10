@@ -164,10 +164,7 @@ jobs:
       - name: Type check
         run: bun run typecheck
 
-      - name: Test (bun)
-        run: bun test tests/*.test.ts
-
-      - name: Test (vitest)
+      - name: Test
         run: bun run test:vitest
 
       - name: Build
@@ -214,7 +211,7 @@ jobs:
 
       - name: Frontend smoke
         working-directory: frontend
-        run: bun test tests/*.test.ts
+        run: bun run test:vitest
 
   e2e:
     name: e2e

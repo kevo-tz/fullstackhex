@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.11.2] - 2026-05-10
+
+### Fixed
+- **install.sh interactive prompts**: `curl | bash` pipeline now correctly prompts for project name and GitHub username by detecting `/dev/tty` availability instead of failing with "non-interactive" error (#33)
+
+---
+
 ## [0.11.1] - 2026-05-09
 
 ### Added

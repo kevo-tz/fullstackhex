@@ -22,10 +22,10 @@ async fn main() {
         std::process::exit(1);
     });
 
-    let addr: SocketAddr = "0.0.0.0:8001".parse().unwrap();
+    let addr: SocketAddr = "0.0.0.0:8001".parse().expect("invalid listen address");
     tracing::info!(%addr, "listening");
 
-    let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
+    let listener = tokio::net::TcpListener::bind(addr).await.expect("failed to bind listen address");
 
     // Graceful shutdown on SIGTERM (Docker standard) + SIGINT (Ctrl-C)
     let shutdown = async {
@@ -41,7 +41,7 @@ async fn main() {
     axum::serve(listener, app)
         .with_graceful_shutdown(shutdown)
         .await
-        .unwrap();
+        .expect("server error");
 
     if let Some(handle) = &state.gauge_task {
         handle.abort();

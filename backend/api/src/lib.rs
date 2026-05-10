@@ -359,37 +359,39 @@ async fn health_python_value(state: &AppState) -> serde_json::Value {
             "service": v.get("service").and_then(|s| s.as_str()).unwrap_or("unknown"),
             "version": v.get("version").and_then(|s| s.as_str()).unwrap_or("unknown"),
         }),
-        Err(e) => {
-            let sock_display = state.sidecar.socket_path().display();
-            let (error_msg, fix_msg) = match &e {
-                py_sidecar::SidecarError::SocketNotFound(_) => (
-                    "socket not found".to_string(),
-                    format!("Start the Python sidecar: make dev starts it automatically, or run: cd py-api && uv run uvicorn app.main:app --uds {sock_display}"),
-                ),
-                py_sidecar::SidecarError::ConnectionFailed(msg) => (
-                    format!("connection failed: {msg}"),
-                    format!("Check that the Python sidecar is running. Run: cd py-api && uv run uvicorn app.main:app --uds {sock_display}"),
-                ),
-                py_sidecar::SidecarError::Timeout(d) => (
-                    format!("request timed out after {d:?}"),
-                    format!("The Python sidecar is not responding. Restart it with: cd py-api && uv run uvicorn app.main:app --uds {sock_display}"),
-                ),
-                py_sidecar::SidecarError::InvalidInput(msg) => (
-                    format!("invalid input: {msg}"),
-                    "The request contains invalid characters.".to_string(),
-                ),
-                py_sidecar::SidecarError::InvalidResponse(msg) => (
-                    format!("invalid response: {msg}"),
-                    "The Python sidecar returned an unexpected response. Check its logs for errors.".to_string(),
-                ),
-                py_sidecar::SidecarError::HttpError { status, body } => (
-                    format!("HTTP {status}: {body}"),
-                    "The Python sidecar returned an HTTP error. Check its logs for details.".to_string(),
-                ),
-            };
-            json!({ "status": "unavailable", "error": error_msg, "fix": fix_msg })
-        }
+        Err(e) => sidecar_error_json(&e, state.sidecar.socket_path()),
     }
+}
+
+fn sidecar_error_json(e: &py_sidecar::SidecarError, socket_path: std::path::PathBuf) -> serde_json::Value {
+    let sock_display = socket_path.display();
+    let (error_msg, fix_msg) = match e {
+        py_sidecar::SidecarError::SocketNotFound(_) => (
+            "socket not found".to_string(),
+            format!("Start the Python sidecar: make dev starts it automatically, or run: cd py-api && uv run uvicorn app.main:app --uds {sock_display}"),
+        ),
+        py_sidecar::SidecarError::ConnectionFailed(msg) => (
+            format!("connection failed: {msg}"),
+            format!("Check that the Python sidecar is running. Run: cd py-api && uv run uvicorn app.main:app --uds {sock_display}"),
+        ),
+        py_sidecar::SidecarError::Timeout(d) => (
+            format!("request timed out after {d:?}"),
+            format!("The Python sidecar is not responding. Restart it with: cd py-api && uv run uvicorn app.main:app --uds {sock_display}"),
+        ),
+        py_sidecar::SidecarError::InvalidInput(msg) => (
+            format!("invalid input: {msg}"),
+            "The request contains invalid characters.".to_string(),
+        ),
+        py_sidecar::SidecarError::InvalidResponse(msg) => (
+            format!("invalid response: {msg}"),
+            "The Python sidecar returned an unexpected response. Check its logs for errors.".to_string(),
+        ),
+        py_sidecar::SidecarError::HttpError { status, body } => (
+            format!("HTTP {status}: {body}"),
+            "The Python sidecar returned an HTTP error. Check its logs for details.".to_string(),
+        ),
+    };
+    json!({ "status": "unavailable", "error": error_msg, "fix": fix_msg })
 }
 
 async fn health_python(
@@ -419,36 +421,7 @@ async fn health_python(
                 "service": v.get("service").and_then(|s| s.as_str()).unwrap_or("unknown"),
                 "version": v.get("version").and_then(|s| s.as_str()).unwrap_or("unknown"),
             }),
-            Err(e) => {
-                let sock_display = state.sidecar.socket_path().display();
-                let (error_msg, fix_msg) = match &e {
-                    py_sidecar::SidecarError::SocketNotFound(_) => (
-                        "socket not found".to_string(),
-                        format!("Start the Python sidecar: make dev starts it automatically, or run: cd py-api && uv run uvicorn app.main:app --uds {sock_display}"),
-                    ),
-                    py_sidecar::SidecarError::ConnectionFailed(msg) => (
-                        format!("connection failed: {msg}"),
-                        format!("Check that the Python sidecar is running. Run: cd py-api && uv run uvicorn app.main:app --uds {sock_display}"),
-                    ),
-                    py_sidecar::SidecarError::Timeout(d) => (
-                        format!("request timed out after {d:?}"),
-                        format!("The Python sidecar is not responding. Restart it with: cd py-api && uv run uvicorn app.main:app --uds {sock_display}"),
-                    ),
-                    py_sidecar::SidecarError::InvalidInput(msg) => (
-                        format!("invalid input: {msg}"),
-                        "The request contains invalid characters.".to_string(),
-                    ),
-                    py_sidecar::SidecarError::InvalidResponse(msg) => (
-                        format!("invalid response: {msg}"),
-                        "The Python sidecar returned an unexpected response. Check its logs for errors.".to_string(),
-                    ),
-                    py_sidecar::SidecarError::HttpError { status, body } => (
-                        format!("HTTP {status}: {body}"),
-                        "The Python sidecar returned an HTTP error. Check its logs for details.".to_string(),
-                    ),
-                };
-                json!({ "status": "unavailable", "error": error_msg, "fix": fix_msg })
-            }
+            Err(e) => sidecar_error_json(&e, state.sidecar.socket_path()),
         }
     };
 

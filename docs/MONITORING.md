@@ -169,8 +169,8 @@ groups:
       - alert: HighLatency
         expr: |
           histogram_quantile(0.99, 
-            sum(rate(http_request_duration_ms_bucket[5m])) by (le)
-          ) > 100
+            sum(rate(http_request_duration_seconds_bucket[5m])) by (le)
+          ) > 0.1
         for: 5m
         labels:
           severity: warning

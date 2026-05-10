@@ -103,7 +103,7 @@
 | Object Storage | RustFS (S3-compatible) | `docker compose ps` |
 | Monitoring | Prometheus 3.x + Grafana | Production only, see .env.example |
 | Reverse Proxy | Nginx (production) | Production only, see .env.example |
-| IPC | Unix domain socket | `/tmp/fullstackhex-python.sock` |
+| IPC | Unix domain socket | `/tmp/fullstackhex-python.sock` (dev), `/tmp/sidecar/py-api.sock` (prod) |
 
 ## Workspace Structure
 

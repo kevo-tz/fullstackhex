@@ -89,15 +89,15 @@ pub async fn track_metrics(request: Request, next: Next) -> Response {
 
     metrics::counter!(
         "http_requests_total",
-        "method" => method.clone(),
-        "route" => route.clone(),
+        "method" => method.as_str(),
+        "route" => route.as_str(),
         "status" => status
     )
     .increment(1);
     metrics::histogram!(
         "http_request_duration_seconds",
-        "method" => method,
-        "route" => route
+        "method" => method.as_str(),
+        "route" => route.as_str()
     )
     .record(duration);
 

@@ -6,17 +6,24 @@ import {
   createRetryController,
 } from "../src/lib/health";
 
-function makeResponse(json: () => Promise<unknown>): Response {
-  return {
-    json,
-    ok: true,
+function makeFetch(fn: (url: string, init?: RequestInit) => Promise<Response>): typeof fetch {
+  return fn as unknown as typeof fetch;
+}
+
+function makeResponse(jsonFn: () => Promise<unknown>): Response {
+  const body = new ReadableStream({
+    start(controller) {
+      jsonFn().then((data) => {
+        controller.enqueue(new TextEncoder().encode(JSON.stringify(data)));
+        controller.close();
+      });
+    },
+  });
+  return new Response(body, {
     status: 200,
-    headers: new Headers(),
-    redirected: false,
     statusText: "OK",
-    type: "basic",
-    url: "",
-  } as unknown as Response;
+    headers: { "Content-Type": "application/json" },
+  });
 }
 
 describe("aggregateHealth", () => {
@@ -35,7 +42,7 @@ describe("aggregateHealth", () => {
       }
       return makeResponse(async () => ({ status: "ok" }));
     });
-    const result = await aggregateHealth(fetchImpl as unknown as typeof fetch);
+    const result = await aggregateHealth(makeFetch(fetchImpl));
     expect((result.rust as Record<string, unknown>).status).toBe("ok");
     expect((result.db as Record<string, unknown>).status).toBe("ok");
     expect((result.python as Record<string, unknown>).status).toBe("ok");
@@ -45,7 +52,7 @@ describe("aggregateHealth", () => {
     const fetchImpl = mock(async () => {
       throw new Error("connect ECONNREFUSED");
     });
-    const result = await aggregateHealth(fetchImpl as unknown as typeof fetch);
+    const result = await aggregateHealth(makeFetch(fetchImpl));
     expect((result.rust as Record<string, unknown>).status).toBe("error");
   });
 
@@ -55,7 +62,7 @@ describe("aggregateHealth", () => {
         throw new SyntaxError("Unexpected token");
       }),
     );
-    const result = await aggregateHealth(fetchImpl as unknown as typeof fetch);
+    const result = await aggregateHealth(makeFetch(fetchImpl));
     expect((result.rust as Record<string, unknown>).status).toBe("error");
   });
 
@@ -79,7 +86,7 @@ describe("aggregateHealth", () => {
       }
       return makeResponse(async () => ({ status: "ok" }));
     });
-    const result = await aggregateHealth(fetchImpl as unknown as typeof fetch);
+    const result = await aggregateHealth(makeFetch(fetchImpl));
     expect((result.python as Record<string, unknown>).status).toBe(
       "unavailable",
     );
@@ -101,7 +108,7 @@ describe("aggregateHealth", () => {
       if ((url as string).endsWith("/health/db")) throw new Error("db down");
       return makeResponse(async () => ({ status: "unavailable" }));
     });
-    const result = await aggregateHealth(fetchImpl as unknown as typeof fetch);
+    const result = await aggregateHealth(makeFetch(fetchImpl));
     expect((result.rust as Record<string, unknown>).status).toBe("ok");
     expect((result.db as Record<string, unknown>).status).toBe("error");
     expect((result.python as Record<string, unknown>).status).toBe(
@@ -251,7 +258,7 @@ describe("aggregateHealth", () => {
       return makeResponse(async () => ({ status: "ok" }));
     });
 
-    await aggregateHealth(fetchImpl as unknown as typeof fetch);
+    await aggregateHealth(makeFetch(fetchImpl));
 
     expect(capturedHeaders.length).toBe(6);
     for (const headers of capturedHeaders) {
@@ -275,7 +282,7 @@ describe("aggregateHealth", () => {
       }
       return makeResponse(async () => ({ status: "ok" }));
     });
-    const result = await aggregateHealth(fetchImpl as unknown as typeof fetch);
+    const result = await aggregateHealth(makeFetch(fetchImpl));
     expect(result.rust).toBeDefined();
     expect(result.db).toBeDefined();
     expect(result.python).toBeDefined();

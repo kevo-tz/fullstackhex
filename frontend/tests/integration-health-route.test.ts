@@ -50,6 +50,10 @@ function makeFetchMock(responses: FetchResponses) {
 
 import { aggregateHealth } from "../src/lib/health";
 
+function makeFetch(fn: (url: string, init?: RequestInit) => Promise<Response>): typeof fetch {
+  return fn as unknown as typeof fetch;
+}
+
 // Test helper: wraps aggregateHealth into a Response matching the Astro route shape
 async function runHandler(
   fetchImpl: typeof fetch,
@@ -74,7 +78,7 @@ describe("/api/health aggregation route", () => {
         healthPython: { status: "ok", version: "3.12" },
       });
 
-      const response = await runHandler(fetchMock as unknown as typeof fetch);
+      const response = await runHandler(makeFetch(fetchMock));
       expect(response.status).toBe(200);
     });
 
@@ -85,7 +89,7 @@ describe("/api/health aggregation route", () => {
         healthPython: { status: "ok", version: "3.12" },
       });
 
-      const response = await runHandler(fetchMock as unknown as typeof fetch);
+      const response = await runHandler(makeFetch(fetchMock));
       expect(response.headers.get("content-type")).toContain(
         "application/json",
       );
@@ -98,7 +102,7 @@ describe("/api/health aggregation route", () => {
         healthPython: { status: "ok", version: "3.12" },
       });
 
-      const response = await runHandler(fetchMock as unknown as typeof fetch);
+      const response = await runHandler(makeFetch(fetchMock));
       const body = (await response.json()) as Record<string, unknown>;
 
       expect(body).toHaveProperty("rust");
@@ -113,7 +117,7 @@ describe("/api/health aggregation route", () => {
         healthPython: { status: "ok", version: "3.12" },
       });
 
-      const response = await runHandler(fetchMock as unknown as typeof fetch);
+      const response = await runHandler(makeFetch(fetchMock));
       const body = (await response.json()) as Record<
         string,
         Record<string, unknown>
@@ -129,7 +133,7 @@ describe("/api/health aggregation route", () => {
         healthPython: { status: "ok", version: "3.12" },
       });
 
-      const response = await runHandler(fetchMock as unknown as typeof fetch);
+      const response = await runHandler(makeFetch(fetchMock));
       const body = (await response.json()) as Record<
         string,
         Record<string, unknown>
@@ -145,7 +149,7 @@ describe("/api/health aggregation route", () => {
         healthPython: { status: "ok", version: "3.12" },
       });
 
-      const response = await runHandler(fetchMock as unknown as typeof fetch);
+      const response = await runHandler(makeFetch(fetchMock));
       const body = (await response.json()) as Record<
         string,
         Record<string, unknown>
@@ -163,7 +167,7 @@ describe("/api/health aggregation route", () => {
         healthPython: { status: "ok", version: "3.12" },
       });
 
-      const response = await runHandler(fetchMock as unknown as typeof fetch);
+      const response = await runHandler(makeFetch(fetchMock));
       const body = (await response.json()) as Record<
         string,
         Record<string, unknown>
@@ -179,7 +183,7 @@ describe("/api/health aggregation route", () => {
         healthPython: { status: "unavailable", error: "socket not found" },
       });
 
-      const response = await runHandler(fetchMock as unknown as typeof fetch);
+      const response = await runHandler(makeFetch(fetchMock));
       const body = (await response.json()) as Record<
         string,
         Record<string, unknown>
@@ -198,7 +202,7 @@ describe("/api/health aggregation route", () => {
         healthPython: { status: "ok", version: "3.12" },
       });
 
-      const response = await runHandler(fetchMock as unknown as typeof fetch);
+      const response = await runHandler(makeFetch(fetchMock));
       const body = (await response.json()) as Record<
         string,
         Record<string, unknown>
@@ -216,7 +220,7 @@ describe("/api/health aggregation route", () => {
         healthPython: new Error("connection refused"),
       });
 
-      const response = await runHandler(fetchMock as unknown as typeof fetch);
+      const response = await runHandler(makeFetch(fetchMock));
       const body = (await response.json()) as Record<
         string,
         Record<string, unknown>
@@ -234,7 +238,7 @@ describe("/api/health aggregation route", () => {
         healthPython: new Error("ECONNREFUSED"),
       });
 
-      const response = await runHandler(fetchMock as unknown as typeof fetch);
+      const response = await runHandler(makeFetch(fetchMock));
       const body = (await response.json()) as Record<
         string,
         Record<string, unknown>
@@ -252,7 +256,7 @@ describe("/api/health aggregation route", () => {
         healthPython: new Error("ECONNREFUSED"),
       });
 
-      const response = await runHandler(fetchMock as unknown as typeof fetch);
+      const response = await runHandler(makeFetch(fetchMock));
       expect(response.status).toBe(200);
     });
   });
@@ -285,7 +289,7 @@ describe("/api/health aggregation route", () => {
         });
       });
 
-      await runHandler(fetchMock as unknown as typeof fetch);
+      await runHandler(makeFetch(fetchMock));
 
       expect(fetchCalls).toHaveLength(6);
       expect(fetchCalls[0]).toEndWith("/health");
@@ -302,7 +306,7 @@ describe("/api/health aggregation route", () => {
         return new Response("not-json", { status: 200 });
       });
 
-      const response = await runHandler(fetchMock as unknown as typeof fetch);
+      const response = await runHandler(makeFetch(fetchMock));
       const body = (await response.json()) as Record<
         string,
         Record<string, unknown>
@@ -324,7 +328,7 @@ describe("/api/health aggregation route", () => {
         });
       });
 
-      const response = await runHandler(fetchMock as unknown as typeof fetch);
+      const response = await runHandler(makeFetch(fetchMock));
       const body = (await response.json()) as Record<
         string,
         Record<string, unknown>
@@ -360,7 +364,7 @@ describe("/api/health aggregation route", () => {
         });
       });
 
-      const response = await runHandler(fetchMock as unknown as typeof fetch);
+      const response = await runHandler(makeFetch(fetchMock));
       const body = (await response.json()) as Record<
         string,
         Record<string, unknown>
@@ -396,7 +400,7 @@ describe("/api/health aggregation route", () => {
         });
       });
 
-      const response = await runHandler(fetchMock as unknown as typeof fetch);
+      const response = await runHandler(makeFetch(fetchMock));
       const body = (await response.json()) as Record<
         string,
         Record<string, unknown>

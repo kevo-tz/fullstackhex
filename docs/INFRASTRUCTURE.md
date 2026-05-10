@@ -231,9 +231,22 @@ ADMINER_PORT=8080
 REDIS_COMMANDER_PORT=8081
 ```
 
-## Complete compose/dev.yml
+## compose/dev.yml
 
-This is the canonical reference. Always check this file for the latest configuration.
+The canonical dev configuration is at [`compose/dev.yml`](../compose/dev.yml). Key services:
+
+| Service | Image | Port | Notes |
+|---------|-------|------|-------|
+| postgres | postgres:18-alpine | 5432 | `POSTGRES_PASSWORD` required |
+| redis | redis:8-alpine | 6379 | `REDIS_PASSWORD` required, AOF enabled |
+| rustfs | rustfs/rustfs:0.8.1 | 9000, 9001 | S3-compatible, browser UI |
+| adminer | adminer:5.1.0 | 8080 (tools profile) | DB admin UI |
+| redis-commander | rediscommander/redis-commander:0.8.0 | 8081 (tools profile) | Redis admin UI |
+| redis-exporter | oliver006/redis_exporter:v1.67.0 | 9121 | Prometheus Redis metrics |
+| postgres-exporter | prometheuscommunity/postgres-exporter:v0.16.0 | 9187 | Prometheus PG metrics |
+
+All management ports are bound to `127.0.0.1` to prevent external access. See `compose/dev.yml` for the full configuration including health checks, resource limits, and environment variables.
+
 
 ```yaml
 # Development Infrastructure for FullStackHex

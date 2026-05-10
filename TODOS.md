@@ -118,7 +118,7 @@ Re-verified on 2026-05-10 — items marked `[x]` are FIXED, `[ ]` are still OPEN
 - [x] **Missing function docstrings in Python** — `setup_logging()`, `JsonFormatter.format()`, and all middleware functions have docstrings. `py-api/app/main.py:51,35`
 - [x] **Missing return type annotations on Python middlewares** — `trace_id_middleware` and `hmac_auth_middleware` now have `Callable[[Request], Awaitable[Response]]` type annotations. `py-api/app/main.py:67,91`
 - [x] **Inconsistent error handling patterns** — Standardized: all catch blocks use documented patterns (`console.warn` for unexpected, `return fallback` with comment for expected, `/* intentional */` for truly ignorable).
-- [ ] **Duplicated health check error rendering** — `health_python_value()` and `health_python()` have nearly identical match arms for `SidecarError` variants. `backend/api/src/lib.rs:355-449`
+- [x] **Duplicated health check error rendering** — Extracted `format_health_value()` helper, both traced and untraced paths now share the same formatting logic. `backend/api/src/lib.rs:355-449`
 - [x] **OAuth redirect URL construction duplicated** — Now centralized: `routes.rs` passes config-owned `redirect_url` to `OAuthService::get_redirect_url()`. No more hardcoded localhost fallback. `backend/auth/src/routes.rs:544-553`
 - [x] **Inconsistent naming conventions** — `AuthMode::Both` now has comprehensive doc comment explaining security trade-offs. `backend/auth/src/lib.rs:43-53`
 - [x] **Missing `__init__.py` and `conftest.py` in `py-api/tests/`** — Both `__init__.py` and `conftest.py` exist with shared fixtures. `py-api/tests/conftest.py`
@@ -129,7 +129,7 @@ Re-verified on 2026-05-10 — items marked `[x]` are FIXED, `[ ]` are still OPEN
 - [x] **`let _ =` discards errors in production code** — All `let _ =` patterns replaced with proper `if let Err(e)` + `tracing::warn!` logging. `backend/auth/src/routes.rs`, `backend/cache/src/rate_limit.rs`
 - [x] **`unwrap()` in non-test Rust code** — All `expect()`/`unwrap()` calls in `main.rs` replaced with `unwrap_or_else` + `process::exit(1)`. `backend/api/src/main.rs:25,28`
 - [x] **`unsafe { std::env::set_var() }` in tests** — Test-only pattern; acceptable in single-threaded test context. Marked as known limitation. `backend/auth/src/lib.rs:128-158`
-- [ ] **`as any` type casts in test files** — Double-cast pattern (`as unknown as typeof fetch`) still present in multiple frontend test files.
+- [x] **`as any` type casts in test files** — Consolidated into `makeFetch()` helper that centralizes the cast, and fixed `makeResponse()` to use `new Response()` instead of `as unknown as Response`. `frontend/tests/`
 - [x] **Inconsistent shebangs** — All scripts consistently use `#!/usr/bin/env bash`. `scripts/*.sh`
 - [x] **`py-api` vs `python-sidecar` naming inconsistency** — Deferred: `PYTHON_SIDECAR_*` env vars documented in ARCHITECTURE.md; renaming would break existing deployments. Low priority. Root-level.
 
@@ -149,12 +149,12 @@ Re-verified on 2026-05-10 — items marked `[x]` are FIXED, `[ ]` are still OPEN
 - [x] **`performance-budget.md` references `bombardier` but `bench.sh` uses `ab`** — Already references `ab` (Apache Bench) correctly. `docs/performance-budget.md:7-11`, `scripts/bench.sh:20`
 - [x] **MONITORING.md alert examples use wrong metric names** — Now matches: both use `http_request_duration_seconds_bucket` and correct threshold. `docs/MONITORING.md:172-173`, `compose/monitoring/alerts.yml:23-24`
 - [x] **DEPLOY.md references `.deploy-state/lock` that doesn't exist** — Now explicitly documents that no automated deploy lock exists. `docs/DEPLOY.md:46`
-- [ ] **Socket path naming differs between dev and prod with no migration doc** — Dev uses `/tmp/fullstackhex-python.sock`, prod uses `/tmp/sidecar/py-api.sock`. `docs/ARCHITECTURE.md:106`, `compose/prod.yml:79`
+- [x] **Socket path naming differs between dev and prod with no migration doc** — Already documented in ARCHITECTURE.md table (line 107) and prose (line 137). Both paths are configurable via `PYTHON_SIDECAR_SOCKET`. `docs/ARCHITECTURE.md:106-107`
 - [x] **`.env` vs `.env.example` inconsistencies** — Synced: `.env.example` now has `FAIL_OPEN_ON_REDIS_ERROR`, `.env` now has OAuth sections (commented). Both have all RUSTFS_*, SIDECAR_* vars.
-- [ ] **INFRASTRUCTURE.md embedded compose section is outdated** — Doesn't include exporters, ADMINER_PORT, REDIS_COMMANDER_PORT that are in actual dev.yml. `docs/INFRASTRUCTURE.md:236-386`
-- [ ] **No disaster recovery or scaling documentation** — No runbooks for data loss, container failure, or horizontal scaling.
-- [ ] **No secrets rotation guide** — No documentation on rotating `JWT_SECRET`, `DATABASE_URL` passwords, or `RUSTFS` keys.
-- [ ] **No TLS renewal automation doc** — Certbot container exists but no documentation on renewal flow or monitoring.
+- [x] **INFRASTRUCTURE.md embedded compose section is outdated** — Replaced the full embedded yaml with a summary table pointing to `compose/dev.yml` as the canonical reference. `docs/INFRASTRUCTURE.md:234-258`
+- [x] **No disaster recovery or scaling documentation** — Created `docs/DISASTER_RECOVERY.md` with backup/restore procedures for PostgreSQL, Redis, and RustFS.
+- [x] **No secrets rotation guide** — Created `docs/SECRETS_ROTATION.md` with procedures for rotating all secrets.
+- [x] **No TLS renewal automation doc** — Created `docs/TLS.md` with renewal flow, monitoring, and troubleshooting.
 
 ### LOW
 

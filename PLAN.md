@@ -1,9 +1,9 @@
 # Plan: Fix All Remaining TODOS.md Issues
 
-Originally 39 open items across 7 categories. After investigation on 2026-05-10:
+Originally 39 open items across 7 categories. After investigation and fixes on 2026-05-10:
 - **23 items were already fixed** in code but not marked in TODOS.md — now marked `[x]`
-- **15 remaining items fixed** in this session (see below)
-- **1 remaining** (I4.2 Rust health check dedup — deferred, minor refactor)
+- **16 remaining items fixed** in this session
+- **0 items remaining** — all TODOS.md items now `[x]`
 
 Organized into 6 implementation phases by dependency and risk.
 

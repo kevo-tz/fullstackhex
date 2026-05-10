@@ -22,15 +22,24 @@ async fn main() {
         std::process::exit(1);
     });
 
-    let addr: SocketAddr = "0.0.0.0:8001".parse().expect("invalid listen address");
+    let addr: SocketAddr = "0.0.0.0:8001".parse().unwrap_or_else(|e| {
+        tracing::error!(error = %e, "invalid listen address");
+        std::process::exit(1);
+    });
     tracing::info!(%addr, "listening");
 
-    let listener = tokio::net::TcpListener::bind(addr).await.expect("failed to bind listen address");
+    let listener = tokio::net::TcpListener::bind(addr).await.unwrap_or_else(|e| {
+        tracing::error!(error = %e, "failed to bind listen address");
+        std::process::exit(1);
+    });
 
     // Graceful shutdown on SIGTERM (Docker standard) + SIGINT (Ctrl-C)
     let shutdown = async {
         let mut sigterm = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
-            .expect("failed to install SIGTERM handler");
+            .unwrap_or_else(|e| {
+                tracing::error!(error = %e, "failed to install SIGTERM handler");
+                std::process::exit(1);
+            });
         tokio::select! {
             _ = sigterm.recv() => {},
             _ = tokio::signal::ctrl_c() => {},
@@ -41,7 +50,10 @@ async fn main() {
     axum::serve(listener, app)
         .with_graceful_shutdown(shutdown)
         .await
-        .expect("server error");
+        .unwrap_or_else(|e| {
+            tracing::error!(error = %e, "server error");
+            std::process::exit(1);
+        });
 
     if let Some(handle) = &state.gauge_task {
         handle.abort();

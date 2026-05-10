@@ -83,11 +83,37 @@ pub async fn auth_middleware(
         return next.run(req).await;
     };
 
-    let auth_user = extract_auth_user(&req, &auth_service);
+    // Bearer extraction (sync, always available)
+    let bearer_user = extract_bearer(&req, &auth_service);
 
-    // JWT blacklist check: if Redis is available and the token JTI has
-    // been blacklisted (user logged out), drop the auth context so the
-    // handler returns 401. Fails open on Redis errors (availability > revocation).
+    // Cookie auth prep: parse session cookie + validate CSRF (sync)
+    let cookie_prep = cookie_auth_prepare(&req);
+
+    // Determine the auth source and resolve the user.  Cookie auth needs Redis
+    // I/O which produces a complex Future type; we box it to keep
+    // axum::middleware::FromFn happy (it has a 16-type-parameter limit).
+    let auth_user: Option<AuthUser> = match auth_service.config.auth_mode {
+        AuthMode::Bearer => bearer_user,
+        AuthMode::Both if bearer_user.is_some() => bearer_user,
+        _ => {
+            let (sess, rd) = match (cookie_prep, redis.as_ref()) {
+                (Some(s), Some(r)) => (s, r),
+                _ => return next.run(req).await,
+            };
+            match Box::pin(resolve_cookie_user(
+                auth_service.jwt.clone(),
+                rd.clone(),
+                sess,
+            ))
+            .await
+            {
+                Some(user) => Some(user),
+                None => return next.run(req).await,
+            }
+        }
+    };
+
+    // JWT blacklist check
     if let (Some(user), Some(redis)) = (&auth_user, &redis) {
         let is_blacklisted: Option<bool> = redis
             .cache_get("blacklist", &user.jti)
@@ -110,21 +136,6 @@ pub async fn auth_middleware(
     next.run(req).await
 }
 
-/// Extract auth user from request based on auth mode.
-fn extract_auth_user(
-    req: &axum::http::Request<axum::body::Body>,
-    auth_service: &AuthService,
-) -> Option<AuthUser> {
-    match auth_service.config.auth_mode {
-        AuthMode::Bearer => extract_bearer(req, auth_service),
-        AuthMode::Cookie => extract_cookie(req, auth_service),
-        AuthMode::Both => {
-            // Bearer takes precedence
-            extract_bearer(req, auth_service).or_else(|| extract_cookie(req, auth_service))
-        }
-    }
-}
-
 /// Extract and validate a Bearer token from the Authorization header.
 fn extract_bearer(
     req: &axum::http::Request<axum::body::Body>,
@@ -145,15 +156,11 @@ fn extract_bearer(
     })
 }
 
-/// Extract auth from a session cookie.
-///
-/// Reads the `session` cookie, looks up the session in Redis (via request extensions),
-/// and validates CSRF for state-changing methods (POST/PUT/DELETE).
-fn extract_cookie(
+/// Sync preparation: parse session cookie and validate CSRF.
+/// Returns the session_id if everything passes.
+fn cookie_auth_prepare(
     req: &axum::http::Request<axum::body::Body>,
-    _auth_service: &AuthService,
-) -> Option<AuthUser> {
-    // Read session cookie
+) -> Option<String> {
     let session_id = req
         .headers()
         .get("cookie")
@@ -169,7 +176,7 @@ fn extract_cookie(
         return None;
     }
 
-    // CSRF validation for state-changing methods in cookie mode
+    // CSRF validation for state-changing methods
     let method = req.method().clone();
     if method == Method::POST
         || method == Method::PUT
@@ -199,12 +206,31 @@ fn extract_cookie(
         }
     }
 
-    tracing::warn!(
-        "Cookie auth mode is not yet implemented — falling through. \
-         Only bearer and combined (bearer+cookie) modes are supported. \
-         Set AUTH_MODE=bearer or AUTH_MODE=both."
-    );
-    None
+    Some(session_id.to_string())
+}
+
+/// Async: Resolve a cookie session via Redis lookup + JWT validation.
+async fn resolve_cookie_user(
+    jwt: super::jwt::JwtService,
+    redis: Arc<cache::RedisClient>,
+    session_id: String,
+) -> Option<AuthUser> {
+    let session_data: Option<String> = redis
+        .cache_get("session", &session_id)
+        .await
+        .unwrap_or(None);
+
+    let token = session_data?;
+    let claims = jwt.validate_token(&token).ok()?;
+
+    Some(AuthUser {
+        user_id: claims.sub,
+        email: claims.email,
+        name: claims.name,
+        provider: claims.provider,
+        jti: claims.jti,
+        session_id: Some(session_id),
+    })
 }
 
 /// Compute HMAC-SHA256 signature for forwarding auth headers to Python sidecar.
@@ -346,22 +372,5 @@ mod tests {
         assert_eq!(user.email, "a@b.com");
         assert!(!user.jti.is_empty(), "jti should be populated");
         assert!(user.session_id.is_none(), "bearer auth has no session");
-    }
-
-    #[test]
-    fn extract_auth_user_both_prefers_bearer() {
-        let auth = test_auth_service(AuthMode::Both);
-        let token = auth
-            .jwt
-            .create_token("u1", "a@b.com", None, "local")
-            .unwrap();
-        let req = axum::http::Request::builder()
-            .uri("/")
-            .header("authorization", format!("Bearer {}", token))
-            .body(axum::body::Body::empty())
-            .unwrap();
-        let user = extract_auth_user(&req, &auth).unwrap();
-        assert_eq!(user.user_id, "u1");
-        assert!(!user.jti.is_empty(), "jti should be populated");
     }
 }

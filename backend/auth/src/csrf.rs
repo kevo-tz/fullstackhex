@@ -15,7 +15,11 @@ pub fn generate_csrf_token() -> String {
 /// Validate a CSRF token by comparing the cookie value with the header value.
 ///
 /// Uses constant-time comparison to prevent timing attacks.
+/// Rejects empty tokens — both must be non-empty and match.
 pub fn validate_csrf_token(cookie_token: &str, header_token: &str) -> bool {
+    if cookie_token.is_empty() || header_token.is_empty() {
+        return false;
+    }
     if cookie_token.len() != header_token.len() {
         return false;
     }
@@ -57,7 +61,7 @@ mod tests {
     }
 
     #[test]
-    fn empty_tokens_match() {
-        assert!(validate_csrf_token("", ""));
+    fn empty_tokens_are_rejected() {
+        assert!(!validate_csrf_token("", ""));
     }
 }

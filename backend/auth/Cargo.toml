@@ -16,7 +16,7 @@ sqlx = { workspace = true }
 tracing = { workspace = true }
 uuid = { workspace = true }
 thiserror = "2"
-jsonwebtoken = "10"
+jsonwebtoken = { version = "10", features = ["rust_crypto"] }
 oauth2 = { version = "5", features = ["reqwest"] }
 argon2 = "0.5"
 hmac = "0.13"

@@ -23,7 +23,7 @@ reqwest = { version = "0.13", features = ["stream"] }
 futures-util = "0.3"
 bytes = "1"
 url = "2"
-quick-xml = "0.39"
+quick-xml = "0.40"
 domain = { path = "../domain" }
 auth = { path = "../auth" }
 

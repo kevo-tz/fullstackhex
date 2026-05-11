@@ -9,7 +9,6 @@ import hashlib
 import hmac
 import json
 
-import pytest
 from fastapi import Request
 from starlette.responses import Response
 

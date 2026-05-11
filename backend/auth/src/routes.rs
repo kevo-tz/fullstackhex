@@ -52,7 +52,10 @@ async fn check_rate_limit(
     if !result.allowed {
         return Err(ApiError::RateLimited(format!(
             "Rate limit exceeded. Try again after {} seconds.",
-            (result.reset_at.saturating_sub(domain::time::unix_timestamp_ms())) / 1000
+            (result
+                .reset_at
+                .saturating_sub(domain::time::unix_timestamp_ms()))
+                / 1000
         )));
     }
     Ok(())
@@ -183,9 +186,11 @@ pub async fn register(
     let mut headers = HeaderMap::new();
     headers.insert(
         header::SET_COOKIE,
-        format!("access_token={access_token}; HttpOnly; Path=/; Max-Age={jwt_expiry}; SameSite=Lax")
-            .parse()
-            .expect("cookie header format is always valid"),
+        format!(
+            "access_token={access_token}; HttpOnly; Path=/; Max-Age={jwt_expiry}; SameSite=Lax"
+        )
+        .parse()
+        .expect("cookie header format is always valid"),
     );
     headers.insert(
         header::SET_COOKIE,
@@ -265,16 +270,16 @@ pub async fn login(
     .fetch_optional(&state.db)
     .await
     .map_err(|e| {
-            tracing::error!(error = %e, "database query failed");
-            ApiError::InternalError("Internal server error".to_string())
-        })?;
+        tracing::error!(error = %e, "database query failed");
+        ApiError::InternalError("Internal server error".to_string())
+    })?;
 
     let (user_id, email, name, provider, password_hash) = match user {
         Some(u) => u,
         None => {
             if let Err(e) = state.redis.backoff_increment(&ip, "login").await {
-    tracing::warn!(ip = %ip, error = %e, "backoff_increment failed");
-}
+                tracing::warn!(ip = %ip, error = %e, "backoff_increment failed");
+            }
             return Err(ApiError::Unauthorized("Invalid credentials".to_string()));
         }
     };
@@ -284,16 +289,16 @@ pub async fn login(
         Some(h) => h,
         None => {
             if let Err(e) = state.redis.backoff_increment(&ip, "login").await {
-    tracing::warn!(ip = %ip, error = %e, "backoff_increment failed");
-}
+                tracing::warn!(ip = %ip, error = %e, "backoff_increment failed");
+            }
             return Err(ApiError::Unauthorized("Invalid credentials".to_string()));
         }
     };
 
     if !password::verify_password(&body.password, &hash)? {
         if let Err(e) = state.redis.backoff_increment(&ip, "login").await {
-    tracing::warn!(ip = %ip, error = %e, "backoff_increment failed");
-}
+            tracing::warn!(ip = %ip, error = %e, "backoff_increment failed");
+        }
         return Err(ApiError::Unauthorized("Invalid credentials".to_string()));
     }
 
@@ -333,15 +338,21 @@ pub async fn login(
     let mut headers = HeaderMap::new();
     headers.insert(
         header::SET_COOKIE,
-        format!("access_token={}; HttpOnly; Path=/; Max-Age={jwt_expiry}; SameSite=Lax", response.access_token)
-            .parse()
-            .expect("cookie header format is always valid"),
+        format!(
+            "access_token={}; HttpOnly; Path=/; Max-Age={jwt_expiry}; SameSite=Lax",
+            response.access_token
+        )
+        .parse()
+        .expect("cookie header format is always valid"),
     );
     headers.insert(
         header::SET_COOKIE,
-        format!("refresh_token={}; HttpOnly; Path=/; Max-Age={refresh_expiry}; SameSite=Lax", response.refresh_token)
-            .parse()
-            .expect("cookie header format is always valid"),
+        format!(
+            "refresh_token={}; HttpOnly; Path=/; Max-Age={refresh_expiry}; SameSite=Lax",
+            response.refresh_token
+        )
+        .parse()
+        .expect("cookie header format is always valid"),
     );
 
     Ok((headers, Json(response)))
@@ -363,8 +374,8 @@ pub async fn logout(
     if let Some(ref session_id) = auth_user.session_id {
         // Best-effort: session might already be expired or destroyed
         if let Err(e) = state.redis.session_destroy(session_id).await {
-    tracing::warn!(session = %session_id, error = %e, "session_destroy failed");
-}
+            tracing::warn!(session = %session_id, error = %e, "session_destroy failed");
+        }
     }
 
     tracing::info!(user_id = %auth_user.user_id, jti = %auth_user.jti, "user logged out");
@@ -431,9 +442,9 @@ pub async fn refresh(
             .fetch_optional(&state.db)
             .await
             .map_err(|e| {
-            tracing::error!(error = %e, "database query failed");
-            ApiError::InternalError("Internal server error".to_string())
-        })?;
+                tracing::error!(error = %e, "database query failed");
+                ApiError::InternalError("Internal server error".to_string())
+            })?;
 
     let (user_id, email, name, provider) =
         user.ok_or_else(|| ApiError::Unauthorized("Invalid credentials".to_string()))?;
@@ -479,18 +490,21 @@ pub async fn refresh(
         .expect("cookie header format is always valid"),
     );
 
-    Ok((resp_headers, Json(TokenResponse {
-        access_token,
-        refresh_token: new_refresh_token,
-        token_type: "Bearer".to_string(),
-        expires_in: state.auth.config.jwt_expiry,
-        user: UserInfo {
-            id: user_id,
-            email,
-            name,
-            provider,
-        },
-    })))
+    Ok((
+        resp_headers,
+        Json(TokenResponse {
+            access_token,
+            refresh_token: new_refresh_token,
+            token_type: "Bearer".to_string(),
+            expires_in: state.auth.config.jwt_expiry,
+            user: UserInfo {
+                id: user_id,
+                email,
+                name,
+                provider,
+            },
+        }),
+    ))
 }
 
 /// List configured OAuth providers from the auth config.
@@ -538,9 +552,7 @@ pub async fn oauth_redirect(
         .config
         .oauth_redirect_url
         .clone()
-        .ok_or_else(|| {
-            ApiError::InternalError("OAUTH_REDIRECT_URL not configured".to_string())
-        })?;
+        .ok_or_else(|| ApiError::InternalError("OAUTH_REDIRECT_URL not configured".to_string()))?;
 
     let (url, csrf) = state.oauth.get_redirect_url(&provider, &redirect_url)?;
 

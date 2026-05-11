@@ -178,9 +178,7 @@ fn extract_bearer(
 
 /// Sync preparation: parse session cookie and validate CSRF.
 /// Returns the session_id if everything passes.
-fn cookie_auth_prepare(
-    req: &axum::http::Request<axum::body::Body>,
-) -> Option<String> {
+fn cookie_auth_prepare(req: &axum::http::Request<axum::body::Body>) -> Option<String> {
     let session_id = req
         .headers()
         .get("cookie")

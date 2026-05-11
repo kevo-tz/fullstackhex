@@ -156,12 +156,8 @@ impl OAuthService {
         let access_token = token.access_token().secret();
 
         match provider {
-            OAuthProvider::Google => {
-                fetch_google_user_info(access_token, &self.http_client).await
-            }
-            OAuthProvider::GitHub => {
-                fetch_github_user_info(access_token, &self.http_client).await
-            }
+            OAuthProvider::Google => fetch_google_user_info(access_token, &self.http_client).await,
+            OAuthProvider::GitHub => fetch_github_user_info(access_token, &self.http_client).await,
         }
     }
 

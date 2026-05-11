@@ -28,10 +28,12 @@ async fn main() {
     });
     tracing::info!(%addr, "listening");
 
-    let listener = tokio::net::TcpListener::bind(addr).await.unwrap_or_else(|e| {
-        tracing::error!(error = %e, "failed to bind listen address");
-        std::process::exit(1);
-    });
+    let listener = tokio::net::TcpListener::bind(addr)
+        .await
+        .unwrap_or_else(|e| {
+            tracing::error!(error = %e, "failed to bind listen address");
+            std::process::exit(1);
+        });
 
     // Graceful shutdown on SIGTERM (Docker standard) + SIGINT (Ctrl-C)
     let shutdown = async {

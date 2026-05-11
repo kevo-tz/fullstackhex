@@ -367,20 +367,29 @@ async fn health_python_value(state: &AppState) -> serde_json::Value {
     }
 }
 
-fn sidecar_error_json(e: &py_sidecar::SidecarError, socket_path: &std::path::Path) -> serde_json::Value {
+fn sidecar_error_json(
+    e: &py_sidecar::SidecarError,
+    socket_path: &std::path::Path,
+) -> serde_json::Value {
     let sock_display = socket_path.display();
     let (error_msg, fix_msg) = match e {
         py_sidecar::SidecarError::SocketNotFound(_) => (
             "socket not found".to_string(),
-            format!("Start the Python sidecar: make dev starts it automatically, or run: cd py-api && uv run uvicorn app.main:app --uds {sock_display}"),
+            format!(
+                "Start the Python sidecar: make dev starts it automatically, or run: cd py-api && uv run uvicorn app.main:app --uds {sock_display}"
+            ),
         ),
         py_sidecar::SidecarError::ConnectionFailed(msg) => (
             format!("connection failed: {msg}"),
-            format!("Check that the Python sidecar is running. Run: cd py-api && uv run uvicorn app.main:app --uds {sock_display}"),
+            format!(
+                "Check that the Python sidecar is running. Run: cd py-api && uv run uvicorn app.main:app --uds {sock_display}"
+            ),
         ),
         py_sidecar::SidecarError::Timeout(d) => (
             format!("request timed out after {d:?}"),
-            format!("The Python sidecar is not responding. Restart it with: cd py-api && uv run uvicorn app.main:app --uds {sock_display}"),
+            format!(
+                "The Python sidecar is not responding. Restart it with: cd py-api && uv run uvicorn app.main:app --uds {sock_display}"
+            ),
         ),
         py_sidecar::SidecarError::InvalidInput(msg) => (
             format!("invalid input: {msg}"),
@@ -388,7 +397,8 @@ fn sidecar_error_json(e: &py_sidecar::SidecarError, socket_path: &std::path::Pat
         ),
         py_sidecar::SidecarError::InvalidResponse(msg) => (
             format!("invalid response: {msg}"),
-            "The Python sidecar returned an unexpected response. Check its logs for errors.".to_string(),
+            "The Python sidecar returned an unexpected response. Check its logs for errors."
+                .to_string(),
         ),
         py_sidecar::SidecarError::HttpError { status, body } => (
             format!("HTTP {status}: {body}"),

@@ -76,11 +76,14 @@ def setup_logging() -> None:
 async def _startup() -> None:
     setup_logging()
 
+
 logger = logging.getLogger("py-api")
 
 
 @app.middleware("http")
-async def trace_id_middleware(request: Request, call_next: Callable[[Request], Awaitable[Response]]) -> Response:
+async def trace_id_middleware(
+    request: Request, call_next: Callable[[Request], Awaitable[Response]]
+) -> Response:
     """FastAPI middleware that logs request duration and increments Prometheus counters."""
     trace_id = request.headers.get("x-trace-id", "")
     start = time.monotonic()
@@ -104,7 +107,9 @@ async def trace_id_middleware(request: Request, call_next: Callable[[Request], A
 
 
 @app.middleware("http")
-async def hmac_auth_middleware(request: Request, call_next: Callable[[Request], Awaitable[Response]]) -> Response:
+async def hmac_auth_middleware(
+    request: Request, call_next: Callable[[Request], Awaitable[Response]]
+) -> Response:
     """FastAPI middleware that validates HMAC-SHA256 signatures on auth headers forwarded from the Rust backend."""
     path = request.url.path
     # Skip HMAC for public routes

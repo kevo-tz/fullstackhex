@@ -3,6 +3,16 @@
 use domain::error::ApiError;
 use jsonwebtoken::{DecodingKey, EncodingKey, Header, Validation, decode, encode};
 use serde::{Deserialize, Serialize};
+use std::sync::OnceLock;
+
+static CRYPTO_INIT: OnceLock<()> = OnceLock::new();
+
+fn ensure_crypto_provider() {
+    CRYPTO_INIT.get_or_init(|| {
+        jsonwebtoken::CryptoProvider::install_default()
+            .expect("failed to install default CryptoProvider");
+    });
+}
 
 /// JWT claims.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -38,6 +48,7 @@ pub struct JwtService {
 impl JwtService {
     /// Create a new JWT service.
     pub fn new(secret: String, issuer: String, expiry: u64) -> Self {
+        ensure_crypto_provider();
         Self {
             encoding_key: EncodingKey::from_secret(secret.as_bytes()),
             decoding_key: DecodingKey::from_secret(secret.as_bytes()),

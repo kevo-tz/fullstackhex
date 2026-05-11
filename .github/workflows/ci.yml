@@ -58,7 +58,7 @@ jobs:
         run: cargo fmt --all -- --check
 
       - name: cargo clippy
-        run: cargo clippy --all-targets --all-features -- -D warnings
+        run: cargo clippy --locked --all-targets --all-features -- -D warnings
 
       - name: Setup Python for socket integration tests
         uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405  # v6
@@ -83,13 +83,13 @@ jobs:
         env:
           DATABASE_URL: postgres://postgres:postgres@localhost:5432/testdb
           PYTHON_SIDECAR_SOCKET: /tmp/fullstackhex-python.sock
-        run: cargo test --workspace
+        run: cargo test --locked --workspace
 
       - name: cargo test (ignored — socket integration)
         env:
           DATABASE_URL: postgres://postgres:postgres@localhost:5432/testdb
           PYTHON_SIDECAR_SOCKET: /tmp/fullstackhex-python.sock
-        run: cargo test -p py-sidecar -- --ignored
+        run: cargo test --locked -p py-sidecar -- --ignored
 
   python:
     name: python
@@ -215,7 +215,7 @@ jobs:
 
       - name: Rust smoke
         working-directory: backend
-        run: cargo test --workspace
+        run: cargo test --locked --workspace
 
       - name: Python smoke
         working-directory: py-api
@@ -287,7 +287,7 @@ jobs:
 
       - name: Build backend
         working-directory: backend
-        run: cargo build -p api
+        run: cargo build --locked -p api
 
       - name: Start backend
         env:
@@ -299,7 +299,7 @@ jobs:
           PYTHON_SIDECAR_SOCKET: ""
         working-directory: backend
         run: |
-          cargo run -p api &
+          cargo run --locked -p api &
           for i in $(seq 1 30); do
             curl -s http://localhost:8001/health && break
             sleep 1

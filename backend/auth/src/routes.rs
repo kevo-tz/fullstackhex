@@ -185,13 +185,13 @@ pub async fn register(
         header::SET_COOKIE,
         format!("access_token={access_token}; HttpOnly; Path=/; Max-Age={jwt_expiry}; SameSite=Lax")
             .parse()
-            .unwrap(),
+            .expect("cookie header format is always valid"),
     );
     headers.insert(
         header::SET_COOKIE,
         format!("refresh_token={refresh_token}; HttpOnly; Path=/; Max-Age={refresh_expiry}; SameSite=Lax")
             .parse()
-            .unwrap(),
+            .expect("cookie header format is always valid"),
     );
 
     let response = TokenResponse {
@@ -335,13 +335,13 @@ pub async fn login(
         header::SET_COOKIE,
         format!("access_token={}; HttpOnly; Path=/; Max-Age={jwt_expiry}; SameSite=Lax", response.access_token)
             .parse()
-            .unwrap(),
+            .expect("cookie header format is always valid"),
     );
     headers.insert(
         header::SET_COOKIE,
         format!("refresh_token={}; HttpOnly; Path=/; Max-Age={refresh_expiry}; SameSite=Lax", response.refresh_token)
             .parse()
-            .unwrap(),
+            .expect("cookie header format is always valid"),
     );
 
     Ok((headers, Json(response)))
@@ -467,7 +467,7 @@ pub async fn refresh(
             access_token, state.auth.config.jwt_expiry
         )
         .parse()
-        .unwrap(),
+        .expect("cookie header format is always valid"),
     );
     resp_headers.insert(
         header::SET_COOKIE,
@@ -476,7 +476,7 @@ pub async fn refresh(
             new_refresh_token, state.auth.config.refresh_expiry
         )
         .parse()
-        .unwrap(),
+        .expect("cookie header format is always valid"),
     );
 
     Ok((resp_headers, Json(TokenResponse {

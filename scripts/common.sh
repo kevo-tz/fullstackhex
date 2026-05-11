@@ -1,4 +1,5 @@
-#!/bin/bash
+#!/usr/bin/env bash
+set -euo pipefail
 # FullStackHex Common Functions Library
 # Shared utility functions for all scripts
 

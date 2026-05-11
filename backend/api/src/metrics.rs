@@ -96,8 +96,8 @@ pub async fn track_metrics(request: Request, next: Next) -> Response {
     .increment(1);
     metrics::histogram!(
         "http_request_duration_seconds",
-        "method" => method,
-        "route" => route
+        "method" => method.clone(),
+        "route" => route.clone()
     )
     .record(duration);
 

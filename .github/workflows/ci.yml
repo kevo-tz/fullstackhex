@@ -58,7 +58,7 @@ jobs:
         run: cargo fmt --all -- --check
 
       - name: cargo clippy
-        run: cargo clippy --all-targets --all-features -- -D warnings
+        run: cargo clippy --locked --all-targets --all-features -- -D warnings
 
       - name: Setup Python for socket integration tests
         uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405  # v6
@@ -83,13 +83,13 @@ jobs:
         env:
           DATABASE_URL: postgres://postgres:postgres@localhost:5432/testdb
           PYTHON_SIDECAR_SOCKET: /tmp/fullstackhex-python.sock
-        run: cargo test --workspace
+        run: cargo test --locked --workspace
 
       - name: cargo test (ignored — socket integration)
         env:
           DATABASE_URL: postgres://postgres:postgres@localhost:5432/testdb
           PYTHON_SIDECAR_SOCKET: /tmp/fullstackhex-python.sock
-        run: cargo test -p py-sidecar -- --ignored
+        run: cargo test --locked -p py-sidecar -- --ignored
 
   python:
     name: python
@@ -108,6 +108,13 @@ jobs:
 
       - name: Install uv
         uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b  # v8.1.0
+
+      - name: Cache uv dependencies
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830  # v4
+        with:
+          path: ~/.cache/uv
+          key: uv-${{ runner.os }}-${{ hashFiles('py-api/pyproject.toml') }}
+          restore-keys: uv-${{ runner.os }}-
 
       - name: Install dependencies
         run: uv sync --all-extras
@@ -157,10 +164,7 @@ jobs:
       - name: Type check
         run: bun run typecheck
 
-      - name: Test (bun)
-        run: bun test tests/*.test.ts
-
-      - name: Test (vitest)
+      - name: Test
         run: bun run test:vitest
 
       - name: Build
@@ -171,6 +175,20 @@ jobs:
   smoke:
     name: smoke
     runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: testdb
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
 
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
@@ -197,7 +215,7 @@ jobs:
 
       - name: Rust smoke
         working-directory: backend
-        run: cargo test --workspace
+        run: cargo test --locked --workspace
 
       - name: Python smoke
         working-directory: py-api
@@ -205,9 +223,13 @@ jobs:
           uv sync --all-extras
           uv run pytest
 
+      - name: Install frontend deps
+        working-directory: frontend
+        run: bun install --frozen-lockfile
+
       - name: Frontend smoke
         working-directory: frontend
-        run: bun test tests/*.test.ts
+        run: bun run test:vitest
 
   e2e:
     name: e2e
@@ -265,7 +287,7 @@ jobs:
 
       - name: Build backend
         working-directory: backend
-        run: cargo build -p api
+        run: cargo build --locked -p api
 
       - name: Start backend
         env:
@@ -277,7 +299,7 @@ jobs:
           PYTHON_SIDECAR_SOCKET: ""
         working-directory: backend
         run: |
-          cargo run -p api &
+          cargo run --locked -p api &
           for i in $(seq 1 30); do
             curl -s http://localhost:8001/health && break
             sleep 1
@@ -321,6 +343,7 @@ jobs:
           POSTGRES_PASSWORD: dummy_password_for_validation  # pragma: allowlist secret
           RUSTFS_ACCESS_KEY: dummy_access_key
           RUSTFS_SECRET_KEY: dummy_secret_key  # pragma: allowlist secret
+          REDIS_PASSWORD: dummy_password  # pragma: allowlist secret
         run: docker compose -f compose/dev.yml config
 
       - name: Validate prod compose config

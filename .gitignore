@@ -21,7 +21,6 @@ build/
 *.tsbuildinfo
 
 # Docker
-.dockerignore
 docker-compose.override.yml
 
 # TLS certificates — never commit private keys

@@ -6,7 +6,6 @@
 - lint: cd backend && cargo clippy -- -D warnings
 - test: cd backend && cargo test
 - test: cd frontend && vitest run
-- test: cd frontend && bun test
 - test: cd py-api && uv run pytest
 - deadcode: cd frontend && npx knip
 - shell: shellcheck -x --source-path=scripts/ scripts/*.sh

@@ -22,6 +22,7 @@ pub struct AuthState {
     pub auth: Arc<AuthService>,
     pub db: sqlx::PgPool,
     pub redis: Arc<cache::RedisClient>,
+    pub oauth: Arc<super::oauth::OAuthService>,
 }
 
 /// Extract client IP from request headers (X-Forwarded-For, X-Real-IP fallback).
@@ -51,12 +52,10 @@ async fn check_rate_limit(
     if !result.allowed {
         return Err(ApiError::RateLimited(format!(
             "Rate limit exceeded. Try again after {} seconds.",
-            (result.reset_at.saturating_sub(
-                std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .unwrap_or_default()
-                    .as_millis() as u64
-            )) / 1000
+            (result
+                .reset_at
+                .saturating_sub(domain::time::unix_timestamp_ms()))
+                / 1000
         )));
     }
     Ok(())
@@ -106,6 +105,11 @@ fn validate_registration(body: &RegisterRequest) -> Result<(), ApiError> {
             "Password must be at least 8 characters".to_string(),
         ));
     }
+    if body.password.len() > 1024 {
+        return Err(ApiError::ValidationError(
+            "Password must be at most 1024 characters".to_string(),
+        ));
+    }
     Ok(())
 }
 
@@ -132,7 +136,10 @@ pub async fn register(
         .bind(&body.email)
         .fetch_optional(&state.db)
         .await
-        .map_err(|_e| ApiError::InternalError("Internal server error".to_string()))?;
+        .map_err(|e| {
+            tracing::error!(error = %e, "database query failed");
+            ApiError::InternalError("Internal server error".to_string())
+        })?;
 
     if existing.is_some() {
         return Err(ApiError::ValidationError("Invalid credentials".to_string()));
@@ -150,7 +157,10 @@ pub async fn register(
     .bind(&password_hash)
     .fetch_one(&state.db)
     .await
-    .map_err(|_e| ApiError::InternalError("Internal server error".to_string()))?;
+    .map_err(|e| {
+            tracing::error!(error = %e, "database query failed");
+            ApiError::InternalError("Internal server error".to_string())
+        })?;
 
     // Create JWT
     let access_token =
@@ -171,6 +181,24 @@ pub async fn register(
         )
         .await?;
 
+    let jwt_expiry = state.auth.config.jwt_expiry;
+    let refresh_expiry = state.auth.config.refresh_expiry;
+    let mut headers = HeaderMap::new();
+    headers.insert(
+        header::SET_COOKIE,
+        format!(
+            "access_token={access_token}; HttpOnly; Path=/; Max-Age={jwt_expiry}; SameSite=Lax"
+        )
+        .parse()
+        .expect("cookie header format is always valid"),
+    );
+    headers.insert(
+        header::SET_COOKIE,
+        format!("refresh_token={refresh_token}; HttpOnly; Path=/; Max-Age={refresh_expiry}; SameSite=Lax")
+            .parse()
+            .expect("cookie header format is always valid"),
+    );
+
     let response = TokenResponse {
         access_token,
         refresh_token,
@@ -184,7 +212,7 @@ pub async fn register(
         },
     };
 
-    Ok((StatusCode::CREATED, Json(response)))
+    Ok((StatusCode::CREATED, headers, Json(response)))
 }
 
 /// POST /auth/login — authenticate with email/password, return JWT.
@@ -241,12 +269,17 @@ pub async fn login(
     .bind(&body.email)
     .fetch_optional(&state.db)
     .await
-    .map_err(|_e| ApiError::InternalError("Internal server error".to_string()))?;
+    .map_err(|e| {
+        tracing::error!(error = %e, "database query failed");
+        ApiError::InternalError("Internal server error".to_string())
+    })?;
 
     let (user_id, email, name, provider, password_hash) = match user {
         Some(u) => u,
         None => {
-            let _ = state.redis.backoff_increment(&ip, "login").await;
+            if let Err(e) = state.redis.backoff_increment(&ip, "login").await {
+                tracing::warn!(ip = %ip, error = %e, "backoff_increment failed");
+            }
             return Err(ApiError::Unauthorized("Invalid credentials".to_string()));
         }
     };
@@ -255,13 +288,17 @@ pub async fn login(
     let hash = match password_hash {
         Some(h) => h,
         None => {
-            let _ = state.redis.backoff_increment(&ip, "login").await;
+            if let Err(e) = state.redis.backoff_increment(&ip, "login").await {
+                tracing::warn!(ip = %ip, error = %e, "backoff_increment failed");
+            }
             return Err(ApiError::Unauthorized("Invalid credentials".to_string()));
         }
     };
 
     if !password::verify_password(&body.password, &hash)? {
-        let _ = state.redis.backoff_increment(&ip, "login").await;
+        if let Err(e) = state.redis.backoff_increment(&ip, "login").await {
+            tracing::warn!(ip = %ip, error = %e, "backoff_increment failed");
+        }
         return Err(ApiError::Unauthorized("Invalid credentials".to_string()));
     }
 
@@ -296,7 +333,29 @@ pub async fn login(
         },
     };
 
-    Ok(Json(response))
+    let jwt_expiry = state.auth.config.jwt_expiry;
+    let refresh_expiry = state.auth.config.refresh_expiry;
+    let mut headers = HeaderMap::new();
+    headers.insert(
+        header::SET_COOKIE,
+        format!(
+            "access_token={}; HttpOnly; Path=/; Max-Age={jwt_expiry}; SameSite=Lax",
+            response.access_token
+        )
+        .parse()
+        .expect("cookie header format is always valid"),
+    );
+    headers.insert(
+        header::SET_COOKIE,
+        format!(
+            "refresh_token={}; HttpOnly; Path=/; Max-Age={refresh_expiry}; SameSite=Lax",
+            response.refresh_token
+        )
+        .parse()
+        .expect("cookie header format is always valid"),
+    );
+
+    Ok((headers, Json(response)))
 }
 
 /// POST /auth/logout — destroy session, blacklist token, delete refresh token.
@@ -314,7 +373,9 @@ pub async fn logout(
     // Destroy session if present (cookie auth mode)
     if let Some(ref session_id) = auth_user.session_id {
         // Best-effort: session might already be expired or destroyed
-        let _ = state.redis.session_destroy(session_id).await;
+        if let Err(e) = state.redis.session_destroy(session_id).await {
+            tracing::warn!(session = %session_id, error = %e, "session_destroy failed");
+        }
     }
 
     tracing::info!(user_id = %auth_user.user_id, jti = %auth_user.jti, "user logged out");
@@ -336,18 +397,38 @@ pub async fn logout(
 /// Refresh token request.
 #[derive(Debug, Deserialize)]
 pub struct RefreshRequest {
+    #[serde(default)]
     pub refresh_token: String,
 }
 
 /// POST /auth/refresh — refresh access token using refresh token.
 pub async fn refresh(
     State(state): State<AuthState>,
-    Json(body): Json<RefreshRequest>,
-) -> Result<Json<TokenResponse>, ApiError> {
+    headers: HeaderMap,
+    body: Option<Json<RefreshRequest>>,
+) -> Result<(HeaderMap, Json<TokenResponse>), ApiError> {
+    // Read refresh token from JSON body first, fall back to cookie
+    let refresh_token_str = body
+        .as_ref()
+        .map(|b| b.refresh_token.clone())
+        .filter(|t| !t.is_empty())
+        .or_else(|| {
+            headers
+                .get("cookie")
+                .and_then(|v| v.to_str().ok())
+                .and_then(|cookies| {
+                    cookies.split(';').find_map(|c| {
+                        let c = c.trim();
+                        c.strip_prefix("refresh_token=").map(|s| s.to_string())
+                    })
+                })
+        })
+        .ok_or_else(|| ApiError::Unauthorized("Invalid or expired refresh token".to_string()))?;
+
     // Atomically read and delete the refresh token (prevents token family leak)
     let user_id = state
         .redis
-        .refresh_token_rotate(&body.refresh_token)
+        .refresh_token_rotate(&refresh_token_str)
         .await?
         .ok_or_else(|| {
             metrics::counter!("token_refresh_total", "status" => "failure").increment(1);
@@ -360,7 +441,10 @@ pub async fn refresh(
             .bind(&user_id)
             .fetch_optional(&state.db)
             .await
-            .map_err(|_e| ApiError::InternalError("Internal server error".to_string()))?;
+            .map_err(|e| {
+                tracing::error!(error = %e, "database query failed");
+                ApiError::InternalError("Internal server error".to_string())
+            })?;
 
     let (user_id, email, name, provider) =
         user.ok_or_else(|| ApiError::Unauthorized("Invalid credentials".to_string()))?;
@@ -386,18 +470,41 @@ pub async fn refresh(
 
     metrics::counter!("token_refresh_total", "status" => "success").increment(1);
 
-    Ok(Json(TokenResponse {
-        access_token,
-        refresh_token: new_refresh_token,
-        token_type: "Bearer".to_string(),
-        expires_in: state.auth.config.jwt_expiry,
-        user: UserInfo {
-            id: user_id,
-            email,
-            name,
-            provider,
-        },
-    }))
+    let mut resp_headers = HeaderMap::new();
+    resp_headers.insert(
+        header::SET_COOKIE,
+        format!(
+            "access_token={}; HttpOnly; Path=/; Max-Age={}; SameSite=Lax",
+            access_token, state.auth.config.jwt_expiry
+        )
+        .parse()
+        .expect("cookie header format is always valid"),
+    );
+    resp_headers.insert(
+        header::SET_COOKIE,
+        format!(
+            "refresh_token={}; HttpOnly; Path=/; Max-Age={}; SameSite=Lax",
+            new_refresh_token, state.auth.config.refresh_expiry
+        )
+        .parse()
+        .expect("cookie header format is always valid"),
+    );
+
+    Ok((
+        resp_headers,
+        Json(TokenResponse {
+            access_token,
+            refresh_token: new_refresh_token,
+            token_type: "Bearer".to_string(),
+            expires_in: state.auth.config.jwt_expiry,
+            user: UserInfo {
+                id: user_id,
+                email,
+                name,
+                provider,
+            },
+        }),
+    ))
 }
 
 /// List configured OAuth providers from the auth config.
@@ -433,14 +540,8 @@ pub async fn oauth_redirect(
     Path(provider): Path<String>,
 ) -> Result<impl IntoResponse, ApiError> {
     let provider = parse_provider(&provider)?;
-    let oauth_service = super::oauth::OAuthService::new(
-        state.auth.config.google_client_id.clone(),
-        state.auth.config.google_client_secret.clone(),
-        state.auth.config.github_client_id.clone(),
-        state.auth.config.github_client_secret.clone(),
-    );
 
-    if !oauth_service.is_configured(&provider) {
+    if !state.oauth.is_configured(&provider) {
         return Err(ApiError::ServiceUnavailable(format!(
             "{provider} OAuth not configured"
         )));
@@ -451,9 +552,9 @@ pub async fn oauth_redirect(
         .config
         .oauth_redirect_url
         .clone()
-        .unwrap_or_else(|| format!("http://localhost:8001/auth/oauth/{provider}/callback"));
+        .ok_or_else(|| ApiError::InternalError("OAUTH_REDIRECT_URL not configured".to_string()))?;
 
-    let (url, csrf) = oauth_service.get_redirect_url(&provider, &redirect_url)?;
+    let (url, csrf) = state.oauth.get_redirect_url(&provider, &redirect_url)?;
 
     // Store CSRF token in Redis with 10-minute TTL for callback validation
     state
@@ -500,14 +601,8 @@ pub async fn oauth_callback(
     state.redis.cache_delete("oauth_csrf", &query.state).await?;
 
     // Exchange code for access token
-    let oauth_service = super::oauth::OAuthService::new(
-        state.auth.config.google_client_id.clone(),
-        state.auth.config.google_client_secret.clone(),
-        state.auth.config.github_client_id.clone(),
-        state.auth.config.github_client_secret.clone(),
-    );
-
-    let user_info = oauth_service
+    let user_info = state
+        .oauth
         .exchange_code(&provider, &query.code)
         .await
         .map_err(|_e| ApiError::Unauthorized("OAuth authentication failed".to_string()))?;
@@ -533,10 +628,16 @@ pub async fn oauth_callback(
             .bind(provider.to_string())
             .execute(&state.db)
             .await
-            .map_err(|_e| ApiError::InternalError("Internal server error".to_string()))?;
+            .map_err(|e| {
+            tracing::error!(error = %e, "database query failed");
+            ApiError::InternalError("Internal server error".to_string())
+        })?;
             id
         }
-        Err(_e) => return Err(ApiError::InternalError("Internal server error".to_string())),
+        Err(e) => {
+            tracing::error!(error = %e, "database query failed during OAuth callback");
+            return Err(ApiError::InternalError("Internal server error".to_string()));
+        }
     };
 
     // Create JWT
@@ -734,6 +835,7 @@ mod route_tests {
             github_client_secret: None,
             oauth_redirect_url: None,
             sidecar_shared_secret: None,
+            fail_open_on_redis_error: true,
         };
         let list = list_providers(&config);
         assert!(list.is_empty());
@@ -753,6 +855,7 @@ mod route_tests {
             github_client_secret: None,
             oauth_redirect_url: None,
             sidecar_shared_secret: None,
+            fail_open_on_redis_error: true,
         };
         let list = list_providers(&config);
         assert_eq!(list, vec!["google"]);
@@ -772,6 +875,7 @@ mod route_tests {
             github_client_secret: Some("gh-secret".to_string()),
             oauth_redirect_url: None,
             sidecar_shared_secret: None,
+            fail_open_on_redis_error: true,
         };
         let list = list_providers(&config);
         assert_eq!(list, vec!["github"]);
@@ -791,6 +895,7 @@ mod route_tests {
             github_client_secret: Some("gh-secret".to_string()),
             oauth_redirect_url: None,
             sidecar_shared_secret: None,
+            fail_open_on_redis_error: true,
         };
         let list = list_providers(&config);
         assert_eq!(list, vec!["google", "github"]);

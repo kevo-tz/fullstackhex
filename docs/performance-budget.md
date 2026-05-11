@@ -4,25 +4,26 @@ Performance targets enforced via CI gates. Any missed target becomes a P1 item.
 
 ## Prerequisites
 
-`scripts/bench.sh` requires `bombardier` for load testing:
+`scripts/bench.sh` requires `ab` (Apache Bench) for load testing:
 
 ```bash
-# Install bombardier (requires Go)
-go install github.com/codesenberg/bombardier@latest
+# Install ab (Apache Bench)
+# Linux (Debian/Ubuntu):
+sudo apt-get install apache2-utils
+# Linux (RHEL/CentOS):
+sudo yum install httpd-tools
+# macOS:
+# ab is included with Apache (or brew install httpd)
 
 # Verify installation
-bombardier --version
+ab -V
 ```
-
-If Go is not installed:
-- **Linux/macOS:** `curl -fsSL https://go.dev/dl/ | bash` or use package manager
-- **Verify:** `go version`
 
 ## Targets
 
 | Metric | Target | Measurement |
 |--------|--------|-------------|
-| `/health` p50 latency | < 5ms | `bombardier -c 100 -d 30s http://localhost:8001/health` |
+| `/health` p50 latency | < 5ms | `ab -n 1000 -c 100 http://localhost:8001/health` |
 | `/health` p99 latency | < 20ms | same |
 | Rust → Python sidecar roundtrip | < 2ms local | Rust calls Python over Unix socket |
 | Postgres query (simple read) | < 10ms p99 | `sqlx --quiet` timings |

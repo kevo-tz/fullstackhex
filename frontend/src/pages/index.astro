@@ -224,7 +224,7 @@ make status</pre>
       </div>
 
     <script>
-      const SERVICE_IDS = ["rust", "db", "redis", "storage", "python", "auth"];
+      import { SERVICE_IDS, SERVICE_LABELS, isFullOutage as checkFullOutage } from "../lib/health";
 
       function setStatus(id: string, status: string, label: string) {
         const dot  = document.getElementById("dot-"  + id);
@@ -255,24 +255,7 @@ make status</pre>
         if (el) el.classList.toggle("visible", visible);
       }
 
-      function isFullOutage(data: Record<string, unknown>): boolean {
-        for (const svc of SERVICE_IDS) {
-          const entry = data[svc] as Record<string, unknown> | undefined;
-          if (!entry || entry.status === "ok") return false;
-        }
-        return true;
-      }
-
-      function getDiagnostics(data: Record<string, unknown>): { id: string; fix: string }[] {
-        const result: { id: string; fix: string }[] = [];
-        for (const svc of SERVICE_IDS) {
-          const entry = data[svc] as Record<string, unknown> | undefined;
-          if (!entry || entry.status === "ok") continue;
-          const fix = (entry.fix as string) || (entry.error as string) || null;
-          if (fix) result.push({ id: svc, fix });
-        }
-        return result;
-      }
+      const isFullOutage = checkFullOutage;
 
       let retryTimer: ReturnType<typeof setTimeout> | null = null;
       let retryDelay = 1000;
@@ -300,11 +283,6 @@ make status</pre>
       }
 
       async function fetchHealth() {
-        for (const svc of SERVICE_IDS) {
-          setStatus(svc, "loading", "checking…");
-          setDiagnostic(svc, "");
-        }
-        showOutage(false);
         const rawJson = document.getElementById("raw-json");
         if (rawJson) rawJson.textContent = "fetching…";
 
@@ -399,7 +377,12 @@ make status</pre>
       }
 
       document.addEventListener("visibilitychange", () => {
-        if (document.hidden) cancelRetry();
+        if (document.hidden) {
+          cancelRetry();
+        } else {
+          resetRetry();
+          fetchHealth();
+        }
       });
 
       document.getElementById("refresh-btn")?.addEventListener("click", () => {

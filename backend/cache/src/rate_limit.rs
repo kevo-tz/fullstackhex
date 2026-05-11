@@ -7,7 +7,16 @@ use super::{CacheError, RedisClient};
 use fred::interfaces::LuaInterface;
 use fred::prelude::*;
 use fred::types::sorted_sets::ZRange;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::Duration;
+
+/// Returns the current time as ms since Unix epoch, or 0 if the system clock
+/// is before the epoch (never panics).
+fn unix_epoch_ms() -> u64 {
+    (std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or(Duration::ZERO)
+        .as_millis()) as u64
+}
 
 /// Rate limit check result.
 pub struct RateLimitResult {
@@ -29,6 +38,10 @@ impl RedisClient {
     /// - `key`: unique key for this rate limit (e.g., "login:192.168.1.1")
     /// - `window`: time window duration
     /// - `max_requests`: maximum requests allowed in the window
+    ///
+    /// # Errors
+    ///
+    /// Returns `CacheError::CommandFailed` on Redis errors.
     pub async fn rate_limit_check(
         &self,
         key: &str,
@@ -36,10 +49,7 @@ impl RedisClient {
         max_requests: u64,
     ) -> Result<RateLimitResult, CacheError> {
         let full_key = self.make_key("ratelimit", key);
-        let now_ms = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_millis() as u64;
+        let now_ms = unix_epoch_ms();
         let window_start = now_ms - window.as_millis() as u64;
 
         // Lua script: atomic check + add + cleanup
@@ -88,12 +98,13 @@ impl RedisClient {
     }
 
     /// Get the current rate limit count for a key (without incrementing).
+    ///
+    /// # Errors
+    ///
+    /// Returns `CacheError::CommandFailed` on Redis errors.
     pub async fn rate_limit_count(&self, key: &str, window: Duration) -> Result<u64, CacheError> {
         let full_key = self.make_key("ratelimit", key);
-        let now_ms = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_millis() as u64;
+        let now_ms = unix_epoch_ms();
         let window_start = now_ms - window.as_millis() as u64;
 
         // Clean old entries: remove all members with score <= window_start
@@ -124,6 +135,11 @@ impl RedisClient {
     ///
     /// Returns an error with the remaining cooldown seconds if the IP is blocked.
     /// Call this BEFORE the rate limit check on login endpoints.
+    ///
+    /// # Errors
+    ///
+    /// Returns `CacheError::BackoffBlocked` when the IP is blocked,
+    /// or `CacheError::CommandFailed` on Redis errors.
     pub async fn backoff_check(&self, ip: &str, endpoint: &str) -> Result<(), CacheError> {
         let key = self.make_key("backoff", &format!("{ip}:{endpoint}"));
         let count: Option<u64> = self
@@ -153,7 +169,9 @@ impl RedisClient {
         }
 
         // TTL expired — clean up the stale key
-        let _ = self.client.del::<(), _>(&key).await;
+        if let Err(e) = self.client.del::<(), _>(&key).await {
+            tracing::warn!(key = %key, error = %e, "backoff stale key cleanup failed");
+        }
         Ok(())
     }
 
@@ -161,6 +179,11 @@ impl RedisClient {
     ///
     /// Call this AFTER a failed login (wrong password, invalid credentials).
     /// The TTL is set based on the current failure count threshold.
+    ///
+    /// # Errors
+    ///
+    /// Returns `CacheError::CommandFailed` on Redis errors.
+    /// Note: this function does NOT return `BackoffBlocked` — use `backoff_check` for that.
     pub async fn backoff_increment(&self, ip: &str, endpoint: &str) -> Result<(), CacheError> {
         let key = self.make_key("backoff", &format!("{ip}:{endpoint}"));
 

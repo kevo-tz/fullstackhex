@@ -33,7 +33,8 @@ volumes:
 
 services:
   nginx:
-    image: nginx:alpine
+    image: nginx:1.27-alpine
+    user: "101"
     container_name: fullstackhex_nginx
     restart: unless-stopped
     ports:
@@ -84,8 +85,10 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      rustfs:
+        condition: service_healthy
       py-api:
-        condition: service_started
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
       interval: 30s
@@ -117,6 +120,13 @@ services:
       PYTHON_SIDECAR_SOCKET: /tmp/sidecar/py-api.sock
     volumes:
       - sidecar_socket:/tmp/sidecar
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rustfs:
+        condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "test -S /tmp/sidecar/py-api.sock"]
       interval: 10s
@@ -147,6 +157,9 @@ services:
     restart: unless-stopped
     expose:
       - "4321"
+    depends_on:
+      backend:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://localhost:4321/"]
       interval: 30s
@@ -235,7 +248,7 @@ services:
         max-file: "3"
 
   rustfs:
-    image: rustfs/rustfs:latest
+    image: rustfs/rustfs:0.8.1
     container_name: fullstackhex_rustfs
     restart: unless-stopped
     expose:
@@ -273,7 +286,7 @@ services:
         max-file: "3"
 
   redis-exporter:
-    image: oliver006/redis_exporter:latest
+    image: oliver006/redis_exporter:v1.67.0
     container_name: fullstackhex_redis_exporter
     restart: unless-stopped
     expose:
@@ -293,7 +306,7 @@ services:
           memory: 64M
 
   postgres-exporter:
-    image: prometheuscommunity/postgres-exporter:latest
+    image: prometheuscommunity/postgres-exporter:v0.16.0
     container_name: fullstackhex_postgres_exporter
     restart: unless-stopped
     expose:
@@ -318,7 +331,7 @@ services:
           memory: 64M
 
   nginx-exporter:
-    image: nginx/nginx-prometheus-exporter:latest
+    image: nginx/nginx-prometheus-exporter:1.4.1
     container_name: fullstackhex_nginx_exporter
     restart: unless-stopped
     expose:
@@ -337,12 +350,17 @@ services:
           memory: 64M
 
   certbot:
-    image: certbot/certbot:latest
+    image: certbot/certbot:v3.4.0
     container_name: fullstackhex_certbot
     restart: unless-stopped
     volumes:
       - ./nginx/certs:/etc/letsencrypt
       - ./nginx/certbot-data:/var/lib/certbot
     entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew; sleep 12h; done'"
+    deploy:
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: 128M
     networks:
       - fullstackhex-network

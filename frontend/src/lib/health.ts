@@ -1,10 +1,39 @@
+export const SERVICE_IDS = ["rust", "db", "redis", "storage", "python", "auth"] as const;
+export type ServiceId = (typeof SERVICE_IDS)[number];
+
+export const SERVICE_LABELS: Record<ServiceId, string> = {
+  rust: "Rust API",
+  db: "PostgreSQL",
+  redis: "Redis",
+  storage: "RustFS Storage",
+  python: "Python sidecar",
+  auth: "Auth",
+};
+
+export interface HealthEntry {
+  status: string;
+  error?: string;
+  fix?: string;
+  detail?: unknown;
+}
+
+export interface HealthResponse {
+  rust: HealthEntry;
+  db: HealthEntry;
+  redis: HealthEntry;
+  storage: HealthEntry;
+  python: HealthEntry;
+  auth: HealthEntry;
+}
+
 function jsonLog(obj: Record<string, unknown>): void {
-  console.log(JSON.stringify(obj));
+  if (typeof window === "undefined" && import.meta.env.DEV) {
+    console.log(JSON.stringify(obj));
+  }
 }
 
 export function isFullOutage(data: Record<string, unknown>): boolean {
-  const services = ["rust", "db", "redis", "storage", "python", "auth"];
-  for (const svc of services) {
+  for (const svc of SERVICE_IDS) {
     const entry = data[svc] as Record<string, unknown> | undefined;
     if (!entry || entry.status === "ok") return false;
   }
@@ -14,21 +43,12 @@ export function isFullOutage(data: Record<string, unknown>): boolean {
 export function getDiagnostics(
   data: Record<string, unknown>,
 ): { service: string; status: string; fix: string | null }[] {
-  const services = ["rust", "db", "redis", "storage", "python", "auth"];
-  const labels: Record<string, string> = {
-    rust: "Rust API",
-    db: "PostgreSQL",
-    redis: "Redis",
-    storage: "RustFS Storage",
-    python: "Python sidecar",
-    auth: "Auth",
-  };
   const result: { service: string; status: string; fix: string | null }[] = [];
-  for (const svc of services) {
+  for (const svc of SERVICE_IDS) {
     const entry = data[svc] as Record<string, unknown> | undefined;
     if (!entry || entry.status === "ok") continue;
     result.push({
-      service: labels[svc] || svc,
+      service: SERVICE_LABELS[svc] || svc,
       status: String(entry.status),
       fix: (entry.fix as string) || (entry.error as string) || null,
     });
@@ -144,9 +164,11 @@ async function handleRustHealth(
   }
 }
 
+export const API_BASE = import.meta.env.VITE_RUST_BACKEND_URL || "http://localhost:8001";
+
 export async function aggregateHealth(
   fetchImpl: typeof fetch,
-  apiBase = "http://localhost:8001",
+  apiBase = API_BASE,
 ): Promise<Record<string, unknown>> {
   const traceId = crypto.randomUUID();
   const start = performance.now();

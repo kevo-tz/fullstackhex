@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 set -euo pipefail
 
 if [ -t 0 ]; then
@@ -37,7 +37,7 @@ run() {
   if [ "$DRY_RUN" = true ]; then
     echo -e "${YELLOW}[DRY-RUN]${NC} $*"
   else
-    eval "$*"
+    "$@"
   fi
 }
 
@@ -47,7 +47,7 @@ run_in() {
   if [ "$DRY_RUN" = true ]; then
     echo -e "${YELLOW}[DRY-RUN]${NC} (cd \"$dir\" && $*)"
   else
-    (cd "$dir" && eval "$*")
+    (cd "$dir" && "$@")
   fi
 }
 
@@ -75,7 +75,7 @@ check_tool() {
   fi
   if [ -n "$min_version" ]; then
     local version_str
-    version_str=$(eval "$get_version_cmd" 2>/dev/null || true)
+    version_str=$(bash -c "$get_version_cmd" 2>/dev/null || true)
     if [ -n "$version_str" ]; then
       if ! version_ge "$version_str" "$min_version"; then
         error "$name $version_str is too old. Minimum: $min_version"
@@ -191,31 +191,31 @@ scaffold() {
   fi
 
   log "Creating $PROJECT_NAME..."
-  run "mkdir -p \"$PROJECT_NAME\""
+  run mkdir -p "$PROJECT_NAME"
 
   local rsync_excludes
   rsync_excludes="--exclude=.git/ --exclude=target/ --exclude=node_modules/ --exclude=.venv/ --exclude=dist/ --exclude=.gitignore --exclude=.dockerignore"
 
   log "Copying backend/..."
-  run "rsync -a $rsync_excludes \"$REPO_SOURCE/backend/\" \"$PROJECT_NAME/backend/\""
+  run rsync -a $rsync_excludes "$REPO_SOURCE/backend/" "$PROJECT_NAME/backend/"
   log "Copying compose/..."
-  run "rsync -a $rsync_excludes \"$REPO_SOURCE/compose/\" \"$PROJECT_NAME/compose/\""
+  run rsync -a $rsync_excludes "$REPO_SOURCE/compose/" "$PROJECT_NAME/compose/"
   log "Copying frontend/..."
-  run "rsync -a $rsync_excludes \"$REPO_SOURCE/frontend/\" \"$PROJECT_NAME/frontend/\""
+  run rsync -a $rsync_excludes "$REPO_SOURCE/frontend/" "$PROJECT_NAME/frontend/"
   log "Copying py-api/..."
-  run "rsync -a $rsync_excludes \"$REPO_SOURCE/py-api/\" \"$PROJECT_NAME/py-api/\""
+  run rsync -a $rsync_excludes "$REPO_SOURCE/py-api/" "$PROJECT_NAME/py-api/"
   log "Copying scripts/..."
-  run "rsync -a $rsync_excludes \"$REPO_SOURCE/scripts/\" \"$PROJECT_NAME/scripts/\""
+  run rsync -a $rsync_excludes "$REPO_SOURCE/scripts/" "$PROJECT_NAME/scripts/"
 
   log "Copying root files..."
   for f in .env.example .gitignore .dockerignore Makefile LICENSE README.md; do
     if [ -f "$REPO_SOURCE/$f" ]; then
-      run "cp \"$REPO_SOURCE/$f\" \"$PROJECT_NAME/$f\""
+      run cp "$REPO_SOURCE/$f" "$PROJECT_NAME/$f"
     fi
   done
 
   log "Resetting VERSION to 0.1.0.0..."
-  run "echo '0.1.0.0' > \"$PROJECT_NAME/VERSION\""
+  printf '0.1.0.0\n' > "$PROJECT_NAME/VERSION"
 
   ok "Scaffold complete."
 }
@@ -224,38 +224,38 @@ scaffold() {
 
 configure() {
   log "Generating .env..."
-  run_in "$PROJECT_NAME" "cp .env.example .env"
+  run_in "$PROJECT_NAME" cp .env.example .env
 
   log "Configuring backend/Cargo.toml (repository URL)..."
   read -r -p "GitHub username (for repository URL) [kevo-tz]: " GITHUB_USER < "$READ_INPUT" || true
   GITHUB_USER=${GITHUB_USER:-kevo-tz}
-  run_in "$PROJECT_NAME" "sed -i 's|https://github.com/kevo-tz/fullstackhex|https://github.com/${GITHUB_USER}/${PROJECT_NAME}|' backend/Cargo.toml"
+  run_in "$PROJECT_NAME" sed -i 's|https://github.com/kevo-tz/fullstackhex|https://github.com/${GITHUB_USER}/${PROJECT_NAME}|' backend/Cargo.toml
 
   log "Configuring frontend/package.json (name)..."
-  run_in "$PROJECT_NAME" "sed -i 's|\"name\": \"frontend\"|\"name\": \"$PROJECT_NAME\"|' frontend/package.json"
+  run_in "$PROJECT_NAME" sed -i 's|"name": "frontend"|"name": "'"$PROJECT_NAME"'"|' frontend/package.json
 
   log "Configuring py-api/pyproject.toml (name)..."
-  run_in "$PROJECT_NAME" "sed -i 's|name = \"py-api\"|name = \"$PROJECT_NAME\"|' py-api/pyproject.toml"
+  run_in "$PROJECT_NAME" sed -i 's|name = "py-api"|name = "'"$PROJECT_NAME"'"|' py-api/pyproject.toml
 
   log "Configuring compose files (container names, network names)..."
   for f in prod.yml dev.yml monitor.yml; do
-    run_in "$PROJECT_NAME" "sed -i 's|fullstackhex_|${PROJECT_NAME}_|g' compose/$f"
-    run_in "$PROJECT_NAME" "sed -i 's|fullstackhex-network|${PROJECT_NAME}-network|g' compose/$f"
+    run_in "$PROJECT_NAME" sed -i 's|fullstackhex_|${PROJECT_NAME}_|g' compose/$f
+    run_in "$PROJECT_NAME" sed -i 's|fullstackhex-network|${PROJECT_NAME}-network|g' compose/$f
   done
 
   log "Configuring scripts/config.sh (project paths)..."
-  run_in "$PROJECT_NAME" "sed -i 's|/tmp/fullstackhex-dev|/tmp/${PROJECT_NAME}-dev|g' scripts/config.sh"
-  run_in "$PROJECT_NAME" "sed -i 's|/tmp/fullstackhex-python.sock|/tmp/${PROJECT_NAME}-python.sock|g' scripts/config.sh"
-  run_in "$PROJECT_NAME" "sed -i 's|-p fullstackhex-monitor|-p ${PROJECT_NAME}-monitor|g' scripts/config.sh"
+  run_in "$PROJECT_NAME" sed -i 's|/tmp/fullstackhex-dev|/tmp/${PROJECT_NAME}-dev|g' scripts/config.sh
+  run_in "$PROJECT_NAME" sed -i 's|/tmp/fullstackhex-python.sock|/tmp/${PROJECT_NAME}-python.sock|g' scripts/config.sh
+  run_in "$PROJECT_NAME" sed -i 's|-p fullstackhex-monitor|-p ${PROJECT_NAME}-monitor|g' scripts/config.sh
 
   log "Configuring .env (project-specific defaults)..."
-  run_in "$PROJECT_NAME" "sed -i 's|JWT_ISSUER=fullstackhex|JWT_ISSUER=${PROJECT_NAME}|' .env"
-  run_in "$PROJECT_NAME" "sed -i 's|RUSTFS_BUCKET=fullstackhex|RUSTFS_BUCKET=${PROJECT_NAME}|' .env"
-  run_in "$PROJECT_NAME" "sed -i 's|/opt/fullstackhex|/opt/${PROJECT_NAME}|' .env"
-  run_in "$PROJECT_NAME" "sed -i 's|REDIS_KEY_PREFIX=fullstackhex|REDIS_KEY_PREFIX=${PROJECT_NAME}|' .env"
+  run_in "$PROJECT_NAME" sed -i 's|JWT_ISSUER=fullstackhex|JWT_ISSUER=${PROJECT_NAME}|' .env
+  run_in "$PROJECT_NAME" sed -i 's|RUSTFS_BUCKET=fullstackhex|RUSTFS_BUCKET=${PROJECT_NAME}|' .env
+  run_in "$PROJECT_NAME" sed -i 's|/opt/fullstackhex|/opt/${PROJECT_NAME}|' .env
+  run_in "$PROJECT_NAME" sed -i 's|REDIS_KEY_PREFIX=fullstackhex|REDIS_KEY_PREFIX=${PROJECT_NAME}|' .env
 
   log "Configuring README.md..."
-  run_in "$PROJECT_NAME" "sed -i '1s|# FullStackHex|# ${PROJECT_NAME}|' README.md"
+  run_in "$PROJECT_NAME" sed -i '1s|# FullStackHex|# ${PROJECT_NAME}|' README.md
 
   ok "Configuration complete."
 }
@@ -269,15 +269,15 @@ install_deps() {
   fi
 
   log "Installing Python 3.14 via uv (managed)..."
-  run_in "$PROJECT_NAME/py-api" "uv python install 3.14"
+  run_in "$PROJECT_NAME/py-api" uv python install 3.14
   ok "Python 3.14 installed."
 
   log "Installing Python dependencies (uv sync)..."
-  run_in "$PROJECT_NAME/py-api" "uv sync --python 3.14"
+  run_in "$PROJECT_NAME/py-api" uv sync --python 3.14
   ok "Python dependencies installed."
 
   log "Installing frontend dependencies (bun install)..."
-  run_in "$PROJECT_NAME/frontend" "bun install"
+  run_in "$PROJECT_NAME/frontend" bun install
   ok "Frontend dependencies installed."
 }
 
@@ -290,15 +290,15 @@ verify() {
   fi
 
   log "Verifying backend (cargo check)..."
-  run_in "$PROJECT_NAME/backend" "cargo check"
+  run_in "$PROJECT_NAME/backend" cargo check
   ok "Backend compiles."
 
   log "Verifying frontend (bun run typecheck)..."
-  run_in "$PROJECT_NAME/frontend" "bun run typecheck"
+  run_in "$PROJECT_NAME/frontend" bun run typecheck
   ok "Frontend typechecks."
 
   log "Running py-api tests (optional)..."
-  if run_in "$PROJECT_NAME/py-api" "uv run pytest"; then
+  if run_in "$PROJECT_NAME/py-api" uv run pytest; then
     ok "py-api tests pass."
   else
     warn "py-api tests had issues (non-fatal)."
@@ -314,9 +314,9 @@ init_git() {
   fi
 
   log "Initializing git repository..."
-  run_in "$PROJECT_NAME" "git init"
-  run_in "$PROJECT_NAME" "git add ."
-  run_in "$PROJECT_NAME" "git commit -m 'chore: scaffold from fullstackhex template'"
+  run_in "$PROJECT_NAME" git init
+  run_in "$PROJECT_NAME" git add .
+  run_in "$PROJECT_NAME" git commit -m 'chore: scaffold from fullstackhex template'
   ok "Git repository initialized."
 }
 

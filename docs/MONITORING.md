@@ -2,7 +2,7 @@
 
 ## Overview
 
-FullStackHex includes a monitoring stack with Prometheus and Grafana for tracking application performance, system metrics, and service health.
+FullStackHex includes a monitoring stack with **Prometheus v3.3.1** and **Grafana 11.2.0** for tracking application performance, system metrics, and service health.
 
 ## Accessing the Monitoring Stack
 
@@ -169,8 +169,8 @@ groups:
       - alert: HighLatency
         expr: |
           histogram_quantile(0.99, 
-            sum(rate(http_request_duration_ms_bucket[5m])) by (le)
-          ) > 100
+            sum(rate(http_request_duration_seconds_bucket[5m])) by (le)
+          ) > 0.1
         for: 5m
         labels:
           severity: warning

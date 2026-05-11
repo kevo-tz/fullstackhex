@@ -33,7 +33,7 @@ services:
     container_name: fullstackhex_db
     restart: unless-stopped
     ports:
-      - "${POSTGRES_PORT:-5432}:5432"
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-app_user}
       # POSTGRES_PASSWORD must be set in .env — no default is intentional
@@ -51,6 +51,11 @@ services:
       timeout: 5s
       retries: 5
       start_period: 10s
+    deploy:
+      resources:
+        limits:
+          cpus: "1"
+          memory: 512M
     networks:
       - fullstackhex-network
     logging:
@@ -64,9 +69,9 @@ services:
     container_name: fullstackhex_redis
     restart: unless-stopped
     ports:
-      - "${REDIS_PORT:-6379}:6379"
+      - "127.0.0.1:${REDIS_PORT:-6379}:6379"
     command: >
-      redis-server --maxmemory ${REDIS_MAX_MEMORY:-512mb} --maxmemory-policy ${REDIS_MAXMEMORY_POLICY:-allkeys-lru} --appendonly ${REDIS_APPENDONLY:-yes} --save ${REDIS_SAVE:-900 1 300 10 60 10000}
+      redis-server --maxmemory ${REDIS_MAX_MEMORY:-512mb} --maxmemory-policy ${REDIS_MAXMEMORY_POLICY:-allkeys-lru} --appendonly ${REDIS_APPENDONLY:-yes} --save ${REDIS_SAVE:-900 1 300 10 60 10000} --requirepass ${REDIS_PASSWORD:?REDIS_PASSWORD must be set in .env}
     volumes:
       - redis_data:/data
     healthcheck:
@@ -75,6 +80,11 @@ services:
       timeout: 3s
       retries: 5
       start_period: 5s
+    deploy:
+      resources:
+        limits:
+          cpus: "1"
+          memory: 512M
     networks:
       - fullstackhex-network
     logging:
@@ -84,12 +94,12 @@ services:
         max-file: "3"
 
   rustfs:
-    image: rustfs/rustfs:latest
+    image: rustfs/rustfs:0.8.1
     container_name: fullstackhex_rustfs
     restart: unless-stopped
     ports:
-      - "${RUSTFS_API_PORT:-9000}:9000"
-      - "${RUSTFS_CONSOLE_PORT:-9001}:9001"
+      - "127.0.0.1:${RUSTFS_API_PORT:-9000}:9000"
+      - "127.0.0.1:${RUSTFS_CONSOLE_PORT:-9001}:9001"
     environment:
       # RustFS configuration
       RUSTFS_VOLUMES: /data
@@ -111,6 +121,11 @@ services:
       timeout: 10s
       retries: 3
       start_period: 15s
+    deploy:
+      resources:
+        limits:
+          cpus: "1"
+          memory: 512M
     networks:
       - fullstackhex-network
     logging:
@@ -120,55 +135,86 @@ services:
         max-file: "3"
 
   adminer:
-    image: adminer:latest
+    image: adminer:5.1.0
     container_name: fullstackhex_adminer
     restart: unless-stopped
     ports:
-      - "${ADMINER_PORT:-8080}:8080"
+      - "127.0.0.1:${ADMINER_PORT:-8080}:8080"
     depends_on:
       postgres:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          cpus: "1"
+          memory: 512M
     networks:
       - fullstackhex-network
     profiles:
       - tools
 
   redis-commander:
-    image: rediscommander/redis-commander:latest
+    image: rediscommander/redis-commander:0.8.0
     container_name: fullstackhex_redis_commander
     restart: unless-stopped
     ports:
-      - "${REDIS_COMMANDER_PORT:-8081}:8081"
+      - "127.0.0.1:${REDIS_COMMANDER_PORT:-8081}:8081"
     environment:
-      REDIS_HOSTS: local:fullstackhex_redis:6379
+      REDIS_HOSTS: local:fullstackhex_redis:6379:0:${REDIS_PASSWORD:?REDIS_PASSWORD must be set in .env}
     depends_on:
       redis:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8081"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          cpus: "1"
+          memory: 512M
     networks:
       - fullstackhex-network
     profiles:
       - tools
 
   redis-exporter:
-    image: oliver006/redis_exporter:latest
+    image: oliver006/redis_exporter:v1.67.0
     container_name: fullstackhex_redis_exporter
     restart: unless-stopped
     ports:
-      - "${REDIS_EXPORTER_PORT:-9121}:9121"
+      - "127.0.0.1:${REDIS_EXPORTER_PORT:-9121}:9121"
     environment:
       REDIS_ADDR: "redis://fullstackhex_redis:6379"
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD must be set in .env}
     depends_on:
       redis:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:9121/-/healthy"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          cpus: "1"
+          memory: 512M
     networks:
       - fullstackhex-network
 
   postgres-exporter:
-    image: prometheuscommunity/postgres-exporter:latest
+    image: prometheuscommunity/postgres-exporter:v0.16.0
     container_name: fullstackhex_postgres_exporter
     restart: unless-stopped
     ports:
-      - "${POSTGRES_EXPORTER_PORT:-9187}:9187"
+      - "127.0.0.1:${POSTGRES_EXPORTER_PORT:-9187}:9187"
     environment:
       # Use individual vars to avoid shell injection if password contains special chars
       DATA_SOURCE_USER: ${POSTGRES_USER:-app_user}
@@ -180,5 +226,15 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:9187/-/healthy"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          cpus: "1"
+          memory: 512M
     networks:
       - fullstackhex-network

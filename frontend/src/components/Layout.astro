@@ -13,279 +13,7 @@ const { title } = Astro.props;
     <meta name="viewport" content="width=device-width" />
     <meta name="generator" content={Astro.generator} />
     <title>{title}</title>
-    <style>
-      :root {
-        --bg: #0d0d0d;
-        --text: #e2e8f0;
-        --text-muted: #64748b;
-        --border: #1e293b;
-        --card-bg: #111827;
-        --card-bg-alt: #0a0a0a;
-        --accent: #22c55e;
-        --accent-dot-shadow: #22c55e88;
-        --dot-amber: #f59e0b;
-        --btn-bg: #f8fafc;
-        --btn-text: #0d0d0d;
-        --btn-border: #1e293b;
-        --error-bg: #1a0a0a;
-        --error-border: #3b1111;
-        --error-text: #ef4444;
-        --diag-bg: #1a0a0a;
-        --diag-border: #3b1111;
-      }
-
-      [data-theme="light"] {
-        --bg: #f8fafc;
-        --text: #1e293b;
-        --text-muted: #475569;
-        --border: #cbd5e1;
-        --card-bg: #ffffff;
-        --card-bg-alt: #f1f5f9;
-        --accent: #16a34a;
-        --accent-dot-shadow: #16a34a44;
-        --dot-amber: #d97706;
-        --btn-bg: #0f172a;
-        --btn-text: #f8fafc;
-        --btn-border: #cbd5e1;
-        --error-bg: #fef2f2;
-        --error-border: #fecaca;
-        --error-text: #dc2626;
-        --diag-bg: #fef2f2;
-        --diag-border: #fecaca;
-      }
-
-      @media (prefers-reduced-motion: no-preference) {
-        body, body * {
-          transition: color 0.2s ease, background-color 0.2s ease, border-color 0.2s ease;
-        }
-      }
-
-      *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
-      body {
-        font-family: ui-monospace, "Cascadia Code", "Source Code Pro", Menlo, Consolas, monospace;
-        background: var(--bg);
-        color: var(--text);
-        min-height: 100vh;
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        padding: 2rem;
-      }
-
-      .container { max-width: 640px; width: 100%; }
-
-      /* Nav */
-      nav {
-        width: 100%;
-        max-width: 640px;
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        padding-bottom: 1rem;
-        margin-bottom: 2rem;
-        border-bottom: 1px solid var(--border);
-      }
-      nav a {
-        color: var(--text-muted);
-        text-decoration: none;
-        font-size: 0.8rem;
-      }
-      nav a:hover { color: #94a3b8; }
-      nav .brand {
-        font-weight: 700;
-        font-size: 1rem;
-        color: var(--text);
-        letter-spacing: -0.02em;
-      }
-      nav .nav-links { display: flex; gap: 1.25rem; align-items: center; }
-      nav .user-menu {
-        font-size: 0.75rem;
-        color: #94a3b8;
-      }
-      nav .logout-btn {
-        background: none;
-        border: 1px solid var(--border);
-        border-radius: 4px;
-        color: var(--text-muted);
-        font-family: inherit;
-        font-size: 0.7rem;
-        padding: 0.25rem 0.5rem;
-        cursor: pointer;
-      }
-      nav .logout-btn:hover { border-color: #ef4444; color: #ef4444; }
-
-      .theme-btn {
-        min-width: 44px;
-        min-height: 44px;
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        background: transparent;
-        border: 1px solid var(--border);
-        border-radius: 6px;
-        color: var(--text-muted);
-        cursor: pointer;
-        padding: 10px;
-      }
-      .theme-btn:hover {
-        color: #94a3b8;
-      }
-      .theme-btn svg { width: 20px; height: 20px; }
-      [data-theme="dark"] .sun-icon { display: none; }
-      [data-theme="light"] .moon-icon { display: none; }
-
-      .hamburger-btn {
-        display: none;
-        min-width: 44px;
-        min-height: 44px;
-        align-items: center;
-        justify-content: center;
-        background: transparent;
-        border: 1px solid var(--border);
-        border-radius: 6px;
-        color: var(--text-muted);
-        cursor: pointer;
-        padding: 10px;
-      }
-      .hamburger-btn:hover { color: #94a3b8; }
-      .hamburger-btn svg {
-        width: 24px;
-        height: 24px;
-      }
-
-      #nav-menu {
-        display: none;
-        overflow: hidden;
-        max-height: 0;
-        transition: max-height 0.25s ease;
-        width: 100%;
-        max-width: 640px;
-      }
-      #nav-menu[aria-hidden="false"] {
-        display: flex;
-        flex-direction: column;
-        gap: 0.75rem;
-        padding: 0.75rem 0;
-        border-bottom: 1px solid var(--border);
-        margin-bottom: 1.5rem;
-        max-height: 300px;
-      }
-      #nav-menu a {
-        color: var(--text-muted);
-        text-decoration: none;
-        font-size: 0.85rem;
-        padding: 0.5rem 0;
-      }
-      #nav-menu a:hover { color: #94a3b8; }
-
-      @media (max-width: 480px) {
-        nav .nav-links { display: none; }
-        .hamburger-btn { display: inline-flex; }
-        body { padding: 1rem; }
-      }
-
-      /* Shared card style */
-      .card {
-        border: 1px solid var(--border);
-        border-radius: 8px;
-        padding: 1.25rem;
-        background: var(--card-bg);
-      }
-
-      /* Form styles */
-      .form-group { margin-bottom: 1rem; }
-      .form-group label {
-        display: block;
-        font-size: 0.7rem;
-        letter-spacing: 0.1em;
-        text-transform: uppercase;
-        color: var(--text-muted);
-        margin-bottom: 0.5rem;
-      }
-      .form-group input {
-        width: 100%;
-        padding: 0.6rem 0.75rem;
-        background: var(--card-bg-alt);
-        border: 1px solid var(--border);
-        border-radius: 6px;
-        color: var(--text);
-        font-family: inherit;
-        font-size: 0.9rem;
-        outline: none;
-      }
-      .form-group input:focus { border-color: #334155; }
-      .form-group input::placeholder { color: #334155; }
-
-      .btn {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        gap: 0.4rem;
-        width: 100%;
-        padding: 0.6rem 1rem;
-        border: 1px solid var(--border);
-        border-radius: 6px;
-        background: var(--btn-bg);
-        color: var(--btn-text);
-        font-family: inherit;
-        font-size: 0.85rem;
-        font-weight: 600;
-        cursor: pointer;
-      }
-      .btn:hover { background: #e2e8f0; }
-      [data-theme="light"] .btn:hover { background: #1e293b; }
-      .btn:disabled { opacity: 0.5; cursor: not-allowed; }
-
-      .btn-oauth {
-        background: transparent;
-        color: var(--text-muted);
-        margin-top: 0.5rem;
-      }
-      .btn-oauth:hover { border-color: #334155; background: transparent; color: #e2e8f0; }
-
-      .divider {
-        display: flex;
-        align-items: center;
-        gap: 0.75rem;
-        margin: 1.25rem 0;
-        color: var(--border);
-        font-size: 0.7rem;
-      }
-      .divider::before, .divider::after {
-        content: "";
-        flex: 1;
-        border-top: 1px solid var(--border);
-      }
-
-      .error-msg {
-        padding: 0.6rem 0.75rem;
-        background: var(--error-bg);
-        border: 1px solid var(--error-border);
-        border-radius: 6px;
-        color: var(--error-text);
-        font-size: 0.8rem;
-        margin-bottom: 1rem;
-        display: none;
-      }
-      .error-msg.visible { display: block; }
-
-      .form-footer {
-        text-align: center;
-        margin-top: 1.25rem;
-        font-size: 0.8rem;
-        color: var(--text-muted);
-      }
-      .form-footer a { color: #94a3b8; text-decoration: none; }
-      .form-footer a:hover { color: #e2e8f0; }
-
-      footer {
-        margin-top: 2.5rem;
-        text-align: center;
-        font-size: 0.75rem;
-        color: var(--border);
-      }
-    </style>
+    <link rel="stylesheet" href="/styles/layout.css" />
   </head>
   <body>
     <nav>
@@ -328,14 +56,20 @@ const { title } = Astro.props;
     </div>
     <footer>port 8001 &middot; <a href="https://github.com/kevo-tz/fullstackhex" style="color:inherit">github.com/kevo-tz/fullstackhex</a></footer>
     <script>
-      const TOKEN_KEY = "fullstackhex_token";
-      const USER_KEY = "fullstackhex_user";
-      const REFRESH_KEY = "fullstackhex_refresh_token";
+      async function fetchUser(): Promise<Record<string, string> | null> {
+        try {
+          const res = await fetch("/api/auth/me");
+          if (!res.ok) return null;
+          return await res.json();
+        } catch {
+          return null;
+        }
+      }
 
-      function updateNav() {
+      async function updateNav() {
         const el = document.getElementById("auth-nav");
         const elMobile = document.getElementById("auth-nav-mobile");
-        const user = localStorage.getItem(USER_KEY);
+        const user = await fetchUser();
 
         function buildUserNav(u: Record<string, string>) {
           const span = document.createElement("span");
@@ -370,14 +104,8 @@ const { title } = Astro.props;
         }
 
         if (user) {
-          try {
-            const u = JSON.parse(user);
-            if (el) setNav(el, buildUserNav(u));
-            if (elMobile) setNav(elMobile, buildUserNav(u));
-          } catch {
-            if (el) setNav(el, buildGuestNav());
-            if (elMobile) setNav(elMobile, buildGuestNav());
-          }
+          if (el) setNav(el, buildUserNav(user));
+          if (elMobile) setNav(elMobile, buildUserNav(user));
         } else {
           if (el) setNav(el, buildGuestNav());
           if (elMobile) setNav(elMobile, buildGuestNav());
@@ -391,63 +119,52 @@ const { title } = Astro.props;
         try {
           await fetch("/api/auth/logout", { method: "POST" });
         } catch { /* server session cleanup is best-effort */ }
-        localStorage.removeItem(TOKEN_KEY);
-        localStorage.removeItem(USER_KEY);
-        localStorage.removeItem(REFRESH_KEY);
-        document.cookie = "fullstackhex_token=; path=/; max-age=0";
-        document.cookie = "fullstackhex_refresh_token=; path=/; max-age=0";
+        document.cookie = "access_token=; path=/; max-age=0";
+        document.cookie = "refresh_token=; path=/; max-age=0";
         window.location.href = "/login";
       }
-      (window as any).logout = logout;
+      interface CustomWindow extends Window {
+        logout?: () => void;
+      }
+      (window as CustomWindow).logout = logout;
 
       const origFetch = window.fetch.bind(window);
-      let refreshPromise: Promise<string | null> | null = null;
+      let refreshPromise: Promise<boolean> | null = null;
 
-      async function performRefresh(): Promise<string | null> {
-        const refreshToken = localStorage.getItem(REFRESH_KEY);
-        if (!refreshToken) return null;
+      async function performRefresh(): Promise<boolean> {
         try {
           const refreshRes = await origFetch("/api/auth/refresh", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ refresh_token: refreshToken }),
           });
           if (refreshRes.ok) {
-            const data = await refreshRes.json();
-            localStorage.setItem(TOKEN_KEY, data.access_token);
-            if (data.refresh_token) localStorage.setItem(REFRESH_KEY, data.refresh_token);
-            return data.access_token;
+            return true;
           }
-          localStorage.removeItem(TOKEN_KEY);
-          localStorage.removeItem(USER_KEY);
-          localStorage.removeItem(REFRESH_KEY);
-          document.cookie = "fullstackhex_token=; path=/; max-age=0";
-          document.cookie = "fullstackhex_refresh_token=; path=/; max-age=0";
+          document.cookie = "access_token=; path=/; max-age=0";
+          document.cookie = "refresh_token=; path=/; max-age=0";
           window.location.href = "/login";
-          return null;
-        } catch {
-          console.warn("Token refresh request failed");
-          return null;
+          return false;
+        } catch (err) {
+          console.warn("Token refresh failed:", err instanceof Error ? err.message : String(err));
+          return false;
         }
       }
 
       window.fetch = (async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
         const res = await origFetch(input, init);
-        if (res.status === 401) {
+        if (res.status === 401 && !(init?.method === "POST" && typeof init?.body === "string" && (init.headers as Record<string, string>)?.["Content-Type"]?.includes("multipart/form-data"))) {
           if (!refreshPromise) {
             refreshPromise = performRefresh().finally(() => { refreshPromise = null; });
           }
-          const newToken = await refreshPromise;
-          if (newToken) {
-            const body = init?.body;
-            if (body && typeof body !== "string") {
+          const ok = await refreshPromise;
+          if (ok) {
+            try {
+              const retryReq = new Request(input, init);
+              return origFetch(retryReq);
+            } catch (retryErr) {
+              console.warn("Retry failed:", retryErr instanceof Error ? retryErr.message : String(retryErr));
               return res;
             }
-            const newInit: RequestInit = { ...init };
-            const newHeaders = new Headers(init?.headers);
-            newHeaders.set("Authorization", `Bearer ${newToken}`);
-            newInit.headers = newHeaders;
-            return origFetch(input, newInit);
           }
         }
         return res;
@@ -456,14 +173,14 @@ const { title } = Astro.props;
       updateNav();
 
       // Init theme from localStorage
-      try { const t = localStorage.getItem("theme"); if (t) document.documentElement.dataset.theme = t; } catch {}
+      try { const t = localStorage.getItem("theme"); if (t) document.documentElement.dataset.theme = t; } catch { /* localStorage may be blocked in private browsing */ }
 
       // Theme toggle
       function toggleTheme() {
         var html = document.documentElement;
         var next = html.dataset.theme === "dark" ? "light" : "dark";
         html.dataset.theme = next;
-        try { localStorage.setItem("theme", next); } catch {}
+        try { localStorage.setItem("theme", next); } catch { /* localStorage may be blocked in private browsing */ }
       }
 
       document.getElementById("theme-toggle")?.addEventListener("click", toggleTheme);

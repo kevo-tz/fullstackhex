@@ -4,6 +4,7 @@
 //! that are independent of the web framework, database, or transport.
 
 pub mod error;
+pub mod time;
 
 /// Placeholder: remove when real domain types are added.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

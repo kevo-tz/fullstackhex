@@ -1,8 +1,9 @@
 # Alertmanager configuration for FullStackHex
 # Receives alerts from Prometheus and routes them to notification channels.
 #
-# NOTE: No receivers are configured by default.
 # Teams should add their own Slack, PagerDuty, or email receivers.
+# Set SLACK_WEBHOOK_URL, PAGERDUTY_SERVICE_KEY, or SMTP settings
+# in .env to enable real notification routing.
 
 global:
   # smtp_smarthost: 'localhost:587'
@@ -22,12 +23,18 @@ route:
 
 receivers:
   - name: 'default'
-    # Example: uncomment and configure to enable Slack notifications
+    webhook_configs:
+      - url: 'http://localhost:5001/alerts'
+        send_resolved: true
+    # Slack example — set SLACK_WEBHOOK_URL in .env
     # slack_configs:
-    #   - api_url: 'https://hooks.slack.com/services/YOUR/WEBHOOK/URL'
+    #   - api_url: '${SLACK_WEBHOOK_URL}'
     #     channel: '#alerts'
-    #     title: '{% raw %}{{ .GroupLabels.alertname }}{% endraw %}'
-    #     text: '{% raw %}{{ range .Alerts }}{{ .Annotations.summary }}{{ end }}{% endraw %}'
+    #     send_resolved: true
+    # PagerDuty example — set PAGERDUTY_SERVICE_KEY in .env
+    # pagerduty_configs:
+    #   - service_key: '${PAGERDUTY_SERVICE_KEY}'
+    #     send_resolved: true
 
 inhibit_rules:
   - source_match:

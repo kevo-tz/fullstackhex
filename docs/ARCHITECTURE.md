@@ -37,7 +37,8 @@
 │                        ▼                              │
 │  ┌─────────────────────────────────────────┐         │
 │  │    Python Service (FastAPI)             │         │
-│  │    /tmp/fullstackhex-python.sock (internal) │         │
+│  │    Dev: /tmp/fullstackhex-python.sock   │         │
+│  │    Prod: /tmp/sidecar/py-api.sock      │         │
 │  └─────────────────────────────────────────┘         │
 └──────────────┬───────────────────────────────────────┘
                │
@@ -103,7 +104,7 @@
 | Object Storage | RustFS (S3-compatible) | `docker compose ps` |
 | Monitoring | Prometheus 3.x + Grafana | Production only, see .env.example |
 | Reverse Proxy | Nginx (production) | Production only, see .env.example |
-| IPC | Unix domain socket | `/tmp/fullstackhex-python.sock` |
+| IPC | Unix domain socket | `/tmp/fullstackhex-python.sock` (dev), `/tmp/sidecar/py-api.sock` (prod) |
 
 ## Workspace Structure
 
@@ -133,7 +134,7 @@ backend/
 
 ## IPC: Unix Domain Socket
 
-py-api binds to `/tmp/fullstackhex-python.sock`. Rust communicates through this socket for:
+py-api binds to `/tmp/fullstackhex-python.sock` in dev and `/tmp/sidecar/py-api.sock` in prod. Rust communicates through this socket for:
 - Low latency (no TCP overhead)
 - Security (only local processes can connect)
 - Simple integration with FastAPI/Uvicorn
@@ -141,8 +142,9 @@ py-api binds to `/tmp/fullstackhex-python.sock`. Rust communicates through this 
 ### PythonSidecar (implemented in v0.3.1.0)
 
 The \`PythonSidecar\` struct in \`backend/py-sidecar/src/lib.rs\` handles
-HTTP communication with a running py-api process via a Unix domain socket. The service
-runs independently — start it with `uv run uvicorn app.main:app --uds /tmp/fullstackhex-python.sock` (or use `make dev` to start everything).
+HTTP communication with a running py-api process via a Unix domain socket. The socket
+path is `/tmp/fullstackhex-python.sock` in dev and `/tmp/sidecar/py-api.sock` in prod.
+Start it with `uv run uvicorn app.main:app --uds /tmp/fullstackhex-python.sock` (or use `make dev` to start everything).
 
 ```rust
 // Key API:
@@ -181,7 +183,7 @@ fn get_socket_path() -> PathBuf {
 |---------|------|---------|
 | Frontend | 4321 | Development server |
 | Rust Backend | 8001 | Only external API |
-| py-api | Internal | Unix socket only (/tmp/fullstackhex-python.sock) |
+| py-api | Internal | Dev: /tmp/fullstackhex-python.sock, Prod: /tmp/sidecar/py-api.sock |
 | PostgreSQL | 5432 | Database |
 | Redis | 6379 | Cache |
 | RustFS | 9000 | S3-compatible storage |

@@ -159,6 +159,19 @@ pub async fn download_streaming(
     if !resp.status().is_success() {
         return Err(ApiError::NotFound(format!("Object not found: {key}")));
     }
+    // Guard against unbounded downloads: reject streaming downloads
+    // larger than 500MB to prevent proxy memory exhaustion.
+    if let Some(len) = resp
+        .headers()
+        .get("content-length")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.parse::<u64>().ok())
+        && len > 500 * 1024 * 1024
+    {
+        return Err(ApiError::ValidationError(format!(
+            "Object too large for streaming download: {key} ({len} bytes, max 500MB)"
+        )));
+    }
     Ok(resp)
 }
 

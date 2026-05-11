@@ -43,7 +43,7 @@ ssh "$DEPLOY_USER@$DEPLOY_HOST" "cd $DEPLOY_PATH && docker compose -f compose/pr
 
 ## Deploy Lock
 
-Use `flock` if you need to prevent concurrent deployments manually. The lock file convention is at `.deploy-state/lock`.
+No automated deploy lock exists currently. Use `flock` manually if you need to prevent concurrent deployments.
 
 ## Health Verification
 

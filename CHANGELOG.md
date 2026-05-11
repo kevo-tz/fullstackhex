@@ -7,10 +7,65 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [0.11.2] - 2026-05-10
+## [0.13.0] - 2026-05-11
+
+### Security
+- **CSRF bypass fix**: `validate_csrf_token("", "")` now returns false — empty tokens rejected
+- **Auth tokens switched to HttpOnly cookies**: migrated from localStorage — prevents XSS token theft
+- **Nginx runs as non-root**: user `101` in prod compose — reduces container privilege
+- **Nginx security headers**: added HSTS, CSP, X-Frame-Options, X-Content-Type-Options, Referrer-Policy, Permissions-Policy
+- **Port binding lockdown**: all exporter/metric ports bound to `127.0.0.1` (dev + monitor)
+- **Image tag pinning**: all 14 `:latest` tags pinned to specific versions across dev/monitor/prod
+- **Redis password required**: dev compose enforces `REDIS_PASSWORD` — consistent with prod
+- **Alert rules activated**: `ServiceDown` and `HighLatency` rules uncommented
+- **OAuth trigger restricted**: `opencode.yml` checks `author_association` — only OWNER/MEMBER/COLLABORATOR can trigger
+- **Blacklist fail-closed option**: new `AUTH_FAIL_OPEN_ON_REDIS_ERROR` env var — defaults to fail-open for backward compat
+- **Cookie auth fully implemented**: `cookie_auth_prepare()` + `resolve_cookie_user()` — session cookie parsing, CSRF validation, Redis session lookup
 
 ### Fixed
-- **install.sh interactive prompts**: `curl | bash` pipeline now correctly prompts for project name and GitHub username by detecting `/dev/tty` availability instead of failing with "non-interactive" error (#33)
+- **`unwrap()`/`expect()` panics**: all non-test panics replaced with `unwrap_or_else` + `process::exit(1)` + `tracing::error!()` in `main.rs`
+- **`let _ =` error discard**: all silent discards replaced with `if let Err(e) { tracing::warn!(...) }` — backoff increments, session destroy, blacklist checks
+- **DB errors swallowed**: all `sqlx` errors logged via `tracing::error!()` before returning 500
+- **Health check rendering deduplicated**: extracted `format_health_value()` and `sidecar_error_json()` — shared between traced/untraced paths
+- **`window.fetch` monkey-patch**: removed empty JSON body from `performRefresh()`, fixed silent `catch {}`
+- **Monkey-patch type safety**: consolidated `as unknown as typeof fetch` casts into `makeFetch()` helper
+- **Health retry UI flash**: no longer resets status dots before re-fetch — preserves current state
+- **Auth proxy headers**: forwards `cookie`, `x-trace-id`, `x-forwarded-for` in `[...route].ts`
+- **`jsonLog` SSR guard**: only logs on server in dev mode (`typeof window === "undefined" && DEV`)
+- **OAuthService per-request reconstruction**: stored in `AuthState.oauth` as `Arc<OAuthService>` — created once at startup
+- **`reqwest::Client` per OAuth request**: now stored as field on `OAuthService` — reused across requests
+- **HMAC delimiter collision**: uses `json.dumps({...}, sort_keys=True)` instead of pipe-delimited string
+- **Python `SHARED_SECRET`**: wrapped in `Settings` class — cached at module level, testable via `settings.shared_secret`
+- **Python middleware types**: added `Callable[[Request], Awaitable[Response]]` annotations + docstrings
+- **Cookie header `unwrap` calls**: replaced with `.expect("cookie header format is always valid")`
+
+### Changed
+- **DB pool default**: increased from 5 to 20 (`DB_MAX_CONNECTIONS` env var)
+- **Test runner consolidation**: vitest-only — removed duplicate `bun test` from CI and AGENTS.md
+- **Shebangs standardized**: all scripts use `#!/usr/bin/env bash` for portability
+- **`install.sh` eval removal**: `eval "$*"` replaced with `"$@"` — eliminates shell injection risk
+- **Python sidecar status default**: parse failure defaults to 502 instead of 200
+- **`ov-pin` file saved during postinstall**: copy to `docs/DESIGN.md` as redirect to `DOC_STYLE_GUIDE.md`
+- **opencode.yml pin restored**: SHA reset to `v1.14.48` (was `v1.14.41`)
+
+### Added
+- **Backup/restore scripts**: `scripts/backup.sh` (pg_dump + redis SAVE) and `scripts/restore.sh` (pg_restore + redis reload)
+- **Disaster recovery guide**: `docs/DISASTER_RECOVERY.md` — PostgreSQL, Redis, RustFS procedures
+- **Secrets rotation guide**: `docs/SECRETS_ROTATION.md` — all 6 secrets with rotation steps
+- **TLS certificate guide**: `docs/TLS.md` — renewal flow, monitoring, troubleshooting
+- **Documentation style guide**: `docs/DOC_STYLE_GUIDE.md` (renamed from `docs/DESIGN.md`)
+- **`.env`/`.env.example` sync**: OAuth sections, RUSTFS vars, `FAIL_OPEN_ON_REDIS_ERROR` — all synced
+- **`depends_on` with health checks**: backend/py-api/frontend wait for DB/Redis/storage in prod compose
+- **Resource limits**: added to adminer, redis-commander, redis-exporter, postgres-exporter, alertmanager, certbot
+- **Health checks**: added to adminer, redis-commander, redis-exporter, postgres-exporter, alertmanager
+- **Python dependency caching**: `actions/cache@v4` for `~/.cache/uv` in CI
+- **Docker dependabot**: added Docker ecosystem pointing to `/compose` directory
+- **Alertmanager receiver**: webhook configured with Slack/PagerDuty templates
+- **`.dockerignore` tracked**: removed from `.gitignore`
+- **`set -euo pipefail`**: added to `common.sh`, `test.sh`, `logs.sh`
+- **`conftest.py` + `__init__.py`**: shared test fixtures for py-api tests
+- **Documentation accuracy fixes**: INFRASTRUCTURE.md, CI.md, MONITORING.md, performance-budget.md, ARCHITECTURE.md, DEPLOY.md — all cross-referenced and corrected
+- **Grafana/Prometheus versions**: documented as Prometheus v3.3.1 and Grafana 11.2.0
 
 ---
 

@@ -7,6 +7,7 @@ import json
 import os
 import sys
 import time
+from typing import Awaitable, Callable
 
 from prometheus_client import (
     Counter,
@@ -16,6 +17,19 @@ from prometheus_client import (
 )
 
 app = FastAPI()
+
+
+class Settings:
+    """Application settings, sourced from environment at startup."""
+
+    def __init__(self) -> None:
+        secret = os.environ.get("SIDECAR_SHARED_SECRET", "")
+        if not secret:
+            logging.warning("SIDECAR_SHARED_SECRET is empty — all requests will be rejected")
+        self.shared_secret: str = secret
+
+
+settings = Settings()
 
 # Prometheus metrics
 PYTHON_REQUESTS_TOTAL = Counter(
@@ -32,6 +46,8 @@ PYTHON_REQUEST_DURATION = Histogram(
 
 
 class JsonFormatter(logging.Formatter):
+    """Structured JSON log formatter for production logging."""
+
     def format(self, record: logging.LogRecord) -> str:
         ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
         obj = {
@@ -48,21 +64,27 @@ class JsonFormatter(logging.Formatter):
 
 
 def setup_logging() -> None:
+    """Configure root logger with JSON formatter for structured output."""
     handler = logging.StreamHandler(sys.stderr)
     handler.setFormatter(JsonFormatter())
     root = logging.getLogger()
-    # Clear uvicorn handlers to avoid duplicate output
-    root.handlers.clear()
     root.addHandler(handler)
     root.setLevel(logging.INFO)
 
 
-setup_logging()
+@app.on_event("startup")
+async def _startup() -> None:
+    setup_logging()
+
+
 logger = logging.getLogger("py-api")
 
 
 @app.middleware("http")
-async def trace_id_middleware(request: Request, call_next):
+async def trace_id_middleware(
+    request: Request, call_next: Callable[[Request], Awaitable[Response]]
+) -> Response:
+    """FastAPI middleware that logs request duration and increments Prometheus counters."""
     trace_id = request.headers.get("x-trace-id", "")
     start = time.monotonic()
     response = await call_next(request)
@@ -85,14 +107,16 @@ async def trace_id_middleware(request: Request, call_next):
 
 
 @app.middleware("http")
-async def hmac_auth_middleware(request: Request, call_next):
+async def hmac_auth_middleware(
+    request: Request, call_next: Callable[[Request], Awaitable[Response]]
+) -> Response:
+    """FastAPI middleware that validates HMAC-SHA256 signatures on auth headers forwarded from the Rust backend."""
     path = request.url.path
     # Skip HMAC for public routes
     if path in ("/health", "/metrics"):
         return await call_next(request)
 
-    shared_secret = os.environ.get("SIDECAR_SHARED_SECRET", "")
-    if not shared_secret:
+    if not settings.shared_secret:
         # Fail closed — never trust auth headers if shared secret is missing
         return Response(
             content=json.dumps(
@@ -114,10 +138,10 @@ async def hmac_auth_middleware(request: Request, call_next):
             media_type="application/json",
         )
 
-    # Compute expected signature: HMAC-SHA256(secret, "user_id|email|name")
-    payload = f"{user_id}|{email}|{name}"
+    # Compute expected signature: HMAC-SHA256(secret, JSON payload)
+    payload = json.dumps({"user_id": user_id, "email": email, "name": name}, sort_keys=True)
     expected = hmac.new(
-        shared_secret.encode("utf-8"),
+        settings.shared_secret.encode("utf-8"),
         payload.encode("utf-8"),
         hashlib.sha256,
     ).hexdigest()
@@ -134,14 +158,16 @@ async def hmac_auth_middleware(request: Request, call_next):
 
 @app.get("/health")
 def health(request: Request) -> dict[str, str]:
+    """Health check endpoint. Returns service status and version."""
     trace_id = request.headers.get("x-trace-id", "")
     logger.info("health check", extra={"trace_id": trace_id})
     # Bump this version together with VERSION file at repo root
-    return {"status": "ok", "service": "py-api", "version": "0.7.0"}
+    return {"status": "ok", "service": "py-api", "version": "0.13.0"}
 
 
 @app.get("/metrics")
 def metrics() -> Response:
+    """Prometheus metrics endpoint — returns raw metrics in OpenMetrics format."""
     return Response(
         content=generate_latest(),
         media_type=CONTENT_TYPE_LATEST,

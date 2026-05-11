@@ -26,10 +26,6 @@ FullStackHex uses GitHub Actions for continuous integration and deployment. The 
 - Checks p50 < 5ms, p99 < 20ms for /health endpoint
 - TTFB < 0.1s for frontend
 
-### 5. Build Docker Images (main branch only)
-- Builds production images using `compose/prod.yml`
-- Pushes to container registry (if configured)
-
 ## Required Secrets
 
 Configure these in GitHub repository settings (**Settings → Secrets and variables → Actions**):
@@ -40,8 +36,6 @@ Configure these in GitHub repository settings (**Settings → Secrets and variab
 | `REDIS_PASSWORD` | Redis password | Tests |
 | `RUSTFS_ACCESS_KEY` | S3-compatible storage access key | Integration tests |
 | `RUSTFS_SECRET_KEY` | S3-compatible storage secret key | Integration tests |
-| `DOCKER_USERNAME` | Docker Hub username | Image publishing |
-| `DOCKER_PASSWORD` | Docker Hub password/token | Image publishing |
 
 ## Environment Variables
 

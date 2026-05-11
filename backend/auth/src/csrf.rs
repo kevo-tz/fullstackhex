@@ -3,12 +3,10 @@
 //! Uses the double-submit pattern: token stored in cookie,
 //! validated against X-CSRF-Token header.
 
-use rand::RngCore;
-
 /// Generate a random CSRF token (32 bytes hex-encoded).
 pub fn generate_csrf_token() -> String {
     let mut bytes = [0u8; 32];
-    rand::rng().fill_bytes(&mut bytes);
+    getrandom::fill(&mut bytes).expect("failed to generate random bytes");
     hex::encode(bytes)
 }
 

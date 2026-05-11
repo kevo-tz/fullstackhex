@@ -388,11 +388,9 @@ pub async fn create_multipart_upload(
         match reader.read_event_into(&mut buf) {
             Ok(Event::Start(ref e)) if e.name().as_ref() == b"UploadId" => {
                 upload_id = Some(
-                    String::from_utf8_lossy(
-                        &reader.read_text(e.name()).map_err(|e| {
-                            ApiError::InternalError(format!("Failed to read UploadId text: {e}"))
-                        })?,
-                    )
+                    String::from_utf8_lossy(&reader.read_text(e.name()).map_err(|e| {
+                        ApiError::InternalError(format!("Failed to read UploadId text: {e}"))
+                    })?)
                     .to_string(),
                 );
             }

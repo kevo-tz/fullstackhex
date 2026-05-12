@@ -1,5 +1,7 @@
 # Secrets Rotation Guide
 
+> **Cross-platform note:** The `sed -i` commands below work on Linux. On macOS, install GNU sed (`brew install gnu-sed`) and use `gsed -i 's/.../.../' .env`, or add an empty backup extension: `sed -i '' 's/.../.../' .env`.
+
 ## JWT_SECRET
 
 Rotating the JWT secret invalidates ALL existing sessions — all users must re-authenticate.

@@ -9,5 +9,6 @@ def _clean_env(monkeypatch):
     import app.main
 
     app.main.settings.shared_secret = ""
+    app.main._metrics_registered = False
     yield
     app.main.settings.shared_secret = os.environ.get("SIDECAR_SHARED_SECRET", "")

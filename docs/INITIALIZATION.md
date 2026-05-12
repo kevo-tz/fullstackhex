@@ -111,7 +111,7 @@ uv run pytest
 
 # Verify frontend
 cd ../frontend
-bun test
+vitest run
 
 # Verify config
 cd ..

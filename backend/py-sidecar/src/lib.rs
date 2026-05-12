@@ -516,7 +516,6 @@ mod tests {
 
     #[tokio::test]
     #[serial_test::serial]
-    #[ignore = "socket test — run via make test-socket-ci"]
     async fn get_happy_path_via_socket() {
         use tokio::io::AsyncWriteExt;
         use tokio::net::UnixListener;
@@ -535,7 +534,7 @@ mod tests {
             tokio::time::sleep(Duration::from_millis(200)).await;
         });
 
-        tokio::time::sleep(Duration::from_millis(50)).await;
+        tokio::time::sleep(Duration::from_millis(200)).await;
         let result = sc.get("/health").await;
         assert!(result.is_ok(), "expected Ok, got {:?}", result);
         assert_eq!(result.unwrap()["status"], "ok");
@@ -543,7 +542,6 @@ mod tests {
 
     #[tokio::test]
     #[serial_test::serial]
-    #[ignore = "socket test — run via make test-socket-ci"]
     async fn get_http_error_via_socket() {
         use tokio::io::AsyncWriteExt;
         use tokio::net::UnixListener;
@@ -561,7 +559,7 @@ mod tests {
             tokio::time::sleep(Duration::from_millis(200)).await;
         });
 
-        tokio::time::sleep(Duration::from_millis(50)).await;
+        tokio::time::sleep(Duration::from_millis(200)).await;
         let result = sc.get("/health").await;
         assert!(
             matches!(result, Err(SidecarError::HttpError { status: 500, .. })),
@@ -572,7 +570,6 @@ mod tests {
 
     #[tokio::test]
     #[serial_test::serial]
-    #[ignore = "socket test — run via make test-socket-ci"]
     async fn get_invalid_json_via_socket() {
         use tokio::io::AsyncWriteExt;
         use tokio::net::UnixListener;
@@ -590,7 +587,7 @@ mod tests {
             tokio::time::sleep(Duration::from_millis(200)).await;
         });
 
-        tokio::time::sleep(Duration::from_millis(50)).await;
+        tokio::time::sleep(Duration::from_millis(200)).await;
         let result = sc.get("/health").await;
         assert!(
             matches!(result, Err(SidecarError::InvalidResponse(_))),
@@ -601,7 +598,6 @@ mod tests {
 
     #[tokio::test]
     #[serial_test::serial]
-    #[ignore = "socket test — run via make test-socket-ci"]
     async fn get_retries_on_connection_refused_via_socket() {
         use tokio::io::AsyncWriteExt;
         use tokio::net::UnixListener;
@@ -624,7 +620,7 @@ mod tests {
             tokio::time::sleep(Duration::from_millis(200)).await;
         });
 
-        tokio::time::sleep(Duration::from_millis(50)).await;
+        tokio::time::sleep(Duration::from_millis(200)).await;
         let result = sc.get("/health").await;
         assert!(result.is_ok(), "expected Ok after retry, got {:?}", result);
         assert_eq!(result.unwrap()["retry"], "worked");
@@ -706,7 +702,6 @@ mod tests {
 
     #[tokio::test]
     #[serial_test::serial]
-    #[ignore = "socket test — run via make test-socket-ci"]
     async fn get_timeout_via_socket() {
         use tokio::net::UnixListener;
 
@@ -723,7 +718,7 @@ mod tests {
             let _ = stream.shutdown().await;
         });
 
-        tokio::time::sleep(Duration::from_millis(50)).await;
+        tokio::time::sleep(Duration::from_millis(200)).await;
         let result = sc.get("/health").await;
         assert!(
             matches!(result, Err(SidecarError::Timeout(_))),
@@ -734,7 +729,6 @@ mod tests {
 
     #[tokio::test]
     #[serial_test::serial]
-    #[ignore = "socket test — run via make test-socket-ci"]
     async fn get_missing_json_fields_via_socket() {
         use tokio::io::AsyncWriteExt;
         use tokio::net::UnixListener;
@@ -752,7 +746,7 @@ mod tests {
             tokio::time::sleep(Duration::from_millis(200)).await;
         });
 
-        tokio::time::sleep(Duration::from_millis(50)).await;
+        tokio::time::sleep(Duration::from_millis(200)).await;
         let result = sc.get("/health").await;
         // Parses successfully — missing fields are fine, JSON is valid
         assert!(result.is_ok(), "expected Ok, got {:?}", result);
@@ -764,7 +758,6 @@ mod tests {
 
     #[tokio::test]
     #[serial_test::serial]
-    #[ignore = "socket test — run via make test-socket-ci"]
     async fn get_empty_body_via_socket() {
         use tokio::io::AsyncWriteExt;
         use tokio::net::UnixListener;
@@ -782,7 +775,7 @@ mod tests {
             tokio::time::sleep(Duration::from_millis(200)).await;
         });
 
-        tokio::time::sleep(Duration::from_millis(50)).await;
+        tokio::time::sleep(Duration::from_millis(200)).await;
         let result = sc.get("/health").await;
         assert!(
             matches!(result, Err(SidecarError::InvalidResponse(_))),
@@ -793,7 +786,6 @@ mod tests {
 
     #[tokio::test]
     #[serial_test::serial]
-    #[ignore = "socket test — run via make test-socket-ci"]
     async fn get_trace_id_propagation_via_socket() {
         use tokio::io::{AsyncReadExt, AsyncWriteExt};
         use tokio::net::UnixListener;
@@ -818,7 +810,7 @@ mod tests {
             tokio::time::sleep(Duration::from_millis(200)).await;
         });
 
-        tokio::time::sleep(Duration::from_millis(50)).await;
+        tokio::time::sleep(Duration::from_millis(200)).await;
         let result = sc
             .get_with_trace_id("/health", "qa-propagate-123", None)
             .await;

@@ -17,10 +17,6 @@ echo "=== Running Python tests ==="
 (cd py-api && uv run pytest) || EXIT=$?
 
 echo ""
-echo "=== Running frontend tests (bun) ==="
-(cd frontend && bun test) || EXIT=$?
-
-echo ""
 echo "=== Running frontend tests (vitest) ==="
 (cd frontend && bun run test:vitest) || EXIT=$?
 

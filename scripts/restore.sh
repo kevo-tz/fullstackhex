@@ -11,7 +11,7 @@ if [ $# -lt 2 ]; then
   echo "Usage: $0 <backup-dir> <timestamp>"
   echo "Example: $0 .backup 20260510-120000"
   echo "Available backups:"
-  ls -1 "$REPO_ROOT/.backup/" 2>/dev/null | sed 's/^/- /' || echo "  (no backups found)"
+  find "$REPO_ROOT/.backup/" -maxdepth 1 -printf '- %f\n' 2>/dev/null || echo "  (no backups found)"
   exit 1
 fi
 

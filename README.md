@@ -71,6 +71,11 @@ chmod +x scripts/*.sh
 | [docs/EXAMPLES.md](docs/EXAMPLES.md) | Copy-paste patterns for extending the stack |
 | [docs/INFRASTRUCTURE.md](docs/INFRASTRUCTURE.md) | Docker Compose reference, volumes, commands |
 | [docs/INITIALIZATION.md](docs/INITIALIZATION.md) | Portable template for new projects |
+| [docs/MONITORING.md](docs/MONITORING.md) | Prometheus + Grafana setup and dashboards |
+| [docs/CI.md](docs/CI.md) | CI/CD pipeline reference |
+| [docs/DISASTER_RECOVERY.md](docs/DISASTER_RECOVERY.md) | Backup and recovery procedures |
+| [docs/SECRETS_ROTATION.md](docs/SECRETS_ROTATION.md) | Secrets rotation for all services |
+| [docs/TLS.md](docs/TLS.md) | TLS certificate management |
 | [docs/INDEX.md](docs/INDEX.md) | Full documentation index |
 
 ## Contributing

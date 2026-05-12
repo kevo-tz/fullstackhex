@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.13.2] - 2026-05-12
+
+### Changed
+- **install.sh**: `cp .env.example .env` → `mv` so only `.env` remains after configuration
+- **install.sh**: README.md no longer copied to scaffolded projects
+- **install.sh**: fixed 17 shellcheck warnings (SC2086, SC2016) — quoted split variables, converted `rsync_excludes` string to array, switched sed expressions from single to double quotes for variable expansion
+- **scripts/restore.sh**: fixed SC2012 warning — replaced `ls` + `sed` with `find -printf`
+
+### Fixed
+- **install.sh**: sed variables `${GITHUB_USER}` and `${PROJECT_NAME}` now correctly expand in generated configs instead of being written literally
+
+---
+
 ## [0.13.1] - 2026-05-12
 
 ### Fixed

@@ -76,6 +76,9 @@ Start here for the FullStackHex documentation. Documents are listed in recommend
 | MONITORING.md | Prometheus + Grafana setup | 4 min |
 | CI.md | CI/CD pipeline reference | 3 min |
 | INITIALIZATION.md | Template for new projects | 3 min |
+| DISASTER_RECOVERY.md | Backup and recovery procedures | 4 min |
+| SECRETS_ROTATION.md | Secrets rotation for all services | 3 min |
+| TLS.md | TLS certificate management | 2 min |
 | performance-budget.md | Performance targets and CI gates | 2 min |
 | logging-conventions.md | Structured log format schema | 2 min |
 

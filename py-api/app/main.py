@@ -38,18 +38,30 @@ class Settings:
 
 settings = Settings()
 
-# Prometheus metrics
-PYTHON_REQUESTS_TOTAL = Counter(
-    "python_requests_total",
-    "Total HTTP requests",
-    ["method", "endpoint", "status"],
-)
-PYTHON_REQUEST_DURATION = Histogram(
-    "python_request_duration_seconds",
-    "HTTP request duration",
-    ["method", "endpoint"],
-    buckets=[0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0],
-)
+_metrics_registered = False
+
+
+def _register_metrics() -> None:
+    """Create and register Prometheus metrics once, guarding against re-import."""
+    global _metrics_registered
+    if _metrics_registered:
+        return
+    global PYTHON_REQUESTS_TOTAL, PYTHON_REQUEST_DURATION
+    PYTHON_REQUESTS_TOTAL = Counter(
+        "python_requests_total",
+        "Total HTTP requests",
+        ["method", "endpoint", "status"],
+    )
+    PYTHON_REQUEST_DURATION = Histogram(
+        "python_request_duration_seconds",
+        "HTTP request duration",
+        ["method", "endpoint"],
+        buckets=[0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0],
+    )
+    _metrics_registered = True
+
+
+_register_metrics()
 
 
 class JsonFormatter(logging.Formatter):

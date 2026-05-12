@@ -103,7 +103,7 @@ cd frontend && vitest run
 # Run with verbose output
 cd backend && cargo test -- --nocapture
 cd py-api && uv run pytest -v
-cd frontend && bun test --verbose
+cd frontend && vitest run --reporter verbose
 ```
 
 ### Socket Path Issues in CI

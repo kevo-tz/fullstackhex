@@ -385,7 +385,7 @@ async fn health_db_ok_with_real_pool() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-#[ignore = "requires real Unix socket infrastructure — run with --ignored on a native Linux host"]
+#[serial]
 async fn health_python_ok_with_mock_socket() {
     use api::AppState;
     use api::DbStatus;

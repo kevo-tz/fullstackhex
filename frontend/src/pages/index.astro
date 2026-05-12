@@ -224,7 +224,7 @@ make status</pre>
       </div>
 
     <script>
-      import { SERVICE_IDS, SERVICE_LABELS, isFullOutage as checkFullOutage } from "../lib/health";
+      import { SERVICE_IDS, isFullOutage as checkFullOutage } from "../lib/health";
 
       function setStatus(id: string, status: string, label: string) {
         const dot  = document.getElementById("dot-"  + id);

@@ -2,8 +2,6 @@ import { describe, expect, test, beforeEach, afterEach } from "vitest";
 
 describe("theme system", () => {
   const STORAGE_KEY = "theme";
-  const originalEnv = process.env;
-
   beforeEach(() => {
     localStorage.clear();
     document.documentElement.dataset.theme = "dark";

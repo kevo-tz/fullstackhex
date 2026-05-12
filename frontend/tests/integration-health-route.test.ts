@@ -1,4 +1,4 @@
-import { describe, expect, test, mock, beforeEach, afterEach } from "bun:test";
+import { describe, expect, test, mock } from "bun:test";
 
 /**
  * Integration tests for the /api/health aggregation route.

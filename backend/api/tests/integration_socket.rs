@@ -149,27 +149,4 @@ async fn socket_retry_logic() {
     assert!(attempts >= max_retries);
 }
 
-/// Mock test for full request/response cycle
-/// (Requires actual sidecar running - marked as ignored by default)
-#[tokio::test]
-#[ignore]
-async fn full_socket_communication() {
-    // This test requires the Python sidecar to be running
-    // Run with: cargo test --test integration_socket -- --ignored
 
-    let socket_path = std::env::var("PYTHON_SIDECAR_SOCKET")
-        .unwrap_or_else(|_| "/tmp/fullstackhex-python.sock".to_string());
-
-    if !PathBuf::from(&socket_path).exists() {
-        println!("Skipping test: socket not found at {}", socket_path);
-        return;
-    }
-
-    // In a real implementation, you would:
-    // 1. Connect to the Unix socket
-    // 2. Send an HTTP request over the socket
-    // 3. Receive and parse the response
-    // 4. Assert on the response
-
-    assert!(PathBuf::from(&socket_path).exists());
-}

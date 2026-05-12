@@ -1,3 +1,4 @@
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from fastapi import FastAPI, Request, Response
 import hmac
@@ -16,7 +17,13 @@ from prometheus_client import (
     CONTENT_TYPE_LATEST,
 )
 
-app = FastAPI()
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    setup_logging()
+    yield
+
+
+app = FastAPI(lifespan=lifespan)
 
 
 class Settings:
@@ -70,11 +77,6 @@ def setup_logging() -> None:
     root = logging.getLogger()
     root.addHandler(handler)
     root.setLevel(logging.INFO)
-
-
-@app.on_event("startup")
-async def _startup() -> None:
-    setup_logging()
 
 
 logger = logging.getLogger("py-api")

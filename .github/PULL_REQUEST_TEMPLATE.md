@@ -14,7 +14,7 @@ Closes #
 
 ## Checklist
 
-- [ ] Tests pass locally (`cargo test`, `bun test`, `pytest` where applicable)
+- [ ] Tests pass locally (`cargo test`, `vitest run`, `uv run pytest` where applicable)
 - [ ] Code style passes (`cargo clippy`, `ruff check`, `bun lint`)
 - [ ] Documentation updated if behavior changed
 - [ ] No secrets or hard-coded credentials introduced

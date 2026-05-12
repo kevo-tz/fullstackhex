@@ -18,7 +18,7 @@ FullStackHex uses GitHub Actions for continuous integration and deployment. The 
 
 ### 3. Test
 - **Rust**: `cargo test --workspace`
-- **Frontend**: `bun test`
+- **Frontend**: `vitest run`
 - **Python**: `pytest`
 
 ### 4. Performance Gates (Optional)
@@ -98,12 +98,12 @@ make test
 # Or individually
 cd backend && cargo test
 cd py-api && uv run pytest
-cd frontend && bun test && bun run test:vitest
+cd frontend && vitest run
 
 # Run with verbose output
 cd backend && cargo test -- --nocapture
 cd py-api && uv run pytest -v
-cd frontend && bun test --verbose
+cd frontend && vitest run --reporter verbose
 ```
 
 ### Socket Path Issues in CI
@@ -181,7 +181,7 @@ The `e2e` job starts a full backend (Rust with PostgreSQL + Redis) and frontend,
 jobs:
   rust:    # fmt + clippy + cargo test (including socket integration)
   python:  # ruff + pytest
-  frontend: # lint + typecheck + bun test + vitest + build
+  frontend: # lint + typecheck + vitest + build
   smoke:   # cross-layer test run + sqlx offline check
   e2e:     # full-stack e2e with backend + frontend + real services
   infra:   # compose validation, Docker builds, performance check

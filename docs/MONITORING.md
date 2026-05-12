@@ -147,7 +147,7 @@ Evaluation group: warning
 
 Alert rules are defined in \`compose/monitoring/alerts.yml\` and loaded by Prometheus via `rule_files` in `prometheus.yml`.
 
-> **Note:** Alert rules are commented out by default (opt-in). Uncomment the `groups` block in \`compose/monitoring/alerts.yml\` to enable alerting.
+> **Note:** Alert rules are now active/uncommented. See `compose/monitoring/alerts.yml` for the full rule set.
 
 Example rules included:
 

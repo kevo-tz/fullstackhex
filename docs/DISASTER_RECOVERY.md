@@ -68,7 +68,7 @@ docker compose -f compose/dev.yml restart <service>
 docker compose -f compose/dev.yml up -d --build <service>
 
 # Full restart
-make down-dev && make dev
+make down && make dev
 ```
 
 ## Horizontal Scaling

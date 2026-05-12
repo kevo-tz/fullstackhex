@@ -50,7 +50,7 @@
 └────────┘ └────────┘ └─────────┘
 ```
 
-### Production Additions (not active in dev)
+### Production Additions
 
 ```
 ┌─────────────────────────────────────────┐
@@ -60,7 +60,7 @@
 └─────────────────────────────────────────┘
 
 ┌─────────────────────────────────────────┐
-│ Monitoring Stack                       │
+│ Monitoring Stack (also runs in dev)    │
 │  ├── Prometheus :9090  (scrapes all)   │
 │  └── Grafana    :3000  (dashboards)    │
 └─────────────────────────────────────────┘
@@ -86,7 +86,7 @@
 3. **Rust API** → Processes request, may call internal crates
 4. **py-api** → Rust communicates via Unix domain socket when Python logic needed
 5. **Data Layer** → Postgres (sqlx) + Redis + RustFS
-6. **Production only** → Nginx terminates TLS and proxies external traffic; Prometheus + Grafana monitor the entire stack
+6. **Nginx** → Production only, terminates TLS and proxies external traffic. Monitoring stack (`compose/monitor.yml`) can run in dev or prod.
 
 ## Technology Stack (Latest Versions)
 
@@ -102,8 +102,8 @@
 | Database | PostgreSQL 18 | `docker compose ps` |
 | Cache | Redis 8 | `docker compose ps` |
 | Object Storage | RustFS (S3-compatible) | `docker compose ps` |
-| Monitoring | Prometheus 3.x + Grafana | Production only, see .env.example |
-| Reverse Proxy | Nginx (production) | Production only, see .env.example |
+| Monitoring | Prometheus v3.3.1 + Grafana 11.2.0 | `docker compose -f compose/monitor.yml ps` |
+| Reverse Proxy | Nginx (production) | `docker compose -f compose/prod.yml ps` |
 | IPC | Unix domain socket | `/tmp/fullstackhex-python.sock` (dev), `/tmp/sidecar/py-api.sock` (prod) |
 
 ## Workspace Structure

@@ -42,8 +42,7 @@ Start here for the FullStackHex documentation. Documents are listed in recommend
     - Key namespaces and atomic refresh rotation
 
 7. **[DEPLOY.md](./DEPLOY.md)** - Production deployment
-    - Blue-green and canary deploy
-    - Rollback and health verification
+    - Docker compose, health verification, nginx config
 
 8. **[EXAMPLES.md](./EXAMPLES.md)** - Copy-paste patterns
     - Extending routes, pages, tests, and CI
@@ -71,7 +70,7 @@ Start here for the FullStackHex documentation. Documents are listed in recommend
 | AUTH.md | JWT, OAuth, session config | 3 min |
 | STORAGE.md | S3-compatible object storage | 3 min |
 | REDIS.md | Redis caching and rate limiting | 3 min |
-| DEPLOY.md | Blue-green, canary, rollback | 3 min |
+| DEPLOY.md | Docker compose, nginx, health verification | 3 min |
 | EXAMPLES.md | Copy-paste extension patterns | 4 min |
 | INFRASTRUCTURE.md | Docker/infra reference | 5 min |
 | MONITORING.md | Prometheus + Grafana setup | 4 min |

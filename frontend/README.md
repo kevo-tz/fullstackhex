@@ -12,7 +12,7 @@ All commands are run from this directory:
 | `bun run dev`              | Start dev server at `localhost:4321`        |
 | `bun run build`            | Build production site to `./dist/`          |
 | `bun run preview`          | Preview production build locally            |
-| `bun test`                 | Run test suite                              |
+| `bun run test:vitest`      | Run test suite (vitest)                     |
 | `bun run typecheck`        | Run Astro type checker                      |
 | `bun run astro -- --help`  | Other Astro CLI commands                    |
 

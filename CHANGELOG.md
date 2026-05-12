@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.13.1] - 2026-05-12
+
+### Fixed
+- **Documentation accuracy sweep**: cross-referenced all docs against current codebase — fixed stale `bun test` → `vitest run` refs across 5 files, pinned `:latest` image tags in INFRASTRUCTURE.md, updated version strings in SERVICES.md and ARCHITECTURE.md, fixed DEPLOY.md description in INDEX.md and README.md
+- **SETUP.md**: added missing Python sidecar start step and `make dev` tip
+- **SECRETS_ROTATION.md**: added macOS `sed -i` compatibility note
+- **PULL_REQUEST_TEMPLATE.md**: updated test commands to match current CI
+- **MONITORING.md**: corrected alert rules description (now active, not commented out)
+
+### Changed
+- **VERSION**: bumped to 0.13.1
+
+---
+
 ## [0.13.0] - 2026-05-11
 
 ### Security

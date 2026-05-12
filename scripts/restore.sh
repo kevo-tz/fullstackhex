@@ -26,7 +26,7 @@ echo ""
 # PostgreSQL restore
 if [ -f "$PG_FILE" ]; then
   echo "  → restoring postgres from $PG_FILE"
-  docker compose -f compose/dev.yml --env-file .env exec -T postgres \
+  $COMPOSE_DEV exec -T postgres \
     psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" < "$PG_FILE"
   echo "    postgres restore complete"
 else
@@ -36,9 +36,9 @@ fi
 # Redis restore
 if [ -f "$REDIS_FILE" ]; then
   echo "  → restoring redis from $REDIS_FILE"
-  docker compose -f compose/dev.yml --env-file .env cp "$REDIS_FILE" redis:/data/dump.rdb
-  docker compose -f compose/dev.yml --env-file .env exec -T redis redis-cli CONFIG SET dir /data
-  docker compose -f compose/dev.yml --env-file .env exec -T redis redis-cli DEBUG RELOAD
+  $COMPOSE_DEV cp "$REDIS_FILE" redis:/data/dump.rdb
+  $COMPOSE_DEV exec -T redis redis-cli CONFIG SET dir /data
+  $COMPOSE_DEV exec -T redis redis-cli DEBUG RELOAD
   echo "    redis restore complete"
 else
   echo "  → redis: no backup found at $REDIS_FILE (skipping)"

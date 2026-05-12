@@ -83,7 +83,7 @@ The Rust backend forwards authenticated user identity to the Python sidecar over
 X-User-Id: <user_id>
 X-User-Email: <email>
 X-User-Name: <name>
-X-Auth-Signature: HMAC-SHA256(SIDECAR_SHARED_SECRET, "{user_id}|{email}|{name}")
+X-Auth-Signature: HMAC-SHA256(SIDECAR_SHARED_SECRET, json.dumps({"user_id": ..., "email": ..., "name": ...}, sort_keys=True))
 ```
 
 The sidecar validates the signature on every non-public request. Set `SIDECAR_SHARED_SECRET` in `.env` and ensure both processes share the same value.

@@ -48,12 +48,17 @@ docker compose -f compose/dev.yml up -d
 # 2. (Optional) Start monitoring stack (Prometheus + Grafana)
 docker compose -f compose/monitor.yml up -d
 
-# 3. Start Rust API (in a separate terminal)
+# 3. Start Python sidecar (in a separate terminal)
+cd py-api && uv run uvicorn app.main:app --uds /tmp/fullstackhex-python.sock
+
+# 4. Start Rust API (in a separate terminal)
 cd backend && cargo run -p api
 
-# 4. Start Astro frontend (in a separate terminal)
+# 5. Start Astro frontend (in a separate terminal)
 cd frontend && bun run dev
 ```
+
+> **Tip:** Use `make dev` to start everything (infra + Python + Rust + frontend) in one command.
 
 Ports:
 

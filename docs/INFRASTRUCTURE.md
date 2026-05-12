@@ -138,7 +138,7 @@ Open-source S3-compatible object storage server.
 
 | Property | Value |
 |----------|-------|
-| Image | `rustfs/rustfs:latest` |
+| Image | `rustfs/rustfs:0.8.1` |
 | Container | `fullstackhex_rustfs` |
 | API Port | `9000` (configurable: **RUSTFS_API_PORT**) |
 | Console Port | `9001` (configurable: **RUSTFS_CONSOLE_PORT**) |
@@ -166,12 +166,12 @@ Open-source S3-compatible object storage server.
 Enable with `--profile tools`:
 
 **Adminer** (Database UI): `http://localhost:8080`
-- Image: `adminer:latest`
+- Image: `adminer:5.1.0`
 - Profile: `tools`
 - Depends on: healthy Postgres
 
 **Redis Commander** (Redis UI): `http://localhost:8081`
-- Image: `rediscommander/redis-commander:latest`
+- Image: `rediscommander/redis-commander:0.8.0`
 - Profile: `tools`
 - Depends on: healthy Redis
 
@@ -255,7 +255,7 @@ All management ports are bound to `127.0.0.1` to prevent external access. See `c
 # Services:
 #   - postgres:18-alpine  (port 5432) - Primary database
 #   - redis:8-alpine      (port 6379) - Cache layer
-#   - rustfs/rustfs:latest (ports 9000, 9001) - S3-compatible object storage
+#   - rustfs/rustfs:0.8.1 (ports 9000, 9001) - S3-compatible object storage
 #
 # Networks: fullstackhex-network (bridge)
 # Volumes: postgres_data, redis_data, rustfs_data (persistent)
@@ -332,7 +332,7 @@ services:
         max-file: "3"
 
   rustfs:
-    image: rustfs/rustfs:latest
+    image: rustfs/rustfs:0.8.1
     container_name: fullstackhex_rustfs
     restart: unless-stopped
     ports:
@@ -368,7 +368,7 @@ services:
         max-file: "3"
 
   adminer:
-    image: adminer:latest
+    image: adminer:5.1.0
     container_name: fullstackhex_adminer
     restart: unless-stopped
     ports:
@@ -382,7 +382,7 @@ services:
       - tools
 
   redis-commander:
-    image: rediscommander/redis-commander:latest
+    image: rediscommander/redis-commander:0.8.0
     container_name: fullstackhex_redis_commander
     restart: unless-stopped
     ports:
@@ -634,7 +634,7 @@ Use `compose/prod.yml` to run all services as Docker containers with no external
 | frontend | `Dockerfile.frontend` | 4321 | Astro SSR node adapter |
 | postgres | `postgres:18-alpine` | 5432 | Internal only (no host binding) |
 | redis | `redis:8-alpine` | 6379 | Internal only |
-| rustfs | `rustfs/rustfs:latest` | 9000 / 9001 | Internal only |
+| rustfs | `rustfs/rustfs:0.8.1` | 9000 / 9001 | Internal only |
 
 ### Unix Socket in Production
 

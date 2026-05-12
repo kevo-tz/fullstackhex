@@ -6,7 +6,7 @@ requires-python = ">=3.14"
 dependencies = [
   "fastapi>=0.116.0",
   "uvicorn>=0.35.0",
-  "prometheus-client>=0.21,<0.26"
+  "prometheus-client>=0.21,<0.27"
 ]
 
 [dependency-groups]

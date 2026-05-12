@@ -177,10 +177,21 @@ mod tests {
         assert!(result.is_none());
     }
 
+    fn integration_redis_url() -> String {
+        match std::env::var("REDIS_URL") {
+            Ok(url) => url,
+            Err(_) => {
+                eprintln!("SKIP: REDIS_URL not set — skipping Redis integration test");
+                return String::new(); // won't be used — test returns early
+            }
+        }
+    }
+
     #[tokio::test]
-    #[ignore = "requires running Redis"]
     async fn integration_cache_get_hit() {
-        let client = RedisClient::new("redis://127.0.0.1:6379/9", "test")
+        let redis_url = integration_redis_url();
+        if redis_url.is_empty() { return; }
+        let client = RedisClient::new(&redis_url, "test")
             .await
             .expect("redis connect");
         client
@@ -193,9 +204,10 @@ mod tests {
     }
 
     #[tokio::test]
-    #[ignore = "requires running Redis"]
     async fn integration_cache_get_miss() {
-        let client = RedisClient::new("redis://127.0.0.1:6379/9", "test")
+        let redis_url = integration_redis_url();
+        if redis_url.is_empty() { return; }
+        let client = RedisClient::new(&redis_url, "test")
             .await
             .expect("redis connect");
         let result: Option<String> = client.cache_get("test_ns", "nonexistent").await.unwrap();
@@ -203,9 +215,10 @@ mod tests {
     }
 
     #[tokio::test]
-    #[ignore = "requires running Redis"]
     async fn integration_cache_delete() {
-        let client = RedisClient::new("redis://127.0.0.1:6379/9", "test")
+        let redis_url = integration_redis_url();
+        if redis_url.is_empty() { return; }
+        let client = RedisClient::new(&redis_url, "test")
             .await
             .expect("redis connect");
         client
@@ -218,9 +231,10 @@ mod tests {
     }
 
     #[tokio::test]
-    #[ignore = "requires running Redis"]
     async fn integration_cache_invalidate_pattern() {
-        let client = RedisClient::new("redis://127.0.0.1:6379/9", "test")
+        let redis_url = integration_redis_url();
+        if redis_url.is_empty() { return; }
+        let client = RedisClient::new(&redis_url, "test")
             .await
             .expect("redis connect");
         client
@@ -236,9 +250,10 @@ mod tests {
     }
 
     #[tokio::test]
-    #[ignore = "requires running Redis"]
     async fn integration_refresh_token_rotate() {
-        let client = RedisClient::new("redis://127.0.0.1:6379/9", "test")
+        let redis_url = integration_redis_url();
+        if redis_url.is_empty() { return; }
+        let client = RedisClient::new(&redis_url, "test")
             .await
             .expect("redis connect");
         let token = "rotate-test-token";

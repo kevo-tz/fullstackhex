@@ -208,7 +208,7 @@ scaffold() {
   run rsync -a $rsync_excludes "$REPO_SOURCE/scripts/" "$PROJECT_NAME/scripts/"
 
   log "Copying root files..."
-  for f in .env.example .gitignore .dockerignore Makefile LICENSE README.md; do
+  for f in .env.example .gitignore .dockerignore Makefile LICENSE; do
     if [ -f "$REPO_SOURCE/$f" ]; then
       run cp "$REPO_SOURCE/$f" "$PROJECT_NAME/$f"
     fi
@@ -224,7 +224,7 @@ scaffold() {
 
 configure() {
   log "Generating .env..."
-  run_in "$PROJECT_NAME" cp .env.example .env
+  run_in "$PROJECT_NAME" mv .env.example .env
 
   log "Configuring backend/Cargo.toml (repository URL)..."
   read -r -p "GitHub username (for repository URL) [kevo-tz]: " GITHUB_USER < "$READ_INPUT" || true
@@ -254,8 +254,7 @@ configure() {
   run_in "$PROJECT_NAME" sed -i 's|/opt/fullstackhex|/opt/${PROJECT_NAME}|' .env
   run_in "$PROJECT_NAME" sed -i 's|REDIS_KEY_PREFIX=fullstackhex|REDIS_KEY_PREFIX=${PROJECT_NAME}|' .env
 
-  log "Configuring README.md..."
-  run_in "$PROJECT_NAME" sed -i '1s|# FullStackHex|# ${PROJECT_NAME}|' README.md
+  # README.md is no longer copied — skip configuration
 
   ok "Configuration complete."
 }

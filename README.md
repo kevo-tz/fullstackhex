@@ -67,7 +67,7 @@ chmod +x scripts/*.sh
 | [docs/AUTH.md](docs/AUTH.md) | JWT, OAuth, session, and CSRF configuration |
 | [docs/STORAGE.md](docs/STORAGE.md) | S3-compatible object storage reference |
 | [docs/REDIS.md](docs/REDIS.md) | Redis caching, rate limiting, session store |
-| [docs/DEPLOY.md](docs/DEPLOY.md) | Blue-green, canary, rollback, and deploy safety |
+| [docs/DEPLOY.md](docs/DEPLOY.md) | Docker compose, health verification, nginx config |
 | [docs/EXAMPLES.md](docs/EXAMPLES.md) | Copy-paste patterns for extending the stack |
 | [docs/INFRASTRUCTURE.md](docs/INFRASTRUCTURE.md) | Docker Compose reference, volumes, commands |
 | [docs/INITIALIZATION.md](docs/INITIALIZATION.md) | Portable template for new projects |

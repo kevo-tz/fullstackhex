@@ -508,10 +508,10 @@ mod tests {
     }
 
     // ------------------------------------------------------------------
-    // Socket integration tests — require a mock Unix socket server
-    // These tests use real UnixListener and are skipped by default
-    // because they're timing-sensitive in Rust's parallel test runner.
-    // Run with: cargo test -p py-sidecar -- --ignored
+    // Socket integration tests — use mock Unix socket servers
+    // These tests create in-process UnixListeners and run as part of the
+    // normal test suite. #[serial_test::serial] prevents parallel-socket
+    // collisions. Timing-sensitive: sleep(200ms) before first connect.
     // ------------------------------------------------------------------
 
     #[tokio::test]
@@ -693,11 +693,10 @@ mod tests {
     }
 
     // ------------------------------------------------------------------
-    // Socket integration tests — use mock UnixListeners
-    // These tests create in-memory UnixListeners with controlled responses
-    // and are skipped by default because they're timing-sensitive.
-    // Run with: cargo test -p py-sidecar -- --ignored
-    // Or via: make test-socket-ci
+    // Socket integration tests — more mock UnixListener patterns
+    // These tests run as part of the normal test suite, not as --ignored.
+    // #[serial_test::serial] prevents collisions between concurrent
+    // listener binds.
     // ------------------------------------------------------------------
 
     #[tokio::test]

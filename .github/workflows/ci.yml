@@ -71,10 +71,13 @@ jobs:
       - name: cargo clippy
         run: cargo clippy --locked --all-targets --all-features -- -D warnings
 
+      - name: Install sqlx-cli
+        uses: taiki-e/install-action@v2
+        with:
+          tool: sqlx-cli
+
       - name: Check sqlx offline metadata
-        run: |
-          cargo install sqlx-cli --no-default-features --features postgres
-          cargo sqlx prepare --workspace --check -- --all-features
+        run: cargo sqlx prepare --workspace --check -- --all-features
 
       - name: cargo test
         env:

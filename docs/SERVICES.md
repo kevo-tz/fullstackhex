@@ -74,7 +74,7 @@ GET /health
 Response (aggregated — all sub-services checked in a single call):
 ```json
 {
-  "rust":    { "status": "ok", "service": "api", "version": "0.1.0" },
+  "rust":    { "status": "ok", "service": "api", "version": "0.13.0" },
   "db":      { "status": "ok" },
   "redis":   { "status": "ok" },
   "storage": { "status": "ok", "bucket": "fullstackhex" },
@@ -144,7 +144,7 @@ app = FastAPI()
 
 @app.get("/health")
 def health() -> dict[str, str]:
-    return {"status": "ok", "service": "py-api", "version": "0.7.0"}
+    return {"status": "ok", "service": "py-api", "version": "0.13.0"}
 ```
 
 > **Note:** Add new routes here as Python business logic grows. py-api runs

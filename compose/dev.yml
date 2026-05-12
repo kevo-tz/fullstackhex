@@ -6,7 +6,7 @@
 # Services:
 #   - postgres:18-alpine  (port 5432) - Primary database
 #   - redis:8-alpine      (port 6379) - Cache layer
-#   - rustfs/rustfs:latest (ports 9000, 9001) - S3-compatible object storage
+#   - rustfs/rustfs:0.8.1 (ports 9000, 9001) - S3-compatible object storage
 #
 # Networks: fullstackhex-network (bridge)
 # Volumes: postgres_data, redis_data, rustfs_data (persistent)

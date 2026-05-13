@@ -260,7 +260,7 @@ describe("/api/health aggregation route", () => {
   });
 
   describe("parallelism — all three fetches issued", () => {
-    test("fetch called exactly three times with correct URLs", async () => {
+    test("fetch called exactly six times with correct URLs", async () => {
       const fetchCalls: string[] = [];
       const fetchMock = vi.fn(async (url: string) => {
         fetchCalls.push(url);

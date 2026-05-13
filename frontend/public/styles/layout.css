@@ -198,6 +198,10 @@ nav .logout-btn:hover { border-color: #ef4444; color: #ef4444; }
   font-size: 0.9rem;
   outline: none;
 }
+.form-group input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
 .form-group input:focus { border-color: #334155; }
 .form-group input::placeholder { color: #334155; }
 

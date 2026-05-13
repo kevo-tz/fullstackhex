@@ -3,7 +3,6 @@
   "entry": [
     "src/**/*.ts",
     "src/**/*.astro",
-    "src/lib/health.ts",
     "tests/**/*.test.ts"
   ],
   "project": [

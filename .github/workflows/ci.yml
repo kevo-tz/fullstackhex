@@ -159,7 +159,7 @@ jobs:
         run: bun run typecheck
 
       - name: Test
-        run: bun run test:vitest
+        run: bun run test
 
       - name: Build
         env:
@@ -263,8 +263,7 @@ jobs:
           VITE_RUST_BACKEND_URL: http://localhost:8001
           FRONTEND_URL: http://localhost:4321
         run: |
-          cd frontend/tests/e2e
-          bun test
+          bun run test:e2e
 
   infra:
     name: infra

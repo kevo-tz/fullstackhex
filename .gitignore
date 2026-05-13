@@ -61,3 +61,6 @@ leankg.yaml
 .backup/
 .performance/
 .gstack/
+py-api/.coverage
+frontend/coverage/
+.opencode

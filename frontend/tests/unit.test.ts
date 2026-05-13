@@ -1,15 +1,15 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, test } from "vitest";
 
 describe("frontend generated unit test", () => {
   test("health endpoint path is valid", () => {
     const healthRoute = "/api/health";
-    expect(healthRoute).toStartWith("/api/");
+    expect(healthRoute).toMatch(/^\/api\//);
     expect(healthRoute).toContain("health");
   });
 
   test("environment variables are defined", () => {
     const apiUrl = process.env.VITE_RUST_BACKEND_URL || "http://localhost:8001";
-    expect(apiUrl).toBeTypeOf("string");
+    expect(typeof apiUrl).toBe("string");
     expect(apiUrl.length).toBeGreaterThan(0);
   });
 

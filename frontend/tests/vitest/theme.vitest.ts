@@ -16,7 +16,7 @@ describe("theme system", () => {
     let stored: string | null = null;
     try {
       stored = localStorage.getItem(STORAGE_KEY);
-    } catch {}
+    } catch { /* localStorage may be blocked */ }
     const theme = stored || "dark";
     document.documentElement.dataset.theme = theme;
   }

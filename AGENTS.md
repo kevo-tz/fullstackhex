@@ -2,12 +2,13 @@
 
 ## Health Stack
 
-- typecheck: cd frontend && npx tsc --noEmit
+- typecheck: cd frontend && bunx astro check
 - lint: cd backend && cargo clippy -- -D warnings
+- lint: cd frontend && bunx eslint .
 - test: cd backend && cargo test
-- test: cd frontend && vitest run
+- test: cd frontend && bunx vitest run
 - test: cd py-api && uv run pytest
-- deadcode: cd frontend && npx knip
+- deadcode: cd frontend && bunx knip
 - shell: shellcheck -x --source-path=scripts/ scripts/*.sh
 
 ## Skill routing

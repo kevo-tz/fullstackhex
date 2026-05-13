@@ -3,7 +3,7 @@
 // Report: .gstack/qa-reports/qa-report-localhost-2026-05-08.md
 // Fix: AuthForm.astro now extracts data.error.message when error is nested object
 
-import { describe, expect, test } from "bun:test";
+import { describe, expect, test } from "vitest";
 
 /**
  * Mirrors the error-extraction logic in AuthForm.astro:

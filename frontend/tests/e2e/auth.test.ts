@@ -1,12 +1,14 @@
 /**
- * Auth e2e test — Bun native test runner.
+ * Auth e2e test — Vitest runner.
  *
  * Requires running backend (port 8001) and frontend (port 4321).
- * Uses Bun's built-in fetch, no external test deps.
+ * Uses Node.js built-in fetch, no external test deps.
  *
  * Usage:
- *   bun test e2e/auth.e2e.bun.ts
+ *   bun vitest run tests/e2e/auth.test.ts
  */
+
+import { describe, expect, test } from "vitest";
 
 const BACKEND = process.env.VITE_RUST_BACKEND_URL || "http://localhost:8001";
 const FRONTEND = process.env.FRONTEND_URL || "http://localhost:4321";
@@ -28,46 +30,84 @@ interface AuthResponse {
 }
 
 let accessToken = "";
-let userId = "";
 
-test("POST /auth/register creates user and returns JWT", async () => {
-  const res = await fetch(`${BACKEND}/auth/register`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      email: TEST_USER.email,
-      password: TEST_USER.password,
-      name: "E2E Test",
-    }),
-  });
-
-  if (res.status === 404) {
-    console.warn("SKIP: /auth/register returned 404 — auth not configured");
-    return;
-  }
-
-  expect(res.status).toBe(201);
-
-  const data: AuthResponse = await res.json();
-  expect(data.access_token).toBeTruthy();
-  expect(data.token_type).toBe("Bearer");
-  expect(data.expires_in).toBeGreaterThan(0);
-  expect(data.user.email).toBe(TEST_USER.email);
-  expect(data.user.provider).toBe("local");
-
-  accessToken = data.access_token;
-  userId = data.user.id;
-});
-
-test("POST /auth/login returns JWT for valid credentials", async () => {
-  if (!accessToken) {
-    // Auth not configured — login directly
-    const res = await fetch(`${BACKEND}/auth/login`, {
+describe("e2e auth flow", () => {
+  test("POST /auth/register creates user and returns JWT", async () => {
+    const res = await fetch(`${BACKEND}/auth/register`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         email: TEST_USER.email,
         password: TEST_USER.password,
+        name: "E2E Test",
+      }),
+    });
+
+    if (res.status === 404) {
+      console.warn("SKIP: /auth/register returned 404 — auth not configured");
+      return;
+    }
+
+    expect(res.status).toBe(201);
+
+    const data: AuthResponse = await res.json();
+    expect(data.access_token).toBeTruthy();
+    expect(data.token_type).toBe("Bearer");
+    expect(data.expires_in).toBeGreaterThan(0);
+    expect(data.user.email).toBe(TEST_USER.email);
+    expect(data.user.provider).toBe("local");
+
+    accessToken = data.access_token;
+  });
+
+  test("POST /auth/login returns JWT for valid credentials", async () => {
+    if (!accessToken) {
+      // Auth not configured — login directly
+      const res = await fetch(`${BACKEND}/auth/login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: TEST_USER.email,
+          password: TEST_USER.password,
+        }),
+      });
+
+      if (res.status === 404) {
+        console.warn("SKIP: /auth/login returned 404 — auth not configured");
+        return;
+      }
+
+      expect(res.status).toBe(200);
+
+      const data: AuthResponse = await res.json();
+      expect(data.access_token).toBeTruthy();
+      accessToken = data.access_token;
+    } else {
+      // Re-login after registration
+      const res = await fetch(`${BACKEND}/auth/login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: TEST_USER.email,
+          password: TEST_USER.password,
+        }),
+      });
+
+      expect(res.status).toBe(200);
+
+      const data: AuthResponse = await res.json();
+      expect(data.access_token).toBeTruthy();
+      accessToken = data.access_token;
+    }
+  });
+
+  test("POST /auth/login rejects wrong password", async () => {
+    const res = await fetch(`${BACKEND}/auth/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        email: TEST_USER.email,
+        password: "wrong-password-12345",
       }),
     });
 
@@ -76,107 +116,69 @@ test("POST /auth/login returns JWT for valid credentials", async () => {
       return;
     }
 
-    expect(res.status).toBe(200);
+    expect(res.status).toBeGreaterThanOrEqual(400);
+  });
 
-    const data: AuthResponse = await res.json();
-    expect(data.access_token).toBeTruthy();
-    accessToken = data.access_token;
-  } else {
-    // Re-login after registration
-    const res = await fetch(`${BACKEND}/auth/login`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        email: TEST_USER.email,
-        password: TEST_USER.password,
-      }),
+  test("GET /auth/me returns user info with valid token", async () => {
+    if (!accessToken) {
+      console.warn("SKIP: no access token — auth not configured");
+      return;
+    }
+
+    const res = await fetch(`${BACKEND}/auth/me`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
     });
 
     expect(res.status).toBe(200);
 
-    const data: AuthResponse = await res.json();
-    expect(data.access_token).toBeTruthy();
-    accessToken = data.access_token;
-  }
-});
-
-test("POST /auth/login rejects wrong password", async () => {
-  const res = await fetch(`${BACKEND}/auth/login`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      email: TEST_USER.email,
-      password: "wrong-password-12345",
-    }),
+    const data = await res.json();
+    expect(data.email).toBe(TEST_USER.email);
+    expect(data.user_id).toBeTruthy();
+    expect(data.provider).toBe("local");
   });
 
-  if (res.status === 404) {
-    console.warn("SKIP: /auth/login returned 404 — auth not configured");
-    return;
-  }
+  test("GET /auth/me returns 401 without token", async () => {
+    const res = await fetch(`${BACKEND}/auth/me`);
 
-  expect(res.status).toBeGreaterThanOrEqual(400);
-});
+    if (res.status === 404) {
+      console.warn("SKIP: /auth/me returned 404 — auth not configured");
+      return;
+    }
 
-test("GET /auth/me returns user info with valid token", async () => {
-  if (!accessToken) {
-    console.warn("SKIP: no access token — auth not configured");
-    return;
-  }
-
-  const res = await fetch(`${BACKEND}/auth/me`, {
-    headers: { Authorization: `Bearer ${accessToken}` },
+    expect(res.status).toBe(401);
   });
 
-  expect(res.status).toBe(200);
+  test("GET / returns dashboard with 200", async () => {
+    const res = await fetch(`${FRONTEND}/`);
 
-  const data = await res.json();
-  expect(data.email).toBe(TEST_USER.email);
-  expect(data.user_id).toBeTruthy();
-  expect(data.provider).toBe("local");
-});
+    // Dashboard should serve, even if auth is disabled
+    expect(res.ok).toBe(true);
+    const html = await res.text();
+    expect(html).toContain("FullStackHex");
+  });
 
-test("GET /auth/me returns 401 without token", async () => {
-  const res = await fetch(`${BACKEND}/auth/me`);
+  test("GET /login returns login page with 200", async () => {
+    const res = await fetch(`${FRONTEND}/login`);
 
-  if (res.status === 404) {
-    console.warn("SKIP: /auth/me returned 404 — auth not configured");
-    return;
-  }
+    expect(res.ok).toBe(true);
+    const html = await res.text();
+    expect(html).toContain("Sign in");
+  });
 
-  expect(res.status).toBe(401);
-});
+  test("GET /register returns register page with 200", async () => {
+    const res = await fetch(`${FRONTEND}/register`);
 
-test("GET / returns dashboard with 200", async () => {
-  const res = await fetch(`${FRONTEND}/`);
+    expect(res.ok).toBe(true);
+    const html = await res.text();
+    expect(html).toContain("Create account");
+  });
 
-  // Dashboard should serve, even if auth is disabled
-  expect(res.ok).toBe(true);
-  const html = await res.text();
-  expect(html).toContain("FullStackHex");
-});
+  test("GET /api/health returns aggregated health", async () => {
+    const res = await fetch(`${FRONTEND}/api/health`);
 
-test("GET /login returns login page with 200", async () => {
-  const res = await fetch(`${FRONTEND}/login`);
-
-  expect(res.ok).toBe(true);
-  const html = await res.text();
-  expect(html).toContain("Sign in");
-});
-
-test("GET /register returns register page with 200", async () => {
-  const res = await fetch(`${FRONTEND}/register`);
-
-  expect(res.ok).toBe(true);
-  const html = await res.text();
-  expect(html).toContain("Create account");
-});
-
-test("GET /api/health returns aggregated health", async () => {
-  const res = await fetch(`${FRONTEND}/api/health`);
-
-  expect(res.ok).toBe(true);
-  const data = await res.json();
-  expect(data.rust).toBeTruthy();
-  expect(data.rust.status).toBe("ok");
+    expect(res.ok).toBe(true);
+    const data = await res.json();
+    expect(data.rust).toBeTruthy();
+    expect(data.rust.status).toBe("ok");
+  });
 });

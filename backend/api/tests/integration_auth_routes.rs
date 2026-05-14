@@ -21,11 +21,16 @@ fn test_state_without_auth() -> AppState {
         ),
         prometheus_handle: init_metrics_recorder(),
         gauge_task: None,
+        feature_flags: Some(domain::FeatureFlags {
+            chat_enabled: false,
+            storage_readonly: false,
+            maintenance_mode: false,
+        }),
     }
 }
 
 #[tokio::test]
-async fn auth_me_returns_404_when_auth_disabled() {
+async fn auth_me_returns_200_when_auth_disabled() {
     let app = router_with_state(test_state_without_auth());
     let response = app
         .oneshot(
@@ -37,7 +42,7 @@ async fn auth_me_returns_404_when_auth_disabled() {
         .await
         .unwrap();
 
-    assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    assert_eq!(response.status(), StatusCode::OK);
 }
 
 #[tokio::test]

@@ -6,17 +6,6 @@
 pub mod error;
 pub mod time;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct AppConfig {
-    pub max_page_size: usize,
-}
-
-impl Default for AppConfig {
-    fn default() -> Self {
-        Self { max_page_size: 100 }
-    }
-}
-
 /// Feature flags controlled via environment variables.
 ///
 /// All flags default to `false` when the env var is not set.
@@ -66,12 +55,6 @@ pub struct CreateNoteInput {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn default_config_reasonable() {
-        let cfg = AppConfig::default();
-        assert_eq!(cfg.max_page_size, 100);
-    }
 
     #[test]
     fn note_serde_roundtrip() {

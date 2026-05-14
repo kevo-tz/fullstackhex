@@ -10,7 +10,9 @@ use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use axum::Json;
 use domain::Note;
+use domain::CreateNoteInput;
 use serde::Deserialize;
+use uuid::Uuid;
 use std::sync::Arc;
 
 /// Pagination query parameters.
@@ -31,12 +33,6 @@ impl Default for PaginationParams {
     }
 }
 
-/// Input for creating a new note.
-#[derive(Debug, Deserialize)]
-pub struct CreateNoteRequest {
-    pub title: String,
-    pub body: String,
-}
 
 /// Returns `None` if the database is not configured (caller returns 503).
 /// Returns `Some(pool)` if the database is connected.
@@ -55,7 +51,7 @@ pub async fn list_notes(
 ) -> impl IntoResponse {
     let pool = match pool_from_state(&state) {
         Some(p) => p,
-        None => return (StatusCode::SERVICE_UNAVAILABLE, "{\"error\":\"database not configured\"}").into_response(),
+        None => return (StatusCode::SERVICE_UNAVAILABLE, Json(serde_json::json!({"error":"database not configured"}))).into_response(),
     };
 
     let limit = params.per_page.min(100).max(1);
@@ -91,7 +87,7 @@ pub async fn list_notes(
         Err(e) => {
             tracing::warn!(error = %e, "failed to list notes");
             ::metrics::counter!("notes_query_errors_total").increment(1);
-            (StatusCode::INTERNAL_SERVER_ERROR, "{\"error\":\"failed to list notes\"}").into_response()
+            (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error":"failed to list notes"}))).into_response()
         }
     }
 }
@@ -100,7 +96,7 @@ pub async fn list_notes(
 pub async fn create_note(
     auth: auth::middleware::AuthUser,
     State(state): State<Arc<AppState>>,
-    Json(input): Json<CreateNoteRequest>,
+    Json(input): Json<CreateNoteInput>,
 ) -> impl IntoResponse {
     let pool = match pool_from_state(&state) {
         Some(p) => p,
@@ -146,9 +142,12 @@ pub async fn get_note(
     Path(id): Path<String>,
     State(state): State<Arc<AppState>>,
 ) -> impl IntoResponse {
+    if Uuid::parse_str(&id).is_err() {
+        return (StatusCode::BAD_REQUEST, Json(serde_json::json!({"error":"invalid note id"}))).into_response();
+    }
     let pool = match pool_from_state(&state) {
         Some(p) => p,
-        None => return (StatusCode::SERVICE_UNAVAILABLE, "{\"error\":\"database not configured\"}").into_response(),
+        None => return (StatusCode::SERVICE_UNAVAILABLE, Json(serde_json::json!({"error":"database not configured"}))).into_response(),
     };
 
     match sqlx::query_as::<_, (String, String, String, String, String, String)>(
@@ -170,11 +169,11 @@ pub async fn get_note(
             };
             (StatusCode::OK, Json(note)).into_response()
         }
-        Ok(None) => (StatusCode::NOT_FOUND, "{\"error\":\"note not found\"}").into_response(),
+        Ok(None) => (StatusCode::NOT_FOUND, Json(serde_json::json!({"error":"note not found"}))).into_response(),
         Err(e) => {
             tracing::warn!(error = %e, "failed to get note");
             ::metrics::counter!("notes_query_errors_total").increment(1);
-            (StatusCode::INTERNAL_SERVER_ERROR, "{\"error\":\"failed to get note\"}").into_response()
+            (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error":"failed to get note"}))).into_response()
         }
     }
 }
@@ -185,9 +184,12 @@ pub async fn delete_note(
     Path(id): Path<String>,
     State(state): State<Arc<AppState>>,
 ) -> impl IntoResponse {
+    if Uuid::parse_str(&id).is_err() {
+        return (StatusCode::BAD_REQUEST, Json(serde_json::json!({"error":"invalid note id"}))).into_response();
+    }
     let pool = match pool_from_state(&state) {
         Some(p) => p,
-        None => return (StatusCode::SERVICE_UNAVAILABLE, "{\"error\":\"database not configured\"}").into_response(),
+        None => return (StatusCode::SERVICE_UNAVAILABLE, Json(serde_json::json!({"error":"database not configured"}))).into_response(),
     };
 
     match sqlx::query(
@@ -202,11 +204,11 @@ pub async fn delete_note(
             ::metrics::counter!("notes_deleted_total").increment(1);
             (StatusCode::OK, "{\"status\":\"deleted\"}").into_response()
         }
-        Ok(_) => (StatusCode::NOT_FOUND, "{\"error\":\"note not found\"}").into_response(),
+        Ok(_) => (StatusCode::NOT_FOUND, Json(serde_json::json!({"error":"note not found"}))).into_response(),
         Err(e) => {
             tracing::warn!(error = %e, "failed to delete note");
             ::metrics::counter!("notes_query_errors_total").increment(1);
-            (StatusCode::INTERNAL_SERVER_ERROR, "{\"error\":\"failed to delete note\"}").into_response()
+            (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error":"failed to delete note"}))).into_response()
         }
     }
 }

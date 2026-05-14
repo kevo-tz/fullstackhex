@@ -7,6 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.13.5] - 2026-05-15
+
+### Added
+- **Notes CRUD**: full lifecycle — create, list, detail, delete with user-scoped auth
+- **Live WebSocket module**: Redis pub/sub bridge with HTTP polling fallback
+- **UI component library**: Modal, EmptyState, Skeleton, Table components
+- **Feature flags**: env-var-driven controls (FEATURE_CHAT, FEATURE_STORAGE_READONLY, FEATURE_MAINTENANCE)
+- **Maintenance mode middleware**: returns 503 on non-whitelisted routes
+- **Proptest suites**: property-based tests added across backend (api, auth, py-sidecar, domain)
+- **nginx WebSocket proxy**: Upgrade/Connection headers for WS passthrough
+
+### Changed
+- **Health endpoint**: includes `feature_flags` in response
+- **Image versions**: bumped Docker images across compose files (nginx 1.27→1.31, rustfs 0.8.1→v1.0.0, certbot v3.4.0→v5.6.0, grafana 11.2.0→13.0.1, Prometheus 3.3.1→3.11.3, etc.)
+- **Auth middleware**: exempts /live, /health, /metrics from auth for WS/hc access
+- **Compose files**: cleaned up boilerplate comments, standardized env var patterns
+- **Base images**: bookworm → trixie across Dockerfiles
+- **Scripts**: dev health check now verifies `rust.status: ok` in JSON; down.sh skips monitor teardown when not running
+
+### Fixed
+- **WS PII leak**: AuthEvent email field made Option<String> with skip_serializing — never broadcast to public WS channel
+- **Missing down migration**: added 002_create_notes.down.sql
+- **UUID validation**: get/delete note handlers return 400 on invalid UUID (not 500)
+- **Content-Type consistency**: all error responses in notes CRUD use application/json
+- **Accessibility**: focus-visible outlines added to all interactive elements; note body font bumped to 1rem
+
+### Removed
+- **Dead code**: orphaned Card.astro, Pagination.astro, Toast.astro components; unused parseFlags helper; unused AppConfig and CreateNoteInput domain types; no-op reset_ws_semaphore; unused debug_assert
+
 ## [0.13.4] - 2026-05-14
 
 ### Changed

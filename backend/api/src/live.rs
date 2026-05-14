@@ -4,7 +4,7 @@
 //! connected browser clients over WebSocket. Falls back to HTTP polling
 //! when Redis is unavailable.
 //!
-//! ```
+//! ```text
 //! CONNECTED CLIENT          WS HANDLER           REDIS PUB/SUB
 //! ───────────────    ───────────────────    ───────────────────
 //!      │                     │                       │
@@ -33,6 +33,9 @@ use tokio::sync::Semaphore;
 use tracing;
 use futures_util::sink::SinkExt;
 
+/// Redis pub/sub channel for live events.
+const LIVE_EVENTS_CHANNEL: &str = "live:events";
+
 /// Maximum concurrent WebSocket connections.
 const MAX_WS_CONNECTIONS: usize = 100;
 /// Idle timeout: close connection if no message received within this duration.
@@ -57,7 +60,8 @@ pub enum LiveEvent {
     #[serde(rename = "auth_event")]
     AuthEvent {
         kind: String,
-        email: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        email: Option<String>,
     },
     #[serde(rename = "connection_status")]
     ConnectionStatus {
@@ -84,7 +88,7 @@ pub async fn broadcast_event(state: &AppState, event: &LiveEvent) {
         }
     };
 
-    if let Err(e) = redis.publish("live:events", &payload).await {
+    if let Err(e) = redis.publish(LIVE_EVENTS_CHANNEL, &payload).await {
         tracing::warn!(error = %e, "failed to publish live event");
         return;
     }
@@ -152,7 +156,7 @@ async fn handle_socket(mut socket: WebSocket, redis: Arc<cache::RedisClient>, _p
     ACTIVE_WS_CONNECTIONS.fetch_add(1, Ordering::SeqCst);
     ::metrics::gauge!("ws_active_connections").increment(1.0);
 
-    let subscriber = match redis.subscribe("live:events").await {
+    let subscriber = match redis.subscribe(LIVE_EVENTS_CHANNEL).await {
         Ok(rx) => rx,
         Err(e) => {
             tracing::warn!(error = %e, "failed to subscribe to live events");
@@ -219,20 +223,12 @@ async fn handle_socket(mut socket: WebSocket, redis: Arc<cache::RedisClient>, _p
         }
     }
 
-    debug_assert!(ACTIVE_WS_CONNECTIONS.load(Ordering::SeqCst) > 0, "WS counter underflow");
-}
-
-#[cfg(test)]
-pub(crate) fn reset_ws_semaphore() {
-    // For testing: rebuild the semaphore by acquiring and dropping
-    // In practice, tests use their own state and don't share semaphores
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::metrics;
-    use axum::http::StatusCode;
     use axum::routing::get;
     use tower::ServiceExt;
 
@@ -261,7 +257,7 @@ mod tests {
     fn live_event_serde_auth_event() {
         let event = LiveEvent::AuthEvent {
             kind: "login".into(),
-            email: "user@example.com".into(),
+            email: Some("user@example.com".into()),
         };
         let json = serde_json::to_string(&event).unwrap();
         assert!(json.contains("auth_event"));
@@ -270,7 +266,7 @@ mod tests {
         match deserialized {
             LiveEvent::AuthEvent { kind, email } => {
                 assert_eq!(kind, "login");
-                assert_eq!(email, "user@example.com");
+                assert_eq!(email, Some("user@example.com".to_string()));
             }
             _ => panic!("expected AuthEvent"),
         }

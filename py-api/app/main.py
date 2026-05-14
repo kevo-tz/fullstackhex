@@ -64,6 +64,9 @@ def register_metrics() -> None:
 
 register_metrics()
 
+# Cache py-api version at module level — avoids importlib.metadata lookup per request
+PY_API_VERSION = version("py-api")
+
 
 class JsonFormatter(logging.Formatter):
     """Structured JSON log formatter for production logging."""
@@ -185,8 +188,7 @@ def health(request: Request) -> dict[str, str]:
     trace_id = request.headers.get("x-trace-id", "")
     logger.info("health check", extra={"trace_id": trace_id})
     # Bump this version together with VERSION file at repo root
-    py_api_version = version("py-api")
-    return {"status": "ok", "service": "py-api", "version": py_api_version}
+    return {"status": "ok", "service": "py-api", "version": PY_API_VERSION}
 
 
 @app.get("/metrics")

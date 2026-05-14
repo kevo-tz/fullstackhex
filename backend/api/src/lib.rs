@@ -206,16 +206,16 @@ fn build_router(state: Arc<AppState>) -> Router {
     }
 
     // Nest notes CRUD routes — requires auth + database
-    if state.auth.is_some() {
-        if let DbStatus::Connected(ref _pool) = state.db {
-            let notes_router = Router::new()
-                .route("/", axum::routing::get(notes::list_notes))
-                .route("/", axum::routing::post(notes::create_note))
-                .route("/{id}", axum::routing::get(notes::get_note))
-                .route("/{id}", axum::routing::delete(notes::delete_note))
-                .with_state(state.clone());
-            router = router.nest("/notes", notes_router);
-        }
+    if state.auth.is_some()
+        && let DbStatus::Connected(ref _pool) = state.db
+    {
+        let notes_router = Router::new()
+            .route("/", axum::routing::get(notes::list_notes))
+            .route("/", axum::routing::post(notes::create_note))
+            .route("/{id}", axum::routing::get(notes::get_note))
+            .route("/{id}", axum::routing::delete(notes::delete_note))
+            .with_state(state.clone());
+        router = router.nest("/notes", notes_router);
     }
 
     // Fallback /auth/me when auth not configured — returns 200 to avoid browser 404 noise
@@ -259,16 +259,15 @@ pub async fn maintenance_middleware(
         || path.starts_with("/metrics/")
         || path == "/live";
 
-    if !is_whitelisted {
-        if let Some(flags) = req.extensions().get::<domain::FeatureFlags>() {
-            if flags.maintenance_mode {
-                return (
-                    StatusCode::SERVICE_UNAVAILABLE,
-                    "{\"error\":\"maintenance mode\"}",
-                )
-                    .into_response();
-            }
-        }
+    if !is_whitelisted
+        && let Some(flags) = req.extensions().get::<domain::FeatureFlags>()
+        && flags.maintenance_mode
+    {
+        return (
+            StatusCode::SERVICE_UNAVAILABLE,
+            "{\"error\":\"maintenance mode\"}",
+        )
+            .into_response();
     }
     next.run(req).await
 }

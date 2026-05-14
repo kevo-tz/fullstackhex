@@ -66,10 +66,8 @@ pub async fn list_notes(
         }
     };
 
-    let limit = params.per_page.min(100).max(1);
-    let offset = (params.page.max(1) as i64)
-        .saturating_sub(1)
-        .saturating_mul(limit);
+    let limit = params.per_page.clamp(1, 100);
+    let offset = params.page.max(1).saturating_sub(1).saturating_mul(limit);
 
     match sqlx::query_as::<_, (String, String, String, String, String, String)>(
         r#"

@@ -86,9 +86,11 @@ class JsonFormatter(logging.Formatter):
 def setup_logging() -> None:
     """Configure root logger with JSON formatter for structured output."""
     root = logging.getLogger()
-    # Guard against duplicate handlers on lifespan re-entry (test reset, dev reload)
+    # Guard against duplicate handlers on lifespan re-entry (test reset, dev reload).
+    # Check for a stderr StreamHandler specifically to avoid false collisions with
+    # pytest's _FileHandler (a StreamHandler subclass) which isn't ours to deduplicate.
     if any(
-        isinstance(h, logging.StreamHandler)
+        isinstance(h, logging.StreamHandler) and h.stream is sys.stderr
         for h in root.handlers
     ):
         return

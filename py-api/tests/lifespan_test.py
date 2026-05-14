@@ -33,8 +33,14 @@ def test_register_metrics_idempotent() -> None:
 
 def test_lifespan_calls_setup_logging() -> None:
     """Entering the lifespan context should add a StreamHandler to root logger."""
+    import sys
+
     root = logging.getLogger()
-    initial_count = len(root.handlers)
+    stderr_before = [
+        h
+        for h in root.handlers
+        if isinstance(h, logging.StreamHandler) and h.stream is sys.stderr
+    ]
 
     async def run():
         async with lifespan(app):
@@ -43,8 +49,14 @@ def test_lifespan_calls_setup_logging() -> None:
     import asyncio
     asyncio.run(run())
 
-    # setup_logging adds a StreamHandler; verify no error occurred
-    assert len(root.handlers) == initial_count + 1
+    # setup_logging adds a stderr StreamHandler; guard-inspect only stderr handlers
+    # to avoid false negatives from pytest FileHandler (also a StreamHandler subclass).
+    stderr_after = [
+        h
+        for h in root.handlers
+        if isinstance(h, logging.StreamHandler) and h.stream is sys.stderr
+    ]
+    assert len(stderr_after) == len(stderr_before) + 1
 
 
 def test_settings_uses_env_var(monkeypatch) -> None:

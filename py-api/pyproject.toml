@@ -13,6 +13,9 @@ dependencies = [
   "prometheus-client>=0.21,<0.27"
 ]
 
+[tool.hatch.build.targets.wheel]
+packages = ["app"]
+
 [dependency-groups]
 dev = [
   "pytest>=8.4.0",

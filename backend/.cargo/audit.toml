@@ -1,0 +1,7 @@
+[advisories]
+ignore = [
+    "RUSTSEC-2020-0128",  # false positive — our local cache crate, not the published one
+    "RUSTSEC-2021-0006",  # same false positive
+    "RUSTSEC-2023-0071",  # rsa Marvin Attack — transitive via jsonwebtoken, only used
+                          # for localhost auth tokens, network timing not exploitable
+]

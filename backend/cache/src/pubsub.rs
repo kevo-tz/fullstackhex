@@ -88,8 +88,6 @@ impl RedisClient {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
     use super::super::test_util::TEST_NAMESPACE;
 
     #[tokio::test]

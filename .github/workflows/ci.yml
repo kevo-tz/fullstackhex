@@ -259,6 +259,7 @@ jobs:
           echo "Frontend ready"
 
       - name: Run e2e tests
+        working-directory: frontend
         env:
           VITE_RUST_BACKEND_URL: http://localhost:8001
           FRONTEND_URL: http://localhost:4321

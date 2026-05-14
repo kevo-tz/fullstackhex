@@ -39,7 +39,7 @@ uv run pytest            # Tests
 ### Frontend (Bun)
 ```bash
 bun lint                 # Lint (requires prettier / eslint in project)
-bun run test:vitest        # Tests (vitest)
+bun run test               # Tests (vitest)
 bun run build            # Verify build succeeds
 ```
 

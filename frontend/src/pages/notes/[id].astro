@@ -18,7 +18,7 @@ const { id } = Astro.params;
 
     <!-- Error state -->
     <div id="detail-error" class="error-state hidden">
-      <h2>Note not found</h2>
+      <h2 id="detail-error-heading">Note not found</h2>
       <p id="detail-error-msg">Could not load this note.</p>
       <a href="/notes" class="btn-primary">Back to Notes</a>
     </div>
@@ -71,8 +71,11 @@ const { id } = Astro.params;
     } catch (err) {
       document.getElementById("detail-loading")!.classList.add("hidden");
       document.getElementById("detail-error")!.classList.remove("hidden");
+      const msg = err instanceof Error ? err.message : "";
+      (document.getElementById("detail-error-heading") as HTMLElement).textContent =
+        msg.startsWith("HTTP 4") ? "Note not found" : "Could not load note";
       (document.getElementById("detail-error-msg") as HTMLElement).textContent =
-        err instanceof Error ? err.message : "Could not load note";
+        msg || "Could not load note";
     }
   }
 

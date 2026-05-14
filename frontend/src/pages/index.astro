@@ -292,6 +292,7 @@ make status</pre>
 
         try {
           const res  = await fetch("/api/health");
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
           const data = await res.json();
 
           if (rawJson) rawJson.textContent = JSON.stringify(data, null, 2);

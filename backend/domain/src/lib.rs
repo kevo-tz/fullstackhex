@@ -30,7 +30,7 @@ impl FeatureFlags {
     fn env_bool(key: &str) -> bool {
         std::env::var(key)
             .ok()
-            .map_or(false, |v| v.eq_ignore_ascii_case("true") || v == "1")
+            .is_some_and(|v| v.eq_ignore_ascii_case("true") || v == "1")
     }
 }
 

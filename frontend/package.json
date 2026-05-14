@@ -11,40 +11,31 @@
     "preview": "astro preview",
     "astro": "astro",
     "typecheck": "astro check",
-    "lint": "astro check",
-    "test:vitest": "vitest run"
+    "lint": "eslint .",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:e2e": "vitest run --config vitest.e2e.config.ts"
   },
   "dependencies": {
-    "@astrojs/node": "^10.0.6",
-    "@tailwindcss/vite": "^4.2.4",
-    "astro": "^6.2.1",
-    "tailwindcss": "^4.2.4"
+    "@astrojs/node": "^10.1.0",
+    "@tailwindcss/vite": "^4.3.0",
+    "astro": "^6.3.1",
+    "tailwindcss": "^4.3.0"
   },
   "devDependencies": {
     "@astrojs/check": "^0.9.9",
-    "knip": "^6.11.0",
-    "@types/node": "^25.6.0",
-    "@vitest/coverage-v8": "^4.1.5",
-    "bun-types": "^1.3.13",
+    "@types/node": "^25.7.0",
+    "@vitest/coverage-v8": "^4.1.6",
+    "@eslint/js": "^10.0.1",
+    "eslint": "^10.3.0",
     "jsdom": "^29.1.1",
+    "knip": "^6.13.0",
     "typescript": "^6.0.3",
-    "vitest": "^4.1.5"
+    "typescript-eslint": "^8.59.3",
+    "vitest": "^4.1.6"
   },
-  "knip": {
-    "$schema": "https://unpkg.com/knip@6/schema.json",
-    "entry": [
-      "src/**/*.ts",
-      "src/**/*.astro",
-      "src/lib/health.ts",
-      "tests/**/*.ts"
-    ],
-    "project": [
-      "src/**/*.ts",
-      "src/**/*.astro",
-      "tests/**/*.ts"
-    ],
-    "ignoreDependencies": [
-      "tailwindcss"
-    ]
+  "overrides": {
+    "yaml": "^2.8.3",
+    "fast-uri": "^3.1.2"
   }
 }

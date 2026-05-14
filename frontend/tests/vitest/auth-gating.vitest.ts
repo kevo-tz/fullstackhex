@@ -1,4 +1,4 @@
-import { describe, expect, test, beforeEach, afterEach, vi } from "vitest";
+import { describe, expect, test, beforeEach, vi } from "vitest";
 
 const TOKEN_KEY = "fullstackhex_token";
 const USER_KEY = "fullstackhex_user";

@@ -1,4 +1,4 @@
-import { describe, expect, test, mock } from "bun:test";
+import { describe, expect, test, vi } from "vitest";
 import {
   aggregateHealth,
   isFullOutage,
@@ -6,41 +6,43 @@ import {
   createRetryController,
 } from "../src/lib/health";
 
-function makeFetch(fn: (url: string, init?: RequestInit) => Promise<Response>): typeof fetch {
-  return fn as unknown as typeof fetch;
+import { makeFetch } from "./test-utils";
+
+function makeMockResponse(body: unknown, opts?: { status?: number; ok?: boolean; headers?: Headers }): Response {
+  return {
+    json: async () => body,
+    ok: opts?.ok ?? true,
+    status: opts?.status ?? 200,
+    headers: opts?.headers ?? new Headers({ "Content-Type": "application/json" }),
+  } as Response;
 }
 
-function makeResponse(jsonFn: () => Promise<unknown>): Response {
-  const body = new ReadableStream({
-    start(controller) {
-      jsonFn().then((data) => {
-        controller.enqueue(new TextEncoder().encode(JSON.stringify(data)));
-        controller.close();
-      });
-    },
-  });
-  return new Response(body, {
+const MOCK_HEALTH_OK = {
+  rust: { status: "ok", service: "api", version: "0.1.0" },
+  db: { status: "ok" },
+  redis: { status: "ok" },
+  storage: { status: "ok" },
+  python: { status: "ok" },
+  auth: { status: "ok" },
+};
+
+function makeFailingJsonResponse(error: Error): Response {
+  const res = new Response('"invalid"', {
     status: 200,
     statusText: "OK",
     headers: { "Content-Type": "application/json" },
   });
+  vi.spyOn(res, "json").mockRejectedValue(error);
+  return res;
 }
 
 describe("aggregateHealth", () => {
   test("all endpoints healthy returns ok statuses", async () => {
-    const fetchImpl = mock(async (url: string, _init?: RequestInit) => {
-      // /health returns nested { rust: { status }, db, redis, ... }
+    const fetchImpl = vi.fn(async (url: string) => {
       if ((url as string).endsWith("/health")) {
-        return makeResponse(async () => ({
-          rust: { status: "ok", service: "api", version: "0.1.0" },
-          db: { status: "ok" },
-          redis: { status: "ok" },
-          storage: { status: "ok" },
-          python: { status: "ok" },
-          auth: { status: "ok" },
-        }));
+        return makeMockResponse(MOCK_HEALTH_OK);
       }
-      return makeResponse(async () => ({ status: "ok" }));
+      return makeMockResponse({ status: "ok" });
     });
     const result = await aggregateHealth(makeFetch(fetchImpl));
     expect((result.rust as Record<string, unknown>).status).toBe("ok");
@@ -49,7 +51,7 @@ describe("aggregateHealth", () => {
   });
 
   test("rust fetch rejection returns error status", async () => {
-    const fetchImpl = mock(async () => {
+    const fetchImpl = vi.fn(async () => {
       throw new Error("connect ECONNREFUSED");
     });
     const result = await aggregateHealth(makeFetch(fetchImpl));
@@ -57,34 +59,22 @@ describe("aggregateHealth", () => {
   });
 
   test("rust JSON parse failure returns error status", async () => {
-    const fetchImpl = mock(async () =>
-      makeResponse(async () => {
-        throw new SyntaxError("Unexpected token");
-      }),
+    const fetchImpl = vi.fn(async () =>
+      makeFailingJsonResponse(new SyntaxError("Unexpected token")),
     );
     const result = await aggregateHealth(makeFetch(fetchImpl));
     expect((result.rust as Record<string, unknown>).status).toBe("error");
   });
 
   test("python parse failure returns unavailable status", async () => {
-    const fetchImpl = mock(async (url: string, _init?: RequestInit) => {
+    const fetchImpl = vi.fn(async (url: string) => {
       if ((url as string).endsWith("/health/python")) {
-        return makeResponse(async () => {
-          throw new SyntaxError("bad JSON");
-        });
+        return makeFailingJsonResponse(new SyntaxError("bad JSON"));
       }
-      // /health returns nested structure
       if ((url as string).endsWith("/health")) {
-        return makeResponse(async () => ({
-          rust: { status: "ok", service: "api", version: "0.1.0" },
-          db: { status: "ok" },
-          redis: { status: "ok" },
-          storage: { status: "ok" },
-          python: { status: "ok" },
-          auth: { status: "ok" },
-        }));
+        return makeMockResponse(MOCK_HEALTH_OK);
       }
-      return makeResponse(async () => ({ status: "ok" }));
+      return makeMockResponse({ status: "ok" });
     });
     const result = await aggregateHealth(makeFetch(fetchImpl));
     expect((result.python as Record<string, unknown>).status).toBe(
@@ -93,20 +83,12 @@ describe("aggregateHealth", () => {
   });
 
   test("mixed: rust ok, db error, python unavailable", async () => {
-    const fetchImpl = mock(async (url: string) => {
-      // /health returns nested structure with rust ok
+    const fetchImpl = vi.fn(async (url: string) => {
       if ((url as string).endsWith("/health")) {
-        return makeResponse(async () => ({
-          rust: { status: "ok", service: "api", version: "0.1.0" },
-          db: { status: "ok" },
-          redis: { status: "ok" },
-          storage: { status: "ok" },
-          python: { status: "ok" },
-          auth: { status: "ok" },
-        }));
+        return makeMockResponse(MOCK_HEALTH_OK);
       }
       if ((url as string).endsWith("/health/db")) throw new Error("db down");
-      return makeResponse(async () => ({ status: "unavailable" }));
+      return makeMockResponse({ status: "unavailable" });
     });
     const result = await aggregateHealth(makeFetch(fetchImpl));
     expect((result.rust as Record<string, unknown>).status).toBe("ok");
@@ -242,45 +224,29 @@ describe("aggregateHealth", () => {
 
   test("x-trace-id header is sent in each fetch call", async () => {
     const capturedHeaders: Record<string, string>[] = [];
-    const fetchImpl = mock(async (url: string, init?: RequestInit) => {
+    const fetchImpl = vi.fn(async (url: string, init?: RequestInit) => {
       capturedHeaders.push((init?.headers as Record<string, string>) || {});
-      // /health returns nested structure
       if ((url as string).endsWith("/health")) {
-        return makeResponse(async () => ({
-          rust: { status: "ok", service: "api", version: "0.1.0" },
-          db: { status: "ok" },
-          redis: { status: "ok" },
-          storage: { status: "ok" },
-          python: { status: "ok" },
-          auth: { status: "ok" },
-        }));
+        return makeMockResponse(MOCK_HEALTH_OK);
       }
-      return makeResponse(async () => ({ status: "ok" }));
+      return makeMockResponse({ status: "ok" });
     });
 
     await aggregateHealth(makeFetch(fetchImpl));
 
     expect(capturedHeaders.length).toBe(6);
     for (const headers of capturedHeaders) {
-      expect(headers["x-trace-id"]).toBeString();
+      expect(headers["x-trace-id"]).toBeTypeOf("string");
       expect(headers["x-trace-id"]!.length).toBeGreaterThan(0);
     }
   });
 
   test("result contains entries for all services", async () => {
-    const fetchImpl = mock(async (url: string) => {
-      // /health returns nested structure
+    const fetchImpl = vi.fn(async (url: string) => {
       if ((url as string).endsWith("/health")) {
-        return makeResponse(async () => ({
-          rust: { status: "ok", service: "api", version: "0.1.0" },
-          db: { status: "ok" },
-          redis: { status: "ok" },
-          storage: { status: "ok" },
-          python: { status: "ok" },
-          auth: { status: "ok" },
-        }));
+        return makeMockResponse(MOCK_HEALTH_OK);
       }
-      return makeResponse(async () => ({ status: "ok" }));
+      return makeMockResponse({ status: "ok" });
     });
     const result = await aggregateHealth(makeFetch(fetchImpl));
     expect(result.rust).toBeDefined();

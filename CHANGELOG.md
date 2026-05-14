@@ -7,6 +7,50 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.13.3] - 2026-05-14
+
+### Added
+- **ESLint + TypeScript configs**: new `eslint.config.mjs`, `knip.json`, expanded `tsconfig.json` — enables lint and dead-code detection in frontend CI
+- **`public/styles/layout.css`**: extracted global layout styles from inline `index.astro` — enables CSS reuse and caching
+- **CSS focus styles**: visible `:focus-visible` outlines across all interactive elements — keyboard accessibility
+- **`.cargo/audit.toml`**: cargo-audit configuration for Rust dependency vulnerability scanning
+- **py-api lifespan tests**: `test_lifespan_calls_setup_logging`, `test_register_metrics_creates_counters`, `test_register_metrics_idempotent` — covers FastAPI lifespan refactor
+
+### Changed
+- **Dep updates (frontend)**: 8 outdated deps bumped — Astro 6.1→6.5, Vitest 3.1→3.2, Playwright 1.53→1.56
+- **Dep updates (Rust)**: lockfile refreshed for semver-compatible patches via `cargo update`
+- **`prometheus-client` range widened**: `<0.27` to accommodate upstream releases
+- **CI consolidation**: Python sidecar startup removed from CI (socket tests now run inline), Redis service added, smoke job merged into frontend job
+- **Test runner migration**: bun:test fully replaced by vitest — all 61 `.vitest.ts` tests restored to CI config
+- **CI commands restored**: broken `bun run lint`/`typecheck`/`build` commands fixed
+- **py-api lifespan pattern**: `@app.on_event("startup")` → `FastAPI(lifespan=lifespan)` — official FastAPI pattern
+- **py-api version**: health endpoint reads version from installed package metadata instead of hardcoded string
+- **Redis test helpers extracted**: shared `test_util.rs` with `require_redis_url()` and `test_client()` — tests skip gracefully when Redis is unavailable
+- **Cache tests un-ignored**: 7 Redis tests switched from `#[ignore]` to conditional skip via `require_redis_url()`
+- **py-sidecar socket tests un-ignored**: 8 socket integration tests switched from `#[ignore]` to `#[serial]` — run as part of normal suite
+- **`sqlx-cli` install**: switched to `taiki-e/install-action` for faster CI
+
+### Fixed
+- **3 security vulns**: resolved in frontend dependencies
+- **5 unused TS imports/vars**: removed — cleans up lint noise
+- **1 dead e2e test**: deleted `full_socket_communication` — returns before assertion, no coverage value
+- **Stale `#[ignore]` comments**: corrected in CI workflows
+- **`health_python_ok_with_mock_socket`**: removed stale `#[ignore]`, added `#[serial]` guard
+- **`_metrics_registered` state**: reset between py-api test runs to prevent cross-test pollution
+- **`layout.css` regression**: restored file deleted during cleanup — moved to `public/styles/`
+- **FastAPI `on_event` deprecation**: migrated to lifespan context manager — fixes test isolation
+- **Marvin Attack ignore**: added RsaSsaPkcs1v15 SHA256 variant to audit ignores
+
+### Removed
+- **Dead CI steps**: Python sidecar startup, smoke test job — coverage absorbed by consolidated workflows
+- **Unused `bun-types`**: removed from frontend dependencies
+
+### Security
+- **New `cargo audit` workflow**: scheduled weekly + on `Cargo.lock` changes — scans Rust dependency vulnerabilities
+- **Frontend deps updated**: resolved 3 security advisories via bumping affected packages
+
+---
+
 ## [0.13.2] - 2026-05-12
 
 ### Changed

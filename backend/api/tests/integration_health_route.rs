@@ -385,7 +385,7 @@ async fn health_db_ok_with_real_pool() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-#[ignore = "requires real Unix socket infrastructure — run with --ignored on a native Linux host"]
+#[serial]
 async fn health_python_ok_with_mock_socket() {
     use api::AppState;
     use api::DbStatus;
@@ -396,23 +396,23 @@ async fn health_python_ok_with_mock_socket() {
 
     let dir = tempfile::tempdir().unwrap();
     let sock_path = dir.path().join("health_ok.sock");
-    let listener = UnixListener::bind(&sock_path).unwrap();
     let sc = py_sidecar::PythonSidecar::new(sock_path.clone(), Duration::from_secs(2), 0);
+    let (ready_tx, ready_rx) = tokio::sync::oneshot::channel::<()>();
 
     // Spawn a mock sidecar that reads the request then responds with valid JSON.
     // Reading first ensures the client finishes writing before we close.
     tokio::spawn(async move {
+        let listener = UnixListener::bind(&sock_path).unwrap();
+        let _ = ready_tx.send(());
         let (mut stream, _) = listener.accept().await.unwrap();
         let mut buf = [0u8; 512];
         let _ = stream.read(&mut buf).await;
         let response = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n{\"status\":\"ok\",\"service\":\"py-api\",\"version\":\"0.1.0\"}";
         stream.write_all(response.as_bytes()).await.unwrap();
         stream.shutdown().await.ok();
-        tokio::time::sleep(Duration::from_millis(200)).await;
     });
 
-    // Brief yield so the spawned task can enter accept().
-    tokio::time::sleep(Duration::from_millis(100)).await;
+    ready_rx.await.unwrap();
 
     let state = AppState {
         db: DbStatus::NotConfigured,

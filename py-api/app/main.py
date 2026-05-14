@@ -1,7 +1,9 @@
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from fastapi import FastAPI, Request, Response
 import hmac
 import hashlib
+from importlib.metadata import version
 import logging
 import json
 import os
@@ -16,7 +18,14 @@ from prometheus_client import (
     CONTENT_TYPE_LATEST,
 )
 
-app = FastAPI()
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    setup_logging()
+    yield
+
+
+app = FastAPI(lifespan=lifespan)
 
 
 class Settings:
@@ -31,18 +40,30 @@ class Settings:
 
 settings = Settings()
 
-# Prometheus metrics
-PYTHON_REQUESTS_TOTAL = Counter(
-    "python_requests_total",
-    "Total HTTP requests",
-    ["method", "endpoint", "status"],
-)
-PYTHON_REQUEST_DURATION = Histogram(
-    "python_request_duration_seconds",
-    "HTTP request duration",
-    ["method", "endpoint"],
-    buckets=[0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0],
-)
+
+def register_metrics() -> None:
+    """Create Prometheus metrics once. Catch duplicate on re-import across test files."""
+    global PYTHON_REQUESTS_TOTAL, PYTHON_REQUEST_DURATION
+    try:
+        PYTHON_REQUESTS_TOTAL = Counter(
+            "python_requests_total",
+            "Total HTTP requests",
+            ["method", "endpoint", "status"],
+        )
+        PYTHON_REQUEST_DURATION = Histogram(
+            "python_request_duration_seconds",
+            "HTTP request duration",
+            ["method", "endpoint"],
+            buckets=[0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0],
+        )
+    except ValueError:
+        pass
+
+
+register_metrics()
+
+# Cache py-api version at module level — avoids importlib.metadata lookup per request
+PY_API_VERSION = version("py-api")
 
 
 class JsonFormatter(logging.Formatter):
@@ -65,16 +86,16 @@ class JsonFormatter(logging.Formatter):
 
 def setup_logging() -> None:
     """Configure root logger with JSON formatter for structured output."""
+    root = logging.getLogger()
+    # Guard against duplicate handlers on lifespan re-entry (test reset, dev reload).
+    # Check for a stderr StreamHandler specifically to avoid false collisions with
+    # pytest's _FileHandler (a StreamHandler subclass) which isn't ours to deduplicate.
+    if any(isinstance(h, logging.StreamHandler) and h.stream is sys.stderr for h in root.handlers):
+        return
     handler = logging.StreamHandler(sys.stderr)
     handler.setFormatter(JsonFormatter())
-    root = logging.getLogger()
     root.addHandler(handler)
     root.setLevel(logging.INFO)
-
-
-@app.on_event("startup")
-async def _startup() -> None:
-    setup_logging()
 
 
 logger = logging.getLogger("py-api")
@@ -162,7 +183,7 @@ def health(request: Request) -> dict[str, str]:
     trace_id = request.headers.get("x-trace-id", "")
     logger.info("health check", extra={"trace_id": trace_id})
     # Bump this version together with VERSION file at repo root
-    return {"status": "ok", "service": "py-api", "version": "0.13.0"}
+    return {"status": "ok", "service": "py-api", "version": PY_API_VERSION}
 
 
 @app.get("/metrics")

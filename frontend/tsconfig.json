@@ -1,8 +1,12 @@
 {
   "extends": "astro/tsconfigs/strict",
   "compilerOptions": {
-    "types": ["node", "bun-types"]
+    "types": ["node"],
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["src/*"]
+    }
   },
-  "include": [".astro/types.d.ts", "**/*"],
-  "exclude": ["dist", "tests/e2e"]
+  "include": [".astro/types.d.ts", "src/**/*", "tests/**/*", "vitest.config.ts", "vitest.e2e.config.ts", "eslint.config.mjs", "astro.config.mjs"],
+  "exclude": ["dist"]
 }

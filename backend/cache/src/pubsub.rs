@@ -88,14 +88,18 @@ impl RedisClient {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use super::super::test_util::TEST_NAMESPACE;
 
     #[tokio::test]
-    #[ignore = "requires running Redis"]
     async fn integration_publish_subscribe_roundtrip() {
-        let client = RedisClient::new("redis://127.0.0.1:6379/9", "test")
-            .await
-            .expect("redis connect");
+        let Some(client) = super::super::test_util::test_client(
+            &super::super::test_util::require_redis_url(),
+            TEST_NAMESPACE,
+        )
+        .await
+        else {
+            return;
+        };
         let mut rx = client.subscribe("test-channel").await.unwrap();
         tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
         client
@@ -111,11 +115,15 @@ mod tests {
     }
 
     #[tokio::test]
-    #[ignore = "requires running Redis"]
     async fn integration_publish_multiple_messages() {
-        let client = RedisClient::new("redis://127.0.0.1:6379/9", "test")
-            .await
-            .expect("redis connect");
+        let Some(client) = super::super::test_util::test_client(
+            &super::super::test_util::require_redis_url(),
+            TEST_NAMESPACE,
+        )
+        .await
+        else {
+            return;
+        };
         let mut rx = client.subscribe("multi-channel").await.unwrap();
         tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
         client.publish("multi-channel", "msg1").await.unwrap();

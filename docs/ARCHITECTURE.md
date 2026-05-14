@@ -118,7 +118,7 @@ frontend/
 │       ├── index.astro      # Template landing page
 │       └── api/
 │           └── health.ts    # Astro server route proxying Rust health
-└── tests/                   # Bun test suites (unit, integration, smoke)
+└── tests/                   # Vitest test suites (unit, integration, smoke)
 
 backend/
 ├── Cargo.toml              # Workspace root

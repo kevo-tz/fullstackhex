@@ -177,12 +177,18 @@ mod tests {
         assert!(result.is_none());
     }
 
+    use super::super::test_util::TEST_NAMESPACE;
+
     #[tokio::test]
-    #[ignore = "requires running Redis"]
     async fn integration_cache_get_hit() {
-        let client = RedisClient::new("redis://127.0.0.1:6379/9", "test")
-            .await
-            .expect("redis connect");
+        let Some(client) = super::super::test_util::test_client(
+            &super::super::test_util::require_redis_url(),
+            TEST_NAMESPACE,
+        )
+        .await
+        else {
+            return;
+        };
         client
             .cache_set("test_ns", "hit_key", &"hit_value", Duration::from_secs(60))
             .await
@@ -193,21 +199,29 @@ mod tests {
     }
 
     #[tokio::test]
-    #[ignore = "requires running Redis"]
     async fn integration_cache_get_miss() {
-        let client = RedisClient::new("redis://127.0.0.1:6379/9", "test")
-            .await
-            .expect("redis connect");
+        let Some(client) = super::super::test_util::test_client(
+            &super::super::test_util::require_redis_url(),
+            TEST_NAMESPACE,
+        )
+        .await
+        else {
+            return;
+        };
         let result: Option<String> = client.cache_get("test_ns", "nonexistent").await.unwrap();
         assert!(result.is_none());
     }
 
     #[tokio::test]
-    #[ignore = "requires running Redis"]
     async fn integration_cache_delete() {
-        let client = RedisClient::new("redis://127.0.0.1:6379/9", "test")
-            .await
-            .expect("redis connect");
+        let Some(client) = super::super::test_util::test_client(
+            &super::super::test_util::require_redis_url(),
+            TEST_NAMESPACE,
+        )
+        .await
+        else {
+            return;
+        };
         client
             .cache_set("test_ns", "del_key", &"to_delete", Duration::from_secs(60))
             .await
@@ -218,11 +232,15 @@ mod tests {
     }
 
     #[tokio::test]
-    #[ignore = "requires running Redis"]
     async fn integration_cache_invalidate_pattern() {
-        let client = RedisClient::new("redis://127.0.0.1:6379/9", "test")
-            .await
-            .expect("redis connect");
+        let Some(client) = super::super::test_util::test_client(
+            &super::super::test_util::require_redis_url(),
+            TEST_NAMESPACE,
+        )
+        .await
+        else {
+            return;
+        };
         client
             .cache_set("pat", "k1", &1u64, Duration::from_secs(60))
             .await
@@ -236,11 +254,15 @@ mod tests {
     }
 
     #[tokio::test]
-    #[ignore = "requires running Redis"]
     async fn integration_refresh_token_rotate() {
-        let client = RedisClient::new("redis://127.0.0.1:6379/9", "test")
-            .await
-            .expect("redis connect");
+        let Some(client) = super::super::test_util::test_client(
+            &super::super::test_util::require_redis_url(),
+            TEST_NAMESPACE,
+        )
+        .await
+        else {
+            return;
+        };
         let token = "rotate-test-token";
         client
             .cache_set("refresh", token, &"user-123", Duration::from_secs(60))

@@ -1,5 +1,5 @@
-import { expect, test } from "bun:test";
+import { expect, test } from "vitest";
 
 test("generated frontend smoke test", () => {
-  expect(typeof Bun.version).toBe("string");
+  expect(typeof process.version).toBe("string");
 });

@@ -1,10 +1,10 @@
-import { describe, expect, test, mock, beforeEach, afterEach } from "bun:test";
+import { describe, expect, test, vi } from "vitest";
 
 /**
  * Integration tests for the /api/health aggregation route.
  *
- * The handler (`src/pages/api/health.ts`) calls three Rust backend endpoints
- * and fans the results into a single JSON response.  We mock `fetch` at the
+ * The handler (`src/pages/api/health.ts`) calls backend endpoints
+ * and fans the results into a single JSON response. We mock `fetch` at the
  * module level so no real network is required.
  */
 
@@ -19,7 +19,7 @@ type FetchResponses = {
 };
 
 function makeFetchMock(responses: FetchResponses) {
-  return mock(async (url: string) => {
+  return vi.fn(async (url: string) => {
     const u = url.toString();
 
     const pick = (val: object | Error | undefined) => {
@@ -33,8 +33,6 @@ function makeFetchMock(responses: FetchResponses) {
     if (u.endsWith("/health/db")) return pick(responses.healthDb);
     if (u.endsWith("/health/python")) return pick(responses.healthPython);
     if (u.endsWith("/health")) {
-      // The /health endpoint returns nested { rust: { status }, db, redis, ... }
-      // We need to wrap the provided health object inside a `rust` key
       const val = responses.health;
       if (val instanceof Error) throw val;
       const inner = val ?? {};
@@ -49,10 +47,7 @@ function makeFetchMock(responses: FetchResponses) {
 }
 
 import { aggregateHealth } from "../src/lib/health";
-
-function makeFetch(fn: (url: string, init?: RequestInit) => Promise<Response>): typeof fetch {
-  return fn as unknown as typeof fetch;
-}
+import { makeFetch } from "./test-utils";
 
 // Test helper: wraps aggregateHealth into a Response matching the Astro route shape
 async function runHandler(
@@ -262,11 +257,10 @@ describe("/api/health aggregation route", () => {
   });
 
   describe("parallelism — all three fetches issued", () => {
-    test("fetch called exactly three times with correct URLs", async () => {
+    test("fetch called exactly six times with correct URLs", async () => {
       const fetchCalls: string[] = [];
-      const fetchMock = mock(async (url: string) => {
+      const fetchMock = vi.fn(async (url: string) => {
         fetchCalls.push(url);
-        // /health returns nested structure
         if (url.endsWith("/health")) {
           return new Response(
             JSON.stringify({
@@ -292,17 +286,17 @@ describe("/api/health aggregation route", () => {
       await runHandler(makeFetch(fetchMock));
 
       expect(fetchCalls).toHaveLength(6);
-      expect(fetchCalls[0]).toEndWith("/health");
-      expect(fetchCalls[1]).toEndWith("/health/db");
-      expect(fetchCalls[2]).toEndWith("/health/redis");
-      expect(fetchCalls[3]).toEndWith("/health/storage");
-      expect(fetchCalls[4]).toEndWith("/health/python");
+      expect(fetchCalls[0]).toMatch(/\/health$/);
+      expect(fetchCalls[1]).toMatch(/\/health\/db$/);
+      expect(fetchCalls[2]).toMatch(/\/health\/redis$/);
+      expect(fetchCalls[3]).toMatch(/\/health\/storage$/);
+      expect(fetchCalls[4]).toMatch(/\/health\/python$/);
     });
   });
 
   describe("malformed JSON response", () => {
     test("handles valid HTTP response with non-JSON body", async () => {
-      const fetchMock = mock(async (_url: string) => {
+      const fetchMock = vi.fn(async () => {
         return new Response("not-json", { status: 200 });
       });
 
@@ -320,7 +314,7 @@ describe("/api/health aggregation route", () => {
 
   describe("partial malformed JSON — one endpoint returns non-JSON", () => {
     test("rust returns non-JSON, db and python succeed", async () => {
-      const fetchMock = mock(async (url: string) => {
+      const fetchMock = vi.fn(async (url: string) => {
         if (url.endsWith("/health"))
           return new Response("not-json", { status: 200 });
         return new Response(JSON.stringify({ status: "ok" }), {
@@ -340,10 +334,9 @@ describe("/api/health aggregation route", () => {
     });
 
     test("db returns non-JSON, rust and python succeed", async () => {
-      const fetchMock = mock(async (url: string) => {
+      const fetchMock = vi.fn(async (url: string) => {
         if (url.endsWith("/health/db"))
           return new Response("not-json", { status: 200 });
-        // /health returns nested structure
         if (url.endsWith("/health")) {
           return new Response(
             JSON.stringify({
@@ -376,10 +369,9 @@ describe("/api/health aggregation route", () => {
     });
 
     test("python returns non-JSON, rust and db succeed", async () => {
-      const fetchMock = mock(async (url: string) => {
+      const fetchMock = vi.fn(async (url: string) => {
         if (url.endsWith("/health/python"))
           return new Response("not-json", { status: 200 });
-        // /health returns nested structure
         if (url.endsWith("/health")) {
           return new Response(
             JSON.stringify({

@@ -2,8 +2,6 @@ import { describe, expect, test, beforeEach, afterEach } from "vitest";
 
 describe("theme system", () => {
   const STORAGE_KEY = "theme";
-  const originalEnv = process.env;
-
   beforeEach(() => {
     localStorage.clear();
     document.documentElement.dataset.theme = "dark";
@@ -18,7 +16,7 @@ describe("theme system", () => {
     let stored: string | null = null;
     try {
       stored = localStorage.getItem(STORAGE_KEY);
-    } catch {}
+    } catch { /* localStorage may be blocked */ }
     const theme = stored || "dark";
     document.documentElement.dataset.theme = theme;
   }

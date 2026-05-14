@@ -512,7 +512,10 @@ mod tests {
     /// Spawn a mock Unix socket server that accepts one connection and
     /// calls `respond` with the accepted stream. Returns the sidecar handle
     /// and the temporary directory (kept alive so the socket file persists).
-    async fn with_mock_server<F, Fut>(sock_name: &str, respond: F) -> (PythonSidecar, tempfile::TempDir)
+    async fn with_mock_server<F, Fut>(
+        sock_name: &str,
+        respond: F,
+    ) -> (PythonSidecar, tempfile::TempDir)
     where
         F: FnOnce(tokio::net::UnixStream) -> Fut + Send + 'static,
         Fut: std::future::Future<Output = ()> + Send + 'static,

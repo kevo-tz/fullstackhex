@@ -31,7 +31,7 @@ jobs:
 
       - name: Run security audit
         # Ignores configured in .cargo/audit.toml
-        run: cargo audit
+        run: cargo audit --manifest-path backend/Cargo.toml
 
   outdated:
     name: cargo-outdated

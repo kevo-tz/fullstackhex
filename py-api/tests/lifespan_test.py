@@ -37,9 +37,7 @@ def test_lifespan_calls_setup_logging() -> None:
 
     root = logging.getLogger()
     stderr_before = [
-        h
-        for h in root.handlers
-        if isinstance(h, logging.StreamHandler) and h.stream is sys.stderr
+        h for h in root.handlers if isinstance(h, logging.StreamHandler) and h.stream is sys.stderr
     ]
 
     async def run():
@@ -47,14 +45,13 @@ def test_lifespan_calls_setup_logging() -> None:
             pass
 
     import asyncio
+
     asyncio.run(run())
 
     # setup_logging adds a stderr StreamHandler; guard-inspect only stderr handlers
     # to avoid false negatives from pytest FileHandler (also a StreamHandler subclass).
     stderr_after = [
-        h
-        for h in root.handlers
-        if isinstance(h, logging.StreamHandler) and h.stream is sys.stderr
+        h for h in root.handlers if isinstance(h, logging.StreamHandler) and h.stream is sys.stderr
     ]
     assert len(stderr_after) == len(stderr_before) + 1
 
@@ -63,6 +60,7 @@ def test_settings_uses_env_var(monkeypatch) -> None:
     """Settings should read SIDECAR_SHARED_SECRET from environment."""
     monkeypatch.setenv("SIDECAR_SHARED_SECRET", "test-secret-value")
     from app.main import Settings
+
     s = Settings()
     assert s.shared_secret == "test-secret-value"
 

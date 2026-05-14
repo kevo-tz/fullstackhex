@@ -1,7 +1,6 @@
 /// Test helpers for Redis integration tests.
 ///
 /// Provides [`require_redis_url`] and [`TEST_NAMESPACE`] used by both cache and pubsub test modules.
-
 use super::RedisClient;
 
 pub const TEST_NAMESPACE: &str = "test";
@@ -26,5 +25,9 @@ pub async fn test_client(url: &str, namespace: &str) -> Option<RedisClient> {
     if url.is_empty() {
         return None;
     }
-    Some(RedisClient::new(url, namespace).await.expect("redis connect"))
+    Some(
+        RedisClient::new(url, namespace)
+            .await
+            .expect("redis connect"),
+    )
 }

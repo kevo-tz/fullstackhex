@@ -148,5 +148,3 @@ async fn socket_retry_logic() {
 
     assert!(attempts >= max_retries);
 }
-
-

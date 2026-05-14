@@ -18,6 +18,7 @@ from prometheus_client import (
     CONTENT_TYPE_LATEST,
 )
 
+
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     setup_logging()
@@ -92,10 +93,7 @@ def setup_logging() -> None:
     # Guard against duplicate handlers on lifespan re-entry (test reset, dev reload).
     # Check for a stderr StreamHandler specifically to avoid false collisions with
     # pytest's _FileHandler (a StreamHandler subclass) which isn't ours to deduplicate.
-    if any(
-        isinstance(h, logging.StreamHandler) and h.stream is sys.stderr
-        for h in root.handlers
-    ):
+    if any(isinstance(h, logging.StreamHandler) and h.stream is sys.stderr for h in root.handlers):
         return
     handler = logging.StreamHandler(sys.stderr)
     handler.setFormatter(JsonFormatter())

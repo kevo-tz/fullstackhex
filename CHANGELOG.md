@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.13.4] - 2026-05-14
+
+### Changed
+- **CLAUDE.md**: added pre-push check reminder — run `bash scripts/pre-push-check.sh` before any `git push`
+
+---
+
 ## [0.13.3] - 2026-05-14
 
 ### Added

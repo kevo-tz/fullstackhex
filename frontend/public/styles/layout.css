@@ -93,8 +93,8 @@ nav .logout-btn {
   border-radius: 4px;
   color: var(--text-muted);
   font-family: inherit;
-  font-size: 0.7rem;
-  padding: 0.25rem 0.5rem;
+  font-size: 0.8rem;
+  padding: 0.5rem 0.75rem;
   cursor: pointer;
 }
 nav .logout-btn:hover { border-color: #ef4444; color: #ef4444; }

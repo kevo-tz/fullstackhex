@@ -61,44 +61,41 @@ describe("e2e auth flow", () => {
   });
 
   test("POST /auth/login returns JWT for valid credentials", async () => {
+    // Self-contained: register user first if not already registered
     if (!accessToken) {
-      // Auth not configured — login directly
-      const res = await fetch(`${BACKEND}/auth/login`, {
+      const reg = await fetch(`${BACKEND}/auth/register`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           email: TEST_USER.email,
           password: TEST_USER.password,
+          name: "E2E Test",
         }),
       });
-
-      if (res.status === 404) {
-        console.warn("SKIP: /auth/login returned 404 — auth not configured");
-        return;
+      if (reg.status !== 404 && reg.status !== 201) {
+        console.warn(`register returned ${reg.status} — continuing`);
       }
-
-      expect(res.status).toBe(200);
-
-      const data: AuthResponse = await res.json();
-      expect(data.access_token).toBeTruthy();
-      accessToken = data.access_token;
-    } else {
-      // Re-login after registration
-      const res = await fetch(`${BACKEND}/auth/login`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          email: TEST_USER.email,
-          password: TEST_USER.password,
-        }),
-      });
-
-      expect(res.status).toBe(200);
-
-      const data: AuthResponse = await res.json();
-      expect(data.access_token).toBeTruthy();
-      accessToken = data.access_token;
     }
+
+    const res = await fetch(`${BACKEND}/auth/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        email: TEST_USER.email,
+        password: TEST_USER.password,
+      }),
+    });
+
+    if (res.status === 404) {
+      console.warn("SKIP: /auth/login returned 404 — auth not configured");
+      return;
+    }
+
+    expect(res.status).toBe(200);
+
+    const data: AuthResponse = await res.json();
+    expect(data.access_token).toBeTruthy();
+    accessToken = data.access_token;
   });
 
   test("POST /auth/login rejects wrong password", async () => {

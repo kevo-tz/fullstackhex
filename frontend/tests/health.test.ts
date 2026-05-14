@@ -10,6 +10,24 @@ function makeFetch(fn: (url: string, init?: RequestInit) => Promise<Response>): 
   return fn as unknown as typeof fetch;
 }
 
+function makeMockResponse(body: unknown, opts?: { status?: number; ok?: boolean; headers?: Headers }): Response {
+  return {
+    json: async () => body,
+    ok: opts?.ok ?? true,
+    status: opts?.status ?? 200,
+    headers: opts?.headers ?? new Headers({ "Content-Type": "application/json" }),
+  } as Response;
+}
+
+const MOCK_HEALTH_OK = {
+  rust: { status: "ok", service: "api", version: "0.1.0" },
+  db: { status: "ok" },
+  redis: { status: "ok" },
+  storage: { status: "ok" },
+  python: { status: "ok" },
+  auth: { status: "ok" },
+};
+
 function makeFailingJsonResponse(error: Error): Response {
   const res = new Response('"invalid"', {
     status: 200,
@@ -24,26 +42,9 @@ describe("aggregateHealth", () => {
   test("all endpoints healthy returns ok statuses", async () => {
     const fetchImpl = vi.fn(async (url: string) => {
       if ((url as string).endsWith("/health")) {
-        return {
-          json: async () => ({
-            rust: { status: "ok", service: "api", version: "0.1.0" },
-            db: { status: "ok" },
-            redis: { status: "ok" },
-            storage: { status: "ok" },
-            python: { status: "ok" },
-            auth: { status: "ok" },
-          }),
-          ok: true,
-          status: 200,
-          headers: new Headers({ "Content-Type": "application/json" }),
-        } as Response;
+        return makeMockResponse(MOCK_HEALTH_OK);
       }
-      return {
-        json: async () => ({ status: "ok" }),
-        ok: true,
-        status: 200,
-        headers: new Headers({ "Content-Type": "application/json" }),
-      } as Response;
+      return makeMockResponse({ status: "ok" });
     });
     const result = await aggregateHealth(makeFetch(fetchImpl));
     expect((result.rust as Record<string, unknown>).status).toBe("ok");
@@ -73,26 +74,9 @@ describe("aggregateHealth", () => {
         return makeFailingJsonResponse(new SyntaxError("bad JSON"));
       }
       if ((url as string).endsWith("/health")) {
-        return {
-          json: async () => ({
-            rust: { status: "ok", service: "api", version: "0.1.0" },
-            db: { status: "ok" },
-            redis: { status: "ok" },
-            storage: { status: "ok" },
-            python: { status: "ok" },
-            auth: { status: "ok" },
-          }),
-          ok: true,
-          status: 200,
-          headers: new Headers({ "Content-Type": "application/json" }),
-        } as Response;
+        return makeMockResponse(MOCK_HEALTH_OK);
       }
-      return {
-        json: async () => ({ status: "ok" }),
-        ok: true,
-        status: 200,
-        headers: new Headers({ "Content-Type": "application/json" }),
-      } as Response;
+      return makeMockResponse({ status: "ok" });
     });
     const result = await aggregateHealth(makeFetch(fetchImpl));
     expect((result.python as Record<string, unknown>).status).toBe(
@@ -103,27 +87,10 @@ describe("aggregateHealth", () => {
   test("mixed: rust ok, db error, python unavailable", async () => {
     const fetchImpl = vi.fn(async (url: string) => {
       if ((url as string).endsWith("/health")) {
-        return {
-          json: async () => ({
-            rust: { status: "ok", service: "api", version: "0.1.0" },
-            db: { status: "ok" },
-            redis: { status: "ok" },
-            storage: { status: "ok" },
-            python: { status: "ok" },
-            auth: { status: "ok" },
-          }),
-          ok: true,
-          status: 200,
-          headers: new Headers({ "Content-Type": "application/json" }),
-        } as Response;
+        return makeMockResponse(MOCK_HEALTH_OK);
       }
       if ((url as string).endsWith("/health/db")) throw new Error("db down");
-      return {
-        json: async () => ({ status: "unavailable" }),
-        ok: true,
-        status: 200,
-        headers: new Headers({ "Content-Type": "application/json" }),
-      } as Response;
+      return makeMockResponse({ status: "unavailable" });
     });
     const result = await aggregateHealth(makeFetch(fetchImpl));
     expect((result.rust as Record<string, unknown>).status).toBe("ok");
@@ -262,26 +229,9 @@ describe("aggregateHealth", () => {
     const fetchImpl = vi.fn(async (url: string, init?: RequestInit) => {
       capturedHeaders.push((init?.headers as Record<string, string>) || {});
       if ((url as string).endsWith("/health")) {
-        return {
-          json: async () => ({
-            rust: { status: "ok", service: "api", version: "0.1.0" },
-            db: { status: "ok" },
-            redis: { status: "ok" },
-            storage: { status: "ok" },
-            python: { status: "ok" },
-            auth: { status: "ok" },
-          }),
-          ok: true,
-          status: 200,
-          headers: new Headers({ "Content-Type": "application/json" }),
-        } as Response;
+        return makeMockResponse(MOCK_HEALTH_OK);
       }
-      return {
-        json: async () => ({ status: "ok" }),
-        ok: true,
-        status: 200,
-        headers: new Headers({ "Content-Type": "application/json" }),
-      } as Response;
+      return makeMockResponse({ status: "ok" });
     });
 
     await aggregateHealth(makeFetch(fetchImpl));
@@ -296,26 +246,9 @@ describe("aggregateHealth", () => {
   test("result contains entries for all services", async () => {
     const fetchImpl = vi.fn(async (url: string) => {
       if ((url as string).endsWith("/health")) {
-        return {
-          json: async () => ({
-            rust: { status: "ok", service: "api", version: "0.1.0" },
-            db: { status: "ok" },
-            redis: { status: "ok" },
-            storage: { status: "ok" },
-            python: { status: "ok" },
-            auth: { status: "ok" },
-          }),
-          ok: true,
-          status: 200,
-          headers: new Headers({ "Content-Type": "application/json" }),
-        } as Response;
+        return makeMockResponse(MOCK_HEALTH_OK);
       }
-      return {
-        json: async () => ({ status: "ok" }),
-        ok: true,
-        status: 200,
-        headers: new Headers({ "Content-Type": "application/json" }),
-      } as Response;
+      return makeMockResponse({ status: "ok" });
     });
     const result = await aggregateHealth(makeFetch(fetchImpl));
     expect(result.rust).toBeDefined();

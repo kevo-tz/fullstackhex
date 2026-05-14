@@ -90,21 +90,13 @@ impl RedisClient {
 mod tests {
     use super::*;
 
-    fn redis_url() -> String {
-        match std::env::var("REDIS_URL") {
-            Ok(url) => url,
-            Err(_) => {
-                eprintln!("SKIP: REDIS_URL not set — skipping Redis integration test");
-                String::new()
-            }
-        }
-    }
+    const TEST_NAMESPACE: &str = "test";
 
     #[tokio::test]
     async fn integration_publish_subscribe_roundtrip() {
-        let redis_url = redis_url();
+        let redis_url = super::super::test_util::require_redis_url();
         if redis_url.is_empty() { return; }
-        let client = RedisClient::new(&redis_url, "test")
+        let client = RedisClient::new(&redis_url, TEST_NAMESPACE)
             .await
             .expect("redis connect");
         let mut rx = client.subscribe("test-channel").await.unwrap();
@@ -123,9 +115,9 @@ mod tests {
 
     #[tokio::test]
     async fn integration_publish_multiple_messages() {
-        let redis_url = redis_url();
+        let redis_url = super::super::test_util::require_redis_url();
         if redis_url.is_empty() { return; }
-        let client = RedisClient::new(&redis_url, "test")
+        let client = RedisClient::new(&redis_url, TEST_NAMESPACE)
             .await
             .expect("redis connect");
         let mut rx = client.subscribe("multi-channel").await.unwrap();

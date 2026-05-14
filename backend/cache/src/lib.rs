@@ -11,6 +11,8 @@ pub mod metrics;
 pub mod pubsub;
 pub mod rate_limit;
 pub mod session;
+#[cfg(test)]
+pub mod test_util;
 
 /// Errors from the Redis cache layer.
 #[derive(Debug, thiserror::Error)]

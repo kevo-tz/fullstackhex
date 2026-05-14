@@ -8,8 +8,11 @@ Covers:
 """
 
 import logging
+from importlib.metadata import version
 
 from app.main import _register_metrics, lifespan, app
+
+PY_API_VERSION = version("py-api")
 
 
 def test_register_metrics_creates_counters() -> None:
@@ -52,5 +55,5 @@ def test_health_endpoint_version() -> None:
     response = client.get("/health")
     assert response.status_code == 200
     data = response.json()
-    assert data["version"] == "0.13.0"
+    assert data["version"] == PY_API_VERSION
     assert data["service"] == "py-api"

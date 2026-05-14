@@ -82,7 +82,11 @@ pub async fn auth_middleware(
 ) -> Response {
     // Skip auth for public routes
     let path = req.uri().path();
-    if path == "/live" || path.starts_with("/health") || path == "/metrics" || path.starts_with("/metrics/") {
+    if path == "/live"
+        || path.starts_with("/health")
+        || path == "/metrics"
+        || path.starts_with("/metrics/")
+    {
         return next.run(req).await;
     }
 

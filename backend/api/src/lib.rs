@@ -262,7 +262,11 @@ pub async fn maintenance_middleware(
     if !is_whitelisted {
         if let Some(flags) = req.extensions().get::<domain::FeatureFlags>() {
             if flags.maintenance_mode {
-                return (StatusCode::SERVICE_UNAVAILABLE, "{\"error\":\"maintenance mode\"}").into_response();
+                return (
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    "{\"error\":\"maintenance mode\"}",
+                )
+                    .into_response();
             }
         }
     }
@@ -290,11 +294,13 @@ async fn health(State(state): State<Arc<AppState>>) -> impl IntoResponse {
     let storage = health_storage_value(&state);
     let python = health_python_value(&state).await;
     let auth = health_auth_value(&state);
-    let flags = state.feature_flags.map(|f| json!({
-        "chat_enabled": f.chat_enabled,
-        "storage_readonly": f.storage_readonly,
-        "maintenance_mode": f.maintenance_mode,
-    }));
+    let flags = state.feature_flags.map(|f| {
+        json!({
+            "chat_enabled": f.chat_enabled,
+            "storage_readonly": f.storage_readonly,
+            "maintenance_mode": f.maintenance_mode,
+        })
+    });
 
     (
         StatusCode::OK,

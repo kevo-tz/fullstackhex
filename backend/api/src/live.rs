@@ -18,20 +18,19 @@
 //! ```
 
 use crate::AppState;
-use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
 use axum::extract::State;
-use axum::response::IntoResponse;
+use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
 use axum::http::StatusCode;
+use axum::response::IntoResponse;
 use cache::pubsub::PubSubMessage;
 use serde::{Deserialize, Serialize};
 
-
+use futures_util::sink::SinkExt;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 use tokio::sync::Semaphore;
 use tracing;
-use futures_util::sink::SinkExt;
 
 /// Redis pub/sub channel for live events.
 const LIVE_EVENTS_CHANNEL: &str = "live:events";
@@ -151,7 +150,11 @@ impl Drop for WsGuard {
 }
 
 /// Run the WebSocket session: subscribe to Redis events and forward to client.
-async fn handle_socket(mut socket: WebSocket, redis: Arc<cache::RedisClient>, _permit: tokio::sync::SemaphorePermit<'static>) {
+async fn handle_socket(
+    mut socket: WebSocket,
+    redis: Arc<cache::RedisClient>,
+    _permit: tokio::sync::SemaphorePermit<'static>,
+) {
     let _guard = WsGuard;
     ACTIVE_WS_CONNECTIONS.fetch_add(1, Ordering::SeqCst);
     ::metrics::gauge!("ws_active_connections").increment(1.0);
@@ -222,7 +225,6 @@ async fn handle_socket(mut socket: WebSocket, redis: Arc<cache::RedisClient>, _p
             }
         }
     }
-
 }
 
 #[cfg(test)]
@@ -245,7 +247,9 @@ mod tests {
 
         let deserialized: LiveEvent = serde_json::from_str(&json).unwrap();
         match deserialized {
-            LiveEvent::HealthUpdate { service, status, .. } => {
+            LiveEvent::HealthUpdate {
+                service, status, ..
+            } => {
                 assert_eq!(service, "redis");
                 assert_eq!(status, "ok");
             }

@@ -1,7 +1,3 @@
-# Multi-stage Dockerfile for FullStackHex Astro frontend
-# Build context: repository root (.. when invoked from compose/)
-# Usage: docker build -f compose/Dockerfile.frontend -t fullstackhex/frontend:latest .
-
 # Stage1: Builder - Build the Astro site
 FROM oven/bun:1.3-slim AS builder
 
@@ -23,7 +19,6 @@ ENV PUBLIC_API_URL=${PUBLIC_API_URL}
 RUN cd frontend && bun run build
 
 # Stage2: Runtime - Run the Astro SSR Node server
-# (output: 'server' + @astrojs/node produces dist/server/entry.mjs, not static HTML)
 FROM node:26-slim
 
 WORKDIR /app

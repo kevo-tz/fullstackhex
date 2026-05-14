@@ -1,9 +1,5 @@
-# Multi-stage Dockerfile for FullStackHex Rust backend
-# Build context: repository root (.. when invoked from compose/)
-# Usage: docker build -f compose/Dockerfile.rust -t fullstackhex/backend:latest .
-
 # Stage 1: Builder - Compile the Rust application
-FROM rust:1.95-bookworm AS builder
+FROM rust:1.95-trixie AS builder
 
 WORKDIR /app
 
@@ -43,7 +39,7 @@ COPY backend/ ./backend/
 RUN cd backend && cargo build --release -p api
 
 # Stage 2: Runtime - Minimal image with only the binary
-FROM debian:bookworm-slim
+FROM debian:trixie-slim
 
 WORKDIR /app
 

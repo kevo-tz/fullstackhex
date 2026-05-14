@@ -1,9 +1,5 @@
-# Multi-stage Dockerfile for FullStackHex Python sidecar
-# Build context: repository root (.. when invoked from compose/)
-# Usage: docker build -f compose/Dockerfile.python -t fullstackhex/py-api:latest .
-
 # Stage1: Builder - Install Python dependencies into a venv
-FROM python:3.14-slim-bookworm AS builder
+FROM python:3.14-slim-trixie AS builder
 
 WORKDIR /app
 
@@ -19,7 +15,7 @@ RUN uv venv /app/.venv && \
     fastapi uvicorn "prometheus-client>=0.21,<0.26"
 
 # Stage2: Runtime - Minimal image
-FROM python:3.14-slim-bookworm
+FROM python:3.14-slim-trixie
 
 WORKDIR /app
 

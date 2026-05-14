@@ -24,7 +24,7 @@ pub struct PythonSidecar {
     max_retries: u32,
 }
 
-/// Validate a header value: reject CR, LF, and overlong values.
+const MAX_HEADER_VALUE_LEN: usize = 256;
 const BACKOFF_BASE_MS: u64 = 100;
 const MAX_BACKOFF_MS: u64 = 30_000;
 
@@ -34,6 +34,7 @@ fn backoff_for_attempt(attempt: u32) -> Duration {
     Duration::from_millis(raw_ms.min(MAX_BACKOFF_MS))
 }
 
+/// Validate a header value: reject CR, LF, and overlong values.
 fn validate_header_value(name: &str, value: &str) -> Result<(), SidecarError> {
     if value.contains('\r') || value.contains('\n') {
         return Err(SidecarError::InvalidInput(format!(
@@ -41,7 +42,7 @@ fn validate_header_value(name: &str, value: &str) -> Result<(), SidecarError> {
             name
         )));
     }
-    if value.len() > 256 {
+    if value.len() > MAX_HEADER_VALUE_LEN {
         return Err(SidecarError::InvalidInput(format!(
             "{} exceeds maximum length (256 bytes)",
             name
@@ -295,9 +296,10 @@ impl PythonSidecar {
             .map_err(|e| SidecarError::ConnectionFailed(e.to_string()))?;
 
         const MAX_RESPONSE_SIZE: usize = 1_048_576; // 1 MiB
+        const OVERREAD_BY: u64 = 1;
         let mut response = Vec::new();
         stream
-            .take(MAX_RESPONSE_SIZE as u64 + 1)
+            .take(MAX_RESPONSE_SIZE as u64 + OVERREAD_BY)
             .read_to_end(&mut response)
             .await
             .map_err(|e| SidecarError::ConnectionFailed(e.to_string()))?;
@@ -507,36 +509,45 @@ mod tests {
         assert!(matches!(result, Err(SidecarError::InvalidInput(_))));
     }
 
+    /// Spawn a mock Unix socket server that accepts one connection and
+    /// calls `respond` with the accepted stream. Returns the sidecar handle
+    /// and the temporary directory (kept alive so the socket file persists).
+    async fn with_mock_server<F, Fut>(sock_name: &str, respond: F) -> (PythonSidecar, tempfile::TempDir)
+    where
+        F: FnOnce(tokio::net::UnixStream) -> Fut + Send + 'static,
+        Fut: std::future::Future<Output = ()> + Send + 'static,
+    {
+        let dir = tempfile::tempdir().unwrap();
+        let sock_path = dir.path().join(sock_name);
+        let sc = PythonSidecar::new(&sock_path, Duration::from_secs(2), 0);
+        let (ready_tx, ready_rx) = tokio::sync::oneshot::channel::<()>();
+
+        tokio::spawn(async move {
+            let listener = tokio::net::UnixListener::bind(&sock_path).unwrap();
+            let _ = ready_tx.send(());
+            let (stream, _) = listener.accept().await.unwrap();
+            respond(stream).await;
+        });
+
+        ready_rx.await.unwrap();
+        (sc, dir)
+    }
+
     // ------------------------------------------------------------------
-    // Socket integration tests — use mock Unix socket servers
-    // These tests create in-process UnixListeners and run as part of the
-    // normal test suite. #[serial_test::serial] prevents parallel-socket
-    // collisions.
+    // Socket integration tests
     // ------------------------------------------------------------------
 
     #[tokio::test]
     #[serial_test::serial]
     async fn get_happy_path_via_socket() {
-        use tokio::io::AsyncWriteExt;
-        use tokio::net::UnixListener;
-
-        let dir = tempfile::tempdir().unwrap();
-        let sock_path = dir.path().join("happy.sock");
-        let sc = PythonSidecar::new(&sock_path, Duration::from_secs(2), 0);
-        let (ready_tx, ready_rx) = tokio::sync::oneshot::channel::<()>();
-
-        tokio::spawn(async move {
-            let listener = UnixListener::bind(&sock_path).unwrap();
-            let _ = ready_tx.send(());
-            let (mut stream, _) = listener.accept().await.unwrap();
+        let (sc, _dir) = with_mock_server("happy.sock", |mut stream| async move {
             let response =
                 "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n{\"status\":\"ok\"}";
             stream.write_all(response.as_bytes()).await.unwrap();
             stream.shutdown().await.ok();
             tokio::time::sleep(Duration::from_millis(200)).await;
-        });
-
-        ready_rx.await.unwrap();
+        })
+        .await;
         let result = sc.get("/health").await;
         assert!(result.is_ok(), "expected Ok, got {:?}", result);
         assert_eq!(result.unwrap()["status"], "ok");
@@ -545,25 +556,13 @@ mod tests {
     #[tokio::test]
     #[serial_test::serial]
     async fn get_http_error_via_socket() {
-        use tokio::io::AsyncWriteExt;
-        use tokio::net::UnixListener;
-
-        let dir = tempfile::tempdir().unwrap();
-        let sock_path = dir.path().join("httperr.sock");
-        let sc = PythonSidecar::new(&sock_path, Duration::from_secs(2), 0);
-        let (ready_tx, ready_rx) = tokio::sync::oneshot::channel::<()>();
-
-        tokio::spawn(async move {
-            let listener = UnixListener::bind(&sock_path).unwrap();
-            let _ = ready_tx.send(());
-            let (mut stream, _) = listener.accept().await.unwrap();
+        let (sc, _dir) = with_mock_server("httperr.sock", |mut stream| async move {
             let response = "HTTP/1.1 500 Internal Server Error\r\n\r\nbang";
             stream.write_all(response.as_bytes()).await.unwrap();
             stream.shutdown().await.ok();
             tokio::time::sleep(Duration::from_millis(200)).await;
-        });
-
-        ready_rx.await.unwrap();
+        })
+        .await;
         let result = sc.get("/health").await;
         assert!(
             matches!(result, Err(SidecarError::HttpError { status: 500, .. })),
@@ -575,25 +574,13 @@ mod tests {
     #[tokio::test]
     #[serial_test::serial]
     async fn get_invalid_json_via_socket() {
-        use tokio::io::AsyncWriteExt;
-        use tokio::net::UnixListener;
-
-        let dir = tempfile::tempdir().unwrap();
-        let sock_path = dir.path().join("invalid.sock");
-        let sc = PythonSidecar::new(&sock_path, Duration::from_secs(2), 0);
-        let (ready_tx, ready_rx) = tokio::sync::oneshot::channel::<()>();
-
-        tokio::spawn(async move {
-            let listener = UnixListener::bind(&sock_path).unwrap();
-            let _ = ready_tx.send(());
-            let (mut stream, _) = listener.accept().await.unwrap();
+        let (sc, _dir) = with_mock_server("invalid.sock", |mut stream| async move {
             let response = "HTTP/1.1 200 OK\r\n\r\nnot-json";
             stream.write_all(response.as_bytes()).await.unwrap();
             stream.shutdown().await.ok();
             tokio::time::sleep(Duration::from_millis(200)).await;
-        });
-
-        ready_rx.await.unwrap();
+        })
+        .await;
         let result = sc.get("/health").await;
         assert!(
             matches!(result, Err(SidecarError::InvalidResponse(_))),
@@ -619,7 +606,7 @@ mod tests {
         tokio::spawn(async move {
             let _ = ready_tx.send(());
             // Wait for first attempt to fail and enter retry backoff
-            tokio::time::sleep(Duration::from_millis(200)).await;
+            tokio::time::sleep(Duration::from_millis(BACKOFF_BASE_MS * 2)).await;
             let _ = std::fs::remove_file(&sock_path);
             let listener = UnixListener::bind(&sock_path).unwrap();
             let (mut stream, _) = listener.accept().await.unwrap();
@@ -701,34 +688,15 @@ mod tests {
         assert!(matches!(result, Err(SidecarError::InvalidInput(_))));
     }
 
-    // ------------------------------------------------------------------
-    // Socket integration tests — more mock UnixListener patterns
-    // These tests run as part of the normal test suite, not as --ignored.
-    // #[serial_test::serial] prevents collisions between concurrent
-    // listener binds.
-    // ------------------------------------------------------------------
-
     #[tokio::test]
     #[serial_test::serial]
     async fn get_timeout_via_socket() {
-        use tokio::net::UnixListener;
-
-        let dir = tempfile::tempdir().unwrap();
-        let sock_path = dir.path().join("timeout.sock");
-        let sc = PythonSidecar::new(&sock_path, Duration::from_millis(200), 0);
-        let (ready_tx, ready_rx) = tokio::sync::oneshot::channel::<()>();
-
         // Accept but never write — client should time out
-        tokio::spawn(async move {
-            let listener = UnixListener::bind(&sock_path).unwrap();
-            let _ = ready_tx.send(());
-            let (mut stream, _) = listener.accept().await.unwrap();
-            // Hold connection open without writing
+        let (sc, _dir) = with_mock_server("timeout.sock", |mut stream| async move {
             tokio::time::sleep(Duration::from_secs(5)).await;
             let _ = stream.shutdown().await;
-        });
-
-        ready_rx.await.unwrap();
+        })
+        .await;
         let result = sc.get("/health").await;
         assert!(
             matches!(result, Err(SidecarError::Timeout(_))),
@@ -740,25 +708,13 @@ mod tests {
     #[tokio::test]
     #[serial_test::serial]
     async fn get_missing_json_fields_via_socket() {
-        use tokio::io::AsyncWriteExt;
-        use tokio::net::UnixListener;
-
-        let dir = tempfile::tempdir().unwrap();
-        let sock_path = dir.path().join("missing.sock");
-        let sc = PythonSidecar::new(&sock_path, Duration::from_secs(2), 0);
-        let (ready_tx, ready_rx) = tokio::sync::oneshot::channel::<()>();
-
-        tokio::spawn(async move {
-            let listener = UnixListener::bind(&sock_path).unwrap();
-            let _ = ready_tx.send(());
-            let (mut stream, _) = listener.accept().await.unwrap();
+        let (sc, _dir) = with_mock_server("missing.sock", |mut stream| async move {
             let response = "HTTP/1.1 200 OK\r\n\r\n{\"foo\":\"bar\"}";
             stream.write_all(response.as_bytes()).await.unwrap();
             stream.shutdown().await.ok();
             tokio::time::sleep(Duration::from_millis(200)).await;
-        });
-
-        ready_rx.await.unwrap();
+        })
+        .await;
         let result = sc.get("/health").await;
         // Parses successfully — missing fields are fine, JSON is valid
         assert!(result.is_ok(), "expected Ok, got {:?}", result);
@@ -771,25 +727,13 @@ mod tests {
     #[tokio::test]
     #[serial_test::serial]
     async fn get_empty_body_via_socket() {
-        use tokio::io::AsyncWriteExt;
-        use tokio::net::UnixListener;
-
-        let dir = tempfile::tempdir().unwrap();
-        let sock_path = dir.path().join("empty.sock");
-        let sc = PythonSidecar::new(&sock_path, Duration::from_secs(2), 0);
-        let (ready_tx, ready_rx) = tokio::sync::oneshot::channel::<()>();
-
-        tokio::spawn(async move {
-            let listener = UnixListener::bind(&sock_path).unwrap();
-            let _ = ready_tx.send(());
-            let (mut stream, _) = listener.accept().await.unwrap();
+        let (sc, _dir) = with_mock_server("empty.sock", |mut stream| async move {
             let response = "HTTP/1.1 200 OK\r\n\r\n";
             stream.write_all(response.as_bytes()).await.unwrap();
             stream.shutdown().await.ok();
             tokio::time::sleep(Duration::from_millis(200)).await;
-        });
-
-        ready_rx.await.unwrap();
+        })
+        .await;
         let result = sc.get("/health").await;
         assert!(
             matches!(result, Err(SidecarError::InvalidResponse(_))),
@@ -801,18 +745,8 @@ mod tests {
     #[tokio::test]
     #[serial_test::serial]
     async fn get_trace_id_propagation_via_socket() {
-        use tokio::io::{AsyncReadExt, AsyncWriteExt};
-        use tokio::net::UnixListener;
-
-        let dir = tempfile::tempdir().unwrap();
-        let sock_path = dir.path().join("trace.sock");
-        let sc = PythonSidecar::new(&sock_path, Duration::from_secs(2), 0);
-        let (ready_tx, ready_rx) = tokio::sync::oneshot::channel::<()>();
-
-        tokio::spawn(async move {
-            let listener = UnixListener::bind(&sock_path).unwrap();
-            let _ = ready_tx.send(());
-            let (mut stream, _) = listener.accept().await.unwrap();
+        let (sc, _dir) = with_mock_server("trace.sock", |mut stream| async move {
+            use tokio::io::AsyncReadExt;
             let mut buf = [0u8; 512];
             let n = stream.read(&mut buf).await.unwrap();
             let request = String::from_utf8_lossy(&buf[..n]);
@@ -824,9 +758,8 @@ mod tests {
             stream.write_all(response.as_bytes()).await.unwrap();
             stream.shutdown().await.ok();
             tokio::time::sleep(Duration::from_millis(200)).await;
-        });
-
-        ready_rx.await.unwrap();
+        })
+        .await;
         let result = sc
             .get_with_trace_id("/health", "qa-propagate-123", None)
             .await;

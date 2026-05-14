@@ -177,15 +177,18 @@ mod tests {
         assert!(result.is_none());
     }
 
-    const TEST_NAMESPACE: &str = "test";
+    use super::super::test_util::TEST_NAMESPACE;
 
     #[tokio::test]
     async fn integration_cache_get_hit() {
-        let redis_url = super::super::test_util::require_redis_url();
-        if redis_url.is_empty() { return; }
-        let client = RedisClient::new(&redis_url, TEST_NAMESPACE)
-            .await
-            .expect("redis connect");
+        let Some(client) = super::super::test_util::test_client(
+            &super::super::test_util::require_redis_url(),
+            TEST_NAMESPACE,
+        )
+        .await
+        else {
+            return;
+        };
         client
             .cache_set("test_ns", "hit_key", &"hit_value", Duration::from_secs(60))
             .await
@@ -197,22 +200,28 @@ mod tests {
 
     #[tokio::test]
     async fn integration_cache_get_miss() {
-        let redis_url = super::super::test_util::require_redis_url();
-        if redis_url.is_empty() { return; }
-        let client = RedisClient::new(&redis_url, TEST_NAMESPACE)
-            .await
-            .expect("redis connect");
+        let Some(client) = super::super::test_util::test_client(
+            &super::super::test_util::require_redis_url(),
+            TEST_NAMESPACE,
+        )
+        .await
+        else {
+            return;
+        };
         let result: Option<String> = client.cache_get("test_ns", "nonexistent").await.unwrap();
         assert!(result.is_none());
     }
 
     #[tokio::test]
     async fn integration_cache_delete() {
-        let redis_url = super::super::test_util::require_redis_url();
-        if redis_url.is_empty() { return; }
-        let client = RedisClient::new(&redis_url, TEST_NAMESPACE)
-            .await
-            .expect("redis connect");
+        let Some(client) = super::super::test_util::test_client(
+            &super::super::test_util::require_redis_url(),
+            TEST_NAMESPACE,
+        )
+        .await
+        else {
+            return;
+        };
         client
             .cache_set("test_ns", "del_key", &"to_delete", Duration::from_secs(60))
             .await
@@ -224,11 +233,14 @@ mod tests {
 
     #[tokio::test]
     async fn integration_cache_invalidate_pattern() {
-        let redis_url = super::super::test_util::require_redis_url();
-        if redis_url.is_empty() { return; }
-        let client = RedisClient::new(&redis_url, TEST_NAMESPACE)
-            .await
-            .expect("redis connect");
+        let Some(client) = super::super::test_util::test_client(
+            &super::super::test_util::require_redis_url(),
+            TEST_NAMESPACE,
+        )
+        .await
+        else {
+            return;
+        };
         client
             .cache_set("pat", "k1", &1u64, Duration::from_secs(60))
             .await
@@ -243,11 +255,14 @@ mod tests {
 
     #[tokio::test]
     async fn integration_refresh_token_rotate() {
-        let redis_url = super::super::test_util::require_redis_url();
-        if redis_url.is_empty() { return; }
-        let client = RedisClient::new(&redis_url, TEST_NAMESPACE)
-            .await
-            .expect("redis connect");
+        let Some(client) = super::super::test_util::test_client(
+            &super::super::test_util::require_redis_url(),
+            TEST_NAMESPACE,
+        )
+        .await
+        else {
+            return;
+        };
         let token = "rotate-test-token";
         client
             .cache_set("refresh", token, &"user-123", Duration::from_secs(60))

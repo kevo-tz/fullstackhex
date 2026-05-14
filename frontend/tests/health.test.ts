@@ -6,9 +6,7 @@ import {
   createRetryController,
 } from "../src/lib/health";
 
-function makeFetch(fn: (url: string, init?: RequestInit) => Promise<Response>): typeof fetch {
-  return fn as unknown as typeof fetch;
-}
+import { makeFetch } from "./test-utils";
 
 function makeMockResponse(body: unknown, opts?: { status?: number; ok?: boolean; headers?: Headers }): Response {
   return {

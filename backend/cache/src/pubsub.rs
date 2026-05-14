@@ -90,15 +90,18 @@ impl RedisClient {
 mod tests {
     use super::*;
 
-    const TEST_NAMESPACE: &str = "test";
+    use super::super::test_util::TEST_NAMESPACE;
 
     #[tokio::test]
     async fn integration_publish_subscribe_roundtrip() {
-        let redis_url = super::super::test_util::require_redis_url();
-        if redis_url.is_empty() { return; }
-        let client = RedisClient::new(&redis_url, TEST_NAMESPACE)
-            .await
-            .expect("redis connect");
+        let Some(client) = super::super::test_util::test_client(
+            &super::super::test_util::require_redis_url(),
+            TEST_NAMESPACE,
+        )
+        .await
+        else {
+            return;
+        };
         let mut rx = client.subscribe("test-channel").await.unwrap();
         tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
         client
@@ -115,11 +118,14 @@ mod tests {
 
     #[tokio::test]
     async fn integration_publish_multiple_messages() {
-        let redis_url = super::super::test_util::require_redis_url();
-        if redis_url.is_empty() { return; }
-        let client = RedisClient::new(&redis_url, TEST_NAMESPACE)
-            .await
-            .expect("redis connect");
+        let Some(client) = super::super::test_util::test_client(
+            &super::super::test_util::require_redis_url(),
+            TEST_NAMESPACE,
+        )
+        .await
+        else {
+            return;
+        };
         let mut rx = client.subscribe("multi-channel").await.unwrap();
         tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
         client.publish("multi-channel", "msg1").await.unwrap();

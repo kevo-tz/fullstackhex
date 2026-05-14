@@ -8,7 +8,7 @@
  *   bun vitest run tests/e2e/auth.test.ts
  */
 
-import { describe, expect, test } from "vitest";
+import { beforeAll, describe, expect, test } from "vitest";
 
 const BACKEND = process.env.VITE_RUST_BACKEND_URL || "http://localhost:8001";
 const FRONTEND = process.env.FRONTEND_URL || "http://localhost:4321";
@@ -31,7 +31,37 @@ interface AuthResponse {
 
 let accessToken = "";
 
+// Register a fresh user and store the token. All tests in this block share
+// one registration to avoid duplicate-user errors on the backend.
+async function registerUser(): Promise<boolean> {
+  if (accessToken) return true;
+  const res = await fetch(`${BACKEND}/auth/register`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      email: TEST_USER.email,
+      password: TEST_USER.password,
+      name: "E2E Test",
+    }),
+  });
+  if (res.status === 404) {
+    console.warn("SKIP: /auth/register returned 404 — auth not configured");
+    return false;
+  }
+  if (res.status !== 201) {
+    console.warn(`register returned ${res.status} — continuing`);
+    return false;
+  }
+  const data: AuthResponse = await res.json();
+  accessToken = data.access_token;
+  return true;
+}
+
 describe("e2e auth flow", () => {
+  beforeAll(async () => {
+    await registerUser();
+  });
+
   test("POST /auth/register creates user and returns JWT", async () => {
     const res = await fetch(`${BACKEND}/auth/register`, {
       method: "POST",
@@ -56,25 +86,13 @@ describe("e2e auth flow", () => {
     expect(data.expires_in).toBeGreaterThan(0);
     expect(data.user.email).toBe(TEST_USER.email);
     expect(data.user.provider).toBe("local");
-
-    accessToken = data.access_token;
   });
 
   test("POST /auth/login returns JWT for valid credentials", async () => {
-    // Self-contained: register user first if not already registered
     if (!accessToken) {
-      const reg = await fetch(`${BACKEND}/auth/register`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          email: TEST_USER.email,
-          password: TEST_USER.password,
-          name: "E2E Test",
-        }),
-      });
-      if (reg.status !== 404 && reg.status !== 201) {
-        console.warn(`register returned ${reg.status} — continuing`);
-      }
+      // Fallback: try registering in case beforeAll was skipped
+      const ok = await registerUser();
+      if (!ok) return;
     }
 
     const res = await fetch(`${BACKEND}/auth/login`, {

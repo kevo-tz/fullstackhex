@@ -47,10 +47,7 @@ function makeFetchMock(responses: FetchResponses) {
 }
 
 import { aggregateHealth } from "../src/lib/health";
-
-function makeFetch(fn: (url: string, init?: RequestInit) => Promise<Response>): typeof fetch {
-  return fn as unknown as typeof fetch;
-}
+import { makeFetch } from "./test-utils";
 
 // Test helper: wraps aggregateHealth into a Response matching the Astro route shape
 async function runHandler(

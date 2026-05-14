@@ -218,6 +218,19 @@ fn build_router(state: Arc<AppState>) -> Router {
         }
     }
 
+    // Fallback /auth/me when auth not configured — returns 200 to avoid browser 404 noise
+    if state.auth.is_none() {
+        router = router.route("/auth/me", get(auth_me_disabled));
+    }
+
+    // Fallback notes routes when deps not available
+    if state.auth.is_none() || !matches!(state.db, DbStatus::Connected(_)) {
+        let fb = Router::new()
+            .route("/", get(notes_fallback).post(notes_fallback))
+            .route("/{id}", get(notes_fallback).delete(notes_fallback));
+        router = router.nest("/notes", fb);
+    }
+
     // Add auth middleware globally when auth is configured
     if let Some(ref auth_svc) = state.auth {
         router = router
@@ -532,6 +545,24 @@ async fn metrics_python_proxy(State(state): State<Arc<AppState>>) -> impl IntoRe
             )
         }
     }
+}
+
+/// Fallback /auth/me when auth not configured.
+/// Returns 200 with `{"status":"disabled"}` so browser doesn't log 404.
+async fn auth_me_disabled() -> impl IntoResponse {
+    (
+        StatusCode::OK,
+        [("content-type", "application/json")],
+        "{\"status\":\"disabled\"}",
+    )
+}
+
+/// Fallback for notes endpoints when auth or database not configured.
+async fn notes_fallback() -> impl IntoResponse {
+    (
+        StatusCode::SERVICE_UNAVAILABLE,
+        Json(serde_json::json!({"error": "notes unavailable — auth or database not configured"})),
+    )
 }
 
 #[cfg(test)]

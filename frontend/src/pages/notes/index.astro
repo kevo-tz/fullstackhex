@@ -65,7 +65,10 @@ import Skeleton from "../../components/Skeleton.astro";
 
     try {
       const res = await fetch(`/api/notes?page=${page}&per_page=${perPage}`);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error((body as { error?: string }).error || `HTTP ${res.status}`);
+      }
       const data = await res.json();
       const notes = Array.isArray(data) ? data : [];
 

@@ -59,7 +59,10 @@ const { id } = Astro.params;
 
     try {
       const res = await fetch(`/api/notes/${noteId}`);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error((body as { error?: string }).error || `HTTP ${res.status}`);
+      }
       const note = await res.json();
 
       document.getElementById("detail-loading")!.classList.add("hidden");

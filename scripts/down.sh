@@ -22,7 +22,7 @@ pkill -x api 2>/dev/null || true
 pkill -x bun 2>/dev/null || true
 
 $COMPOSE_DEV down
-$COMPOSE_MON down
+$COMPOSE_MON ps -q 2>/dev/null | grep -q . && $COMPOSE_MON down || true
 
 rm -f "$PYTHON_SOCK"
 

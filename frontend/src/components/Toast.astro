@@ -1,0 +1,30 @@
+---
+export interface Props {
+  message: string;
+  type?: "info" | "error" | "success";
+}
+
+const { message, type = "info" } = Astro.props;
+---
+<div class="toast toast-{type}">
+  <span class="toast-msg">{message}</span>
+</div>
+
+<style>
+  .toast {
+    position: fixed;
+    top: 1rem;
+    right: 1rem;
+    z-index: 200;
+    padding: 0.75rem 1.25rem;
+    border-radius: 8px;
+    font-size: 0.85rem;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+    animation: toast-in 0.2s ease-out;
+    max-width: 360px;
+  }
+  .toast-info { background: #1e293b; color: #94a3b8; border: 1px solid #334155; }
+  .toast-success { background: #052e16; color: #22c55e; border: 1px solid #166534; }
+  .toast-error { background: #450a0a; color: #ef4444; border: 1px solid #7f1d1d; }
+  @keyframes toast-in { from { opacity: 0; transform: translateY(-0.5rem); } to { opacity: 1; transform: translateY(0); } }
+</style>

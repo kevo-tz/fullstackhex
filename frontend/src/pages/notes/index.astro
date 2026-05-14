@@ -1,0 +1,150 @@
+---
+import Layout from "../../components/Layout.astro";
+import Table from "../../components/Table.astro";
+import EmptyState from "../../components/EmptyState.astro";
+import Skeleton from "../../components/Skeleton.astro";
+
+
+---
+
+<Layout title="Notes — FullStackHex">
+  <div class="max-w-3xl mx-auto">
+    <div class="flex items-center justify-between mb-6">
+      <h1 class="text-2xl font-bold text-[#e2e8f0]">Notes</h1>
+      <a href="/notes/create" class="btn-primary">+ New Note</a>
+    </div>
+
+    <!-- Loading state -->
+    <div id="notes-loading">
+      <Skeleton lines={5} height="2.5rem" />
+    </div>
+
+    <!-- Error state -->
+    <div id="notes-error" class="hidden">
+      <div class="error-banner">
+        <span id="notes-error-msg">Couldn't load notes</span>
+        <button id="notes-retry-btn" class="retry-btn">Retry</button>
+      </div>
+    </div>
+
+    <!-- Empty state -->
+    <div id="notes-empty" class="hidden">
+      <EmptyState
+        title="No notes yet"
+        message="Create your first note to get started"
+        actionLabel="Create Note"
+        actionHref="/notes/create"
+      />
+    </div>
+
+    <!-- Table state -->
+    <div id="notes-table" class="hidden">
+      <div id="notes-tbody">
+        <Table columns={[
+          { key: "title", label: "Title" },
+          { key: "created_at", label: "Created" },
+        ]} rows={[]} />
+      </div>
+      <div id="notes-pagination" class="mt-4"></div>
+    </div>
+  </div>
+
+  <!-- Toast container -->
+  <div id="toast-container" class="fixed top-4 right-4 z-50 flex flex-col gap-2"></div>
+</Layout>
+
+<script>
+  let page = 1;
+  const perPage = 20;
+
+  async function loadNotes() {
+    document.getElementById("notes-loading")!.classList.remove("hidden");
+    document.getElementById("notes-error")!.classList.add("hidden");
+    document.getElementById("notes-empty")!.classList.add("hidden");
+    document.getElementById("notes-table")!.classList.add("hidden");
+
+    try {
+      const res = await fetch(`/api/notes?page=${page}&per_page=${perPage}`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      const notes = Array.isArray(data) ? data : [];
+
+      document.getElementById("notes-loading")!.classList.add("hidden");
+
+      if (notes.length === 0) {
+        document.getElementById("notes-empty")!.classList.remove("hidden");
+        return;
+      }
+
+      const table = document.getElementById("notes-table")!;
+      table.classList.remove("hidden");
+
+      const tbody = document.querySelector("#notes-tbody table tbody")!;
+      tbody.innerHTML = notes.map((n: { id: string; title: string; created_at: string }) => `
+        <tr>
+          <td data-label="Title">
+            <a href="/notes/${encodeURIComponent(n.id)}" class="text-[var(--accent,#22c55e)] hover:underline">${escapeHtml(n.title)}</a>
+          </td>
+          <td data-label="Created">${formatDate(n.created_at)}</td>
+        </tr>
+      `).join("");
+    } catch (err) {
+      document.getElementById("notes-loading")!.classList.add("hidden");
+      document.getElementById("notes-error")!.classList.remove("hidden");
+      document.getElementById("notes-error-msg")!.textContent =
+        err instanceof Error ? err.message : "Couldn't load notes";
+    }
+  }
+
+  function escapeHtml(s: string): string {
+    const d = document.createElement("div");
+    d.textContent = s;
+    return d.innerHTML;
+  }
+
+  function formatDate(iso: string): string {
+    try { return new Date(iso).toLocaleDateString(); } catch { return iso; }
+  }
+
+  document.getElementById("notes-retry-btn")?.addEventListener("click", loadNotes);
+
+  loadNotes();
+</script>
+
+<style>
+  .btn-primary {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.5rem 1.25rem;
+    border-radius: 6px;
+    background: var(--accent, #22c55e);
+    color: #0d0d0d;
+    text-decoration: none;
+    font-size: 0.85rem;
+    font-weight: 500;
+  }
+  .btn-primary:hover { opacity: 0.9; }
+  .error-banner {
+    padding: 1rem;
+    border-radius: 8px;
+    background: #450a0a;
+    border: 1px solid #7f1d1d;
+    color: #fca5a5;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 0.85rem;
+  }
+  .retry-btn {
+    padding: 0.3rem 0.75rem;
+    border-radius: 4px;
+    background: transparent;
+    border: 1px solid #7f1d1d;
+    color: #fca5a5;
+    cursor: pointer;
+    font-size: 0.8rem;
+  }
+  .retry-btn:hover { background: #7f1d1d; }
+  .hidden { display: none !important; }
+</style>

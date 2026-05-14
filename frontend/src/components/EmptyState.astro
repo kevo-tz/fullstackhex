@@ -1,0 +1,58 @@
+---
+export interface Props {
+  title?: string;
+  message?: string;
+  actionLabel?: string;
+  actionHref?: string;
+}
+
+const { title = "No items found", message = "", actionLabel, actionHref } = Astro.props;
+---
+<div class="empty-state">
+  <div class="empty-icon">
+    <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+      <path d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+    </svg>
+  </div>
+  <h3 class="empty-title">{title}</h3>
+  {message && <p class="empty-msg">{message}</p>}
+  {actionLabel && actionHref && (
+    <a href={actionHref} class="empty-action">{actionLabel}</a>
+  )}
+</div>
+
+<style>
+  .empty-state {
+    text-align: center;
+    padding: 3rem 1.5rem;
+    border: 1px dashed #1e293b;
+    border-radius: 8px;
+    background: #0d0d0d;
+  }
+  .empty-icon {
+    color: #334155;
+    margin-bottom: 1rem;
+  }
+  .empty-title {
+    font-size: 1rem;
+    font-weight: 600;
+    color: #64748b;
+    margin-bottom: 0.5rem;
+  }
+  .empty-msg {
+    font-size: 0.85rem;
+    color: #475569;
+    margin-bottom: 1.25rem;
+  }
+  .empty-action {
+    display: inline-block;
+    padding: 0.5rem 1.25rem;
+    border-radius: 6px;
+    background: var(--accent, #22c55e);
+    color: #0d0d0d;
+    text-decoration: none;
+    font-size: 0.85rem;
+    font-weight: 500;
+  }
+  .empty-action:hover { opacity: 0.9; }
+</style>

@@ -56,6 +56,7 @@ pub fn normalize_route(path: &str) -> &'static str {
         "/health/python" => "/health/python",
         "/metrics" => "/metrics",
         "/metrics/python" => "/metrics/python",
+        "/live" => "/live",
         "/auth/login" => "/auth/login",
         "/auth/register" => "/auth/register",
         "/auth/logout" => "/auth/logout",

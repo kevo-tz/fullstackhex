@@ -15,7 +15,9 @@ use sqlx::postgres::PgPoolOptions;
 use std::sync::Arc;
 use std::time::Duration;
 
+pub mod live;
 pub mod metrics;
+pub mod notes;
 
 /// Status of the database connection pool.
 pub enum DbStatus {
@@ -32,6 +34,7 @@ pub struct AppState {
     pub sidecar: PythonSidecar,
     pub prometheus_handle: PrometheusHandle,
     pub gauge_task: Option<tokio::task::AbortHandle>,
+    pub feature_flags: Option<domain::FeatureFlags>,
 }
 
 pub async fn router(
@@ -102,6 +105,7 @@ pub async fn router(
         sidecar: PythonSidecar::from_env(),
         prometheus_handle,
         gauge_task,
+        feature_flags: Some(domain::FeatureFlags::from_env()),
     });
 
     Ok((build_router(state.clone()), state))
@@ -121,8 +125,16 @@ fn build_router(state: Arc<AppState>) -> Router {
         .route("/health/auth", get(health_auth))
         .route("/metrics", get(metrics_handler))
         .route("/metrics/python", get(metrics_python_proxy))
+        .route("/live", get(live::ws_handler))
         .layer(middleware::from_fn(metrics::track_metrics))
         .with_state(state.clone());
+
+    // Maintenance mode middleware — checks FeatureFlags.maintenance_mode
+    if let Some(flags) = state.feature_flags {
+        router = router
+            .layer(middleware::from_fn(maintenance_middleware))
+            .layer(Extension(flags));
+    }
 
     // Nest auth routes with their own state
     if let (Some(auth_svc), Some(redis)) = (&state.auth, &state.redis)
@@ -193,6 +205,19 @@ fn build_router(state: Arc<AppState>) -> Router {
         router = router.nest("/storage", storage_router);
     }
 
+    // Nest notes CRUD routes — requires auth + database
+    if state.auth.is_some() {
+        if let DbStatus::Connected(ref _pool) = state.db {
+            let notes_router = Router::new()
+                .route("/", axum::routing::get(notes::list_notes))
+                .route("/", axum::routing::post(notes::create_note))
+                .route("/{id}", axum::routing::get(notes::get_note))
+                .route("/{id}", axum::routing::delete(notes::delete_note))
+                .with_state(state.clone());
+            router = router.nest("/notes", notes_router);
+        }
+    }
+
     // Add auth middleware globally when auth is configured
     if let Some(ref auth_svc) = state.auth {
         router = router
@@ -205,6 +230,30 @@ fn build_router(state: Arc<AppState>) -> Router {
     }
 
     router
+}
+
+/// Maintenance mode middleware — returns 503 when FEATURE_MAINTENANCE is enabled,
+/// unless the request targets a whitelisted route (health, metrics).
+pub async fn maintenance_middleware(
+    req: axum::http::Request<axum::body::Body>,
+    next: axum::middleware::Next,
+) -> impl IntoResponse {
+    let path = req.uri().path();
+    // Whitelist: health checks and metrics must always work
+    let is_whitelisted = path == "/health"
+        || path.starts_with("/health/")
+        || path == "/metrics"
+        || path.starts_with("/metrics/")
+        || path == "/live";
+
+    if !is_whitelisted {
+        if let Some(flags) = req.extensions().get::<domain::FeatureFlags>() {
+            if flags.maintenance_mode {
+                return (StatusCode::SERVICE_UNAVAILABLE, "{\"error\":\"maintenance mode\"}").into_response();
+            }
+        }
+    }
+    next.run(req).await
 }
 
 fn no_cache() -> HeaderMap {
@@ -228,6 +277,11 @@ async fn health(State(state): State<Arc<AppState>>) -> impl IntoResponse {
     let storage = health_storage_value(&state);
     let python = health_python_value(&state).await;
     let auth = health_auth_value(&state);
+    let flags = state.feature_flags.map(|f| json!({
+        "chat_enabled": f.chat_enabled,
+        "storage_readonly": f.storage_readonly,
+        "maintenance_mode": f.maintenance_mode,
+    }));
 
     (
         StatusCode::OK,
@@ -239,6 +293,7 @@ async fn health(State(state): State<Arc<AppState>>) -> impl IntoResponse {
             "storage": storage,
             "python": python,
             "auth": auth,
+            "feature_flags": flags,
         })),
     )
 }
@@ -480,6 +535,9 @@ async fn metrics_python_proxy(State(state): State<Arc<AppState>>) -> impl IntoRe
 }
 
 #[cfg(test)]
+mod proptests;
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use axum::http::{Request, StatusCode};
@@ -498,6 +556,11 @@ mod tests {
             ),
             prometheus_handle: metrics::init_metrics_recorder(),
             gauge_task: None,
+            feature_flags: Some(domain::FeatureFlags {
+                chat_enabled: false,
+                storage_readonly: false,
+                maintenance_mode: false,
+            }),
         }
     }
 

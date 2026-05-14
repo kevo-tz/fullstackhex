@@ -72,3 +72,4 @@ Key routing rules:
 - test: cd py-api && uv run pytest
 - deadcode: cd frontend && bunx knip
 - shell: shellcheck -x --source-path=scripts/ scripts/*.sh
+- **pre-push**: Run `bash scripts/pre-push-check.sh` BEFORE any `git push` — runs fmt, clippy, ruff, lint, typecheck across all stacks

@@ -81,7 +81,7 @@ services:
         max-file: "3"
 
   rustfs:
-    image: rustfs/rustfs:v1.0.0
+    image: rustfs/rustfs:latest
     container_name: fullstackhex_rustfs
     restart: unless-stopped
     ports:
@@ -170,7 +170,7 @@ services:
       - tools
 
   redis-exporter:
-    image: oliver006/redis_exporter:v1.83.0
+    image: oliver006/redis_exporter:alpine
     container_name: fullstackhex_redis_exporter
     restart: unless-stopped
     ports:
@@ -195,7 +195,7 @@ services:
       - fullstackhex-network
 
   postgres-exporter:
-    image: prometheuscommunity/postgres-exporter:v0.19.1
+    image: prometheuscommunity/postgres-exporter:latest
     container_name: fullstackhex_postgres_exporter
     restart: unless-stopped
     ports:

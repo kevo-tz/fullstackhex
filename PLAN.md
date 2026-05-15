@@ -449,3 +449,14 @@ These items are actually fixed but marked `[ ]` in TODOS.md:
 9. Hardcoded colors → CSS vars across all notes pages
 
 **VERDICT:** CLEARED — all design issues resolved in code during review pass.
+
+## GSTACK REVIEW REPORT
+
+| Review | Trigger | Why | Runs | Status | Findings |
+|--------|---------|-----|------|--------|----------|
+| Eng Review | `/plan-eng-review` | Architecture & tests (required) | 1 | ISSUES (5 resolved) | 17 issues (1 P0, 4 P1, 5 P2, 7 P3) |
+| Design Review | `/plan-design-review` | UI/UX gaps | 1 | CLEAR | 9 design decisions, all resolved |
+
+**OUTSIDE VOICE:** Claude subagent — 17 verified findings cross-cutting all sections. Key discovery: P0 CSRF/session auth gap missed by primary review.
+
+**VERDICT:** ISSUES — 15 implementation tasks identified. P0 fixed (csrf_token cookie wired), P1 items fixed (broadcast_event, WS pool env vars, JWT blacklist check, WS cancellation token), P2 items partially fixed (WS polling race, per-user quota, stale TODOs), P2-P3 deferred (WS E2E test, feature flags hot-reload, DB retry, FromRow, index).

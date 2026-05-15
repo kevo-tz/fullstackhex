@@ -14,7 +14,15 @@ const { duration = 5000 } = Astro.props;
       const duration = parseInt(this.dataset.duration || "5000", 10);
       const toast = document.createElement("div");
       toast.className = `toast-item toast-${type}`;
-      toast.innerHTML = `<span>${message}</span><button class="toast-close" aria-label="Close">&times;</button>`;
+      const msgSpan = document.createElement("span");
+      msgSpan.textContent = message;
+      const closeBtn = document.createElement("button");
+      closeBtn.className = "toast-close";
+      closeBtn.setAttribute("aria-label", "Close");
+      closeBtn.innerHTML = "&times;";
+      closeBtn.addEventListener("click", () => toast.remove());
+      toast.appendChild(msgSpan);
+      toast.appendChild(closeBtn);
       this.appendChild(toast);
       toast.querySelector(".toast-close")?.addEventListener("click", () => toast.remove());
       if (duration > 0) {

@@ -20,7 +20,7 @@ test.describe("Auth Login", () => {
       await page.waitForURL("/profile", { timeout: 15000 });
 
       // Profile content should be visible (not auth guard)
-      await expect(page.locator("#dashboard-content")).toBeVisible();
+      await expect(page.locator("#profile-content")).toBeVisible();
 
       // User info should match registered user
       await expect(page.locator("#user-email")).toHaveText(testUser.email);

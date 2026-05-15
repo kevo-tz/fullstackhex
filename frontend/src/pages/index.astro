@@ -100,7 +100,7 @@ make status</pre>
       </div>
 
     <script>
-      import { SERVICE_IDS, isFullOutage as checkFullOutage } from "../lib/health";
+      import { SERVICE_IDS, isFullOutage, type HealthEntry } from "../lib/health";
       import { connectLiveStream } from "../lib/live";
 
       let wsFallbackTimer: ReturnType<typeof setTimeout> | null = null;
@@ -177,7 +177,7 @@ make status</pre>
           if (rawJson) rawJson.textContent = JSON.stringify(data, null, 2);
 
           for (const svc of SERVICE_IDS) {
-            const entry = data[svc] as Record<string, unknown> | undefined;
+            const entry = data[svc] as HealthEntry | undefined;
             if (!entry) {
               setStatus(svc, "error", "unknown");
               continue;
@@ -241,7 +241,7 @@ make status</pre>
             }
           }
 
-          if (checkFullOutage(data)) {
+          if (isFullOutage(data)) {
             showOutage(true);
             startRetry();
           }

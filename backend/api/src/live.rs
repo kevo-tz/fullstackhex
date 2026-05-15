@@ -20,7 +20,7 @@
 use crate::AppState;
 use axum::extract::State;
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
-use axum::http::StatusCode;
+use axum::http::{HeaderMap, StatusCode};
 use axum::response::IntoResponse;
 use cache::pubsub::PubSubMessage;
 use serde::{Deserialize, Serialize};
@@ -30,7 +30,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 use tokio::sync::Semaphore;
-use tracing;
+
 
 /// Redis pub/sub channel for live events.
 const LIVE_EVENTS_CHANNEL: &str = "live:events";
@@ -38,7 +38,7 @@ const LIVE_EVENTS_CHANNEL: &str = "live:events";
 /// Maximum concurrent WebSocket connections.
 const MAX_WS_CONNECTIONS: usize = 100;
 /// Idle timeout: close connection if no message received within this duration.
-const WS_IDLE_TIMEOUT: Duration = Duration::from_secs(30);
+const WS_IDLE_TIMEOUT: Duration = Duration::from_secs(300);
 
 /// Global active connection counter for metrics.
 static ACTIVE_WS_CONNECTIONS: AtomicUsize = AtomicUsize::new(0);
@@ -98,17 +98,38 @@ pub async fn broadcast_event(state: &AppState, event: &LiveEvent) {
 /// Handle WebSocket upgrade requests.
 ///
 /// Returns 404 Not Found when Redis is disabled — the frontend falls back
-/// to HTTP polling automatically. Requires a valid JWT token when auth is
-/// configured (passed via `token` query parameter).
+/// to HTTP polling automatically. The `/live` endpoint is public
+/// (auth middleware exempts it) — all connected clients receive
+/// the same broadcast stream from Redis pub/sub.
 pub async fn ws_handler(
     ws: WebSocketUpgrade,
+    headers: HeaderMap,
     State(state): State<Arc<AppState>>,
 ) -> impl IntoResponse {
-    // Note: When auth is configured, the frontend must connect with a valid JWT
-    // token passed as a query parameter (`/api/live?token=...`). The auth
-    // middleware skips /live (it's a public upgrade endpoint), so token
-    // validation happens inside handle_socket via an initial auth message.
-    // For the public health dashboard, no token is needed.
+    // The /live endpoint is public — no auth required. Redis pub/sub events
+    // are broadcast to all connected clients. The auth middleware skips /live
+    // by design so the health dashboard works without authentication.
+
+    // Validate Origin header against ALLOWED_ORIGIN when configured
+    if let Some(allowed) = std::env::var("ALLOWED_ORIGIN").ok().filter(|s| !s.is_empty()) {
+        let origin = headers
+            .get("origin")
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("");
+        if !origin.is_empty() {
+            let allowed_host = allowed
+                .trim_start_matches("https://")
+                .trim_start_matches("http://");
+            if !origin.contains(allowed_host) {
+                tracing::warn!(%origin, "WS connection rejected — Origin not allowed");
+                return (
+                    StatusCode::UPGRADE_REQUIRED,
+                    "{\"error\":\"Origin not allowed\"}",
+                )
+                    .into_response();
+            }
+        }
+    }
 
     let redis = match &state.redis {
         Some(r) => r.clone(),

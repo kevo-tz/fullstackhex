@@ -86,9 +86,10 @@ const { id = "modal", title = "" } = Astro.props;
     color: #475569;
     font-size: 1.25rem;
     cursor: pointer;
-    padding: 0.25rem;
+    padding: 0.6rem;
     line-height: 1;
   }
   .modal-close:hover { color: #94a3b8; }
+  .modal-close:focus-visible { outline: 2px solid var(--accent, #22c55e); outline-offset: 2px; }
   .modal-body { padding: 1.25rem; }
 </style>

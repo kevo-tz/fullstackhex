@@ -1,6 +1,6 @@
 //! Note CRUD routes.
 //!
-//! Demonstrates a complete CRUD lifecycle with Postgres-backed storage,
+//! Implements a complete CRUD lifecycle with Postgres-backed storage,
 //! user-scoped authorization (user_id), and standard REST patterns.
 
 use crate::AppState;
@@ -69,10 +69,9 @@ pub async fn list_notes(
     let limit = params.per_page.clamp(1, 100);
     let offset = params.page.max(1).saturating_sub(1).saturating_mul(limit);
 
-    match sqlx::query_as::<_, (String, String, String, String, String, String)>(
+    match sqlx::query_as::<_, (String, String, String, String)>(
         r#"
-        SELECT id::text, user_id::text, title, body,
-               created_at::text, updated_at::text
+        SELECT id::text, title, created_at::text, updated_at::text
         FROM notes
         WHERE user_id = $1::uuid
         ORDER BY created_at DESC
@@ -90,11 +89,11 @@ pub async fn list_notes(
                 .into_iter()
                 .map(|r| Note {
                     id: r.0,
-                    user_id: r.1,
-                    title: r.2,
-                    body: r.3,
-                    created_at: r.4,
-                    updated_at: r.5,
+                    user_id: String::new(),
+                    title: r.1,
+                    body: String::new(),
+                    created_at: r.2,
+                    updated_at: r.3,
                 })
                 .collect();
             (StatusCode::OK, Json(notes)).into_response()
@@ -132,6 +131,20 @@ pub async fn create_note(
         return (
             StatusCode::UNPROCESSABLE_ENTITY,
             Json(serde_json::json!({"error":"title is required"})),
+        )
+            .into_response();
+    }
+    if input.title.len() > 255 {
+        return (
+            StatusCode::UNPROCESSABLE_ENTITY,
+            Json(serde_json::json!({"error":"title must be 255 characters or fewer"})),
+        )
+            .into_response();
+    }
+    if input.body.len() > 100_000 {
+        return (
+            StatusCode::UNPROCESSABLE_ENTITY,
+            Json(serde_json::json!({"error":"body must be 100KB or fewer"})),
         )
             .into_response();
     }

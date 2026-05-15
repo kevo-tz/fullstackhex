@@ -11,7 +11,7 @@ use axum::response::{IntoResponse, Response};
 use hmac::{Hmac, KeyInit, Mac};
 use sha2::Sha256;
 use std::sync::Arc;
-use tracing;
+
 
 /// Authenticated user context extracted from the request.
 #[derive(Debug, Clone)]

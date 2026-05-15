@@ -94,6 +94,23 @@ Sessions are stored in Redis with configurable TTL. Session cookies are `HttpOnl
 
 Logout destroys the Redis session, blacklists the JWT's JTI for the remaining token lifetime, and clears the session cookie.
 
-## WebSocket Auth (Deferred)
+## WebSocket Auth
 
-The `/live` WebSocket endpoint is intentionally public — the health dashboard is unauthenticated so operators can check service status without login. Real-world WS applications typically need token-based auth during the upgrade handshake (e.g., passing JWT as query param or in the first message). This pattern is deferred until driven by a concrete WS feature that requires authentication (e.g., per-user realtime notifications or chat). When added, WS auth will follow the existing Bearer token pattern.
+The `/live` WebSocket endpoint supports two authentication methods, matching the `AUTH_MODE` env var used by HTTP routes. When `JWT_SECRET` is unset or `CHANGE_ME`, WS auth is disabled and the endpoint is public (same as HTTP auth).
+
+### Browser Clients (Cookie)
+
+Browser `WebSocket` API sends cookies automatically during the upgrade handshake. The `session=` cookie is extracted from the `Cookie` header, the session token is looked up in Redis, and the JWT is validated. This works transparently for logged-in dashboard users.
+
+### Non-Browser Clients (Bearer Token)
+
+Pass a JWT as a query parameter:
+```
+wss://host/api/live?token=<jwt>
+```
+
+The token is validated directly via the JWT service (no Redis lookup needed). This is intended for programmatic clients (mobile, CLI).
+
+### Auth Failure
+
+When no valid credentials are provided and auth is configured, the server returns HTTP 401. The frontend's `connectLiveStream()` detects the failed upgrade and falls back to HTTP polling automatically.

@@ -14,6 +14,7 @@ use sqlx::PgPool;
 use sqlx::postgres::PgPoolOptions;
 use std::sync::Arc;
 use std::time::Duration;
+use tokio::sync::Semaphore;
 
 pub mod live;
 pub mod metrics;
@@ -35,6 +36,8 @@ pub struct AppState {
     pub prometheus_handle: PrometheusHandle,
     pub gauge_task: Option<tokio::task::AbortHandle>,
     pub feature_flags: Option<domain::FeatureFlags>,
+    pub ws_connection_permits: Arc<Semaphore>,
+    pub ws_idle_timeout: Duration,
 }
 
 pub async fn router(
@@ -106,6 +109,8 @@ pub async fn router(
         prometheus_handle,
         gauge_task,
         feature_flags: Some(domain::FeatureFlags::from_env()),
+        ws_connection_permits: Arc::new(Semaphore::new(100)),
+        ws_idle_timeout: Duration::from_secs(300),
     });
 
     Ok((build_router(state.clone()), state))
@@ -597,6 +602,8 @@ mod tests {
                 storage_readonly: false,
                 maintenance_mode: false,
             }),
+            ws_connection_permits: Arc::new(Semaphore::new(100)),
+            ws_idle_timeout: Duration::from_secs(300),
         }
     }
 

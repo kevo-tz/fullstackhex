@@ -26,6 +26,8 @@ fn test_state_without_auth() -> AppState {
             storage_readonly: false,
             maintenance_mode: false,
         }),
+        ws_connection_permits: std::sync::Arc::new(tokio::sync::Semaphore::new(100)),
+        ws_idle_timeout: std::time::Duration::from_secs(300),
     }
 }
 

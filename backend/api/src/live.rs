@@ -20,7 +20,7 @@
 use crate::AppState;
 use axum::extract::State;
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
-use axum::http::{HeaderMap, StatusCode};
+use axum::http::{HeaderMap, StatusCode, Uri};
 use axum::response::IntoResponse;
 use cache::pubsub::PubSubMessage;
 use serde::{Deserialize, Serialize};
@@ -29,20 +29,12 @@ use futures_util::sink::SinkExt;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
-use tokio::sync::Semaphore;
 
 /// Redis pub/sub channel for live events.
 const LIVE_EVENTS_CHANNEL: &str = "live:events";
 
-/// Maximum concurrent WebSocket connections.
-const MAX_WS_CONNECTIONS: usize = 100;
-/// Idle timeout: close connection if no message received within this duration.
-const WS_IDLE_TIMEOUT: Duration = Duration::from_secs(300);
-
 /// Global active connection counter for metrics.
 static ACTIVE_WS_CONNECTIONS: AtomicUsize = AtomicUsize::new(0);
-/// Semaphore limiting concurrent WebSocket connections.
-static WS_SEMAPHORE: Semaphore = Semaphore::const_new(MAX_WS_CONNECTIONS);
 
 /// Events that can be broadcast over the live channel.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -97,17 +89,32 @@ pub async fn broadcast_event(state: &AppState, event: &LiveEvent) {
 /// Handle WebSocket upgrade requests.
 ///
 /// Returns 404 Not Found when Redis is disabled — the frontend falls back
-/// to HTTP polling automatically. The `/live` endpoint is public
-/// (auth middleware exempts it) — all connected clients receive
-/// the same broadcast stream from Redis pub/sub.
+/// to HTTP polling automatically. When auth is configured (`state.auth` is
+/// `Some`), the endpoint requires either a valid `?token=<jwt>` query param
+/// or a valid session cookie. Returns 401 Unauthorized when auth is
+/// configured but no valid credentials are provided.
 pub async fn ws_handler(
     ws: WebSocketUpgrade,
     headers: HeaderMap,
+    uri: Uri,
     State(state): State<Arc<AppState>>,
 ) -> impl IntoResponse {
-    // The /live endpoint is public — no auth required. Redis pub/sub events
-    // are broadcast to all connected clients. The auth middleware skips /live
-    // by design so the health dashboard works without authentication.
+    // Auth check: when auth is configured, require valid credentials
+    if let Some(ref auth_service) = state.auth {
+        let authenticated = token_from_query(&uri)
+            .and_then(|t| auth_service.jwt.validate_token(&t).ok())
+            .is_some()
+            || cookie_authenticated(&headers, auth_service, &state).await;
+
+        if !authenticated {
+            tracing::info!("WS connection rejected — not authenticated");
+            return (
+                StatusCode::UNAUTHORIZED,
+                "{\"error\":\"Authentication required\"}",
+            )
+                .into_response();
+        }
+    }
 
     // Validate Origin header against ALLOWED_ORIGIN when configured
     if let Some(allowed) = std::env::var("ALLOWED_ORIGIN")
@@ -145,7 +152,8 @@ pub async fn ws_handler(
     };
 
     // Acquire semaphore permit (non-blocking fail returns 503)
-    let permit = match WS_SEMAPHORE.try_acquire() {
+    let permits = state.ws_connection_permits.clone();
+    let permit = match permits.try_acquire_owned() {
         Ok(p) => p,
         Err(_) => {
             tracing::warn!("WS connection limit reached — rejecting connection");
@@ -156,8 +164,58 @@ pub async fn ws_handler(
                 .into_response();
         }
     };
+    let idle_timeout = state.ws_idle_timeout;
+    ws.on_upgrade(move |socket| handle_socket(socket, redis, idle_timeout, permit))
+}
 
-    ws.on_upgrade(move |socket| handle_socket(socket, redis, permit))
+/// Extract JWT token from WebSocket upgrade URI query parameter.
+///
+/// Browser WebSocket API does not support custom headers, so the token
+/// is passed as a query parameter: `wss://host/api/live?token=<jwt>`.
+/// JWT tokens are base64url-encoded (alphanumeric + `.` + `-` + `_`) —
+/// no percent-decoding is needed for standard tokens.
+fn token_from_query(uri: &Uri) -> Option<String> {
+    let query = uri.query()?;
+    for pair in query.split('&') {
+        if let Some(value) = pair.strip_prefix("token=") {
+            return Some(value.to_string());
+        }
+    }
+    None
+}
+
+/// Authenticate a WebSocket connection via session cookie.
+///
+/// Extracts the `session=` cookie from the `Cookie` header, looks up the
+/// session token in Redis, and validates it with the JWT service.
+async fn cookie_authenticated(
+    headers: &HeaderMap,
+    auth_service: &auth::AuthService,
+    state: &AppState,
+) -> bool {
+    let session_id = match headers
+        .get("cookie")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|cookies| {
+            cookies.split(';').find_map(|c| {
+                let c = c.trim();
+                c.strip_prefix("session=")
+            })
+        }) {
+        Some(s) if !s.is_empty() => s.to_string(),
+        _ => return false,
+    };
+
+    let redis = match &state.redis {
+        Some(r) => r.clone(),
+        None => return false,
+    };
+
+    let token: Option<String> = redis.cache_get("session", &session_id).await.unwrap_or(None);
+    match token {
+        Some(t) => auth_service.jwt.validate_token(&t).is_ok(),
+        None => false,
+    }
 }
 
 /// Drop guard that decrements the active connection counter,
@@ -176,7 +234,8 @@ impl Drop for WsGuard {
 async fn handle_socket(
     mut socket: WebSocket,
     redis: Arc<cache::RedisClient>,
-    _permit: tokio::sync::SemaphorePermit<'static>,
+    ws_idle_timeout: Duration,
+    _permit: tokio::sync::OwnedSemaphorePermit,
 ) {
     let _guard = WsGuard;
     ACTIVE_WS_CONNECTIONS.fetch_add(1, Ordering::SeqCst);
@@ -195,7 +254,7 @@ async fn handle_socket(
     loop {
         tokio::select! {
             // Forward Redis message to WebSocket, with idle timeout
-            msg = tokio::time::timeout(WS_IDLE_TIMEOUT, subscriber.recv()) => {
+            msg = tokio::time::timeout(ws_idle_timeout, subscriber.recv()) => {
                 match msg {
                     Ok(Some(PubSubMessage { payload, .. })) => {
                         if let Err(e) = socket.send(Message::Text(payload.into())).await {
@@ -334,6 +393,8 @@ mod tests {
                 prometheus_handle: metrics::init_metrics_recorder(),
                 gauge_task: None,
                 feature_flags: None,
+                ws_connection_permits: std::sync::Arc::new(tokio::sync::Semaphore::new(100)),
+                ws_idle_timeout: std::time::Duration::from_secs(300),
             }));
 
         // Without Upgrade header, WebSocketUpgrade extractor returns 400
@@ -367,6 +428,8 @@ mod tests {
             prometheus_handle: metrics::init_metrics_recorder(),
             gauge_task: None,
             feature_flags: None,
+            ws_connection_permits: std::sync::Arc::new(tokio::sync::Semaphore::new(100)),
+            ws_idle_timeout: std::time::Duration::from_secs(300),
         };
 
         let event = LiveEvent::ConnectionStatus {

@@ -55,4 +55,28 @@ proptest! {
             _ => panic!("expected ConnectionStatus"),
         }
     }
+
+    /// Random byte strings must not panic LiveEvent deserialization.
+    #[test]
+    fn live_event_random_bytes_never_panics(bytes: Vec<u8>) {
+        prop_assume!(bytes.len() <= 4096);
+        let _ = serde_json::from_slice::<crate::live::LiveEvent>(&bytes);
+    }
+
+    /// Invalid JSON with missing type field must not panic.
+    #[test]
+    fn live_event_missing_type_never_panics(data: String) {
+        prop_assume!(data.len() <= 512);
+        let json = format!("{{\"data\": {}}}", serde_json::to_string(&data).unwrap());
+        let _ = serde_json::from_str::<crate::live::LiveEvent>(&json);
+    }
+
+    /// Invalid JSON with unknown type value must not panic.
+    #[test]
+    fn live_event_unknown_type_never_panics(typ: String) {
+        prop_assume!(!typ.is_empty() && typ.len() <= 64);
+        prop_assume!(typ != "health_update" && typ != "auth_event" && typ != "connection_status");
+        let json = format!("{{\"type\": \"{}\", \"data\": {{}}}}", typ);
+        let _ = serde_json::from_str::<crate::live::LiveEvent>(&json);
+    }
 }

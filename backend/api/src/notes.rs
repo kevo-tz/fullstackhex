@@ -79,28 +79,10 @@ pub async fn list_notes(
     let limit = params.per_page.clamp(1, 100);
     let offset = page.saturating_sub(1).saturating_mul(limit);
 
-    let (total,): (i64,) = match sqlx::query_as(
-        r#"SELECT COUNT(*)::bigint FROM notes WHERE user_id = $1::uuid"#,
-    )
-    .bind(&auth.user_id)
-    .fetch_one(pool)
-    .await
-    {
-        Ok(r) => r,
-        Err(e) => {
-            tracing::warn!(error = %e, "failed to count notes");
-            ::metrics::counter!("notes_query_errors_total").increment(1);
-            return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(serde_json::json!({"error":"failed to list notes"})),
-            )
-                .into_response();
-        }
-    };
-
-    match sqlx::query_as::<_, (String, String, String, String)>(
+    match sqlx::query_as::<_, (String, String, String, String, i64)>(
         r#"
-        SELECT id::text, title, created_at::text, updated_at::text
+        SELECT id::text, title, created_at::text, updated_at::text,
+               COUNT(*) OVER()::bigint AS total_count
         FROM notes
         WHERE user_id = $1::uuid
         ORDER BY created_at DESC
@@ -114,6 +96,7 @@ pub async fn list_notes(
     .await
     {
         Ok(rows) => {
+            let total = rows.first().map(|r| r.4).unwrap_or(0);
             let items: Vec<Note> = rows
                 .into_iter()
                 .map(|r| Note {

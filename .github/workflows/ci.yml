@@ -239,6 +239,21 @@ jobs:
           done
           echo "Backend ready"
 
+      - name: Validate WebSocket upgrade
+        run: |
+          status=$(curl -s -o /dev/null -w '%{http_code}' \
+            -H "Upgrade: websocket" \
+            -H "Connection: Upgrade" \
+            -H "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==" \
+            -H "Sec-WebSocket-Version: 13" \
+            http://localhost:8001/live)
+          if [ "$status" = "101" ]; then
+            echo "✓ WebSocket upgrade successful (101)"
+          else
+            echo "✗ Expected 101, got $status"
+            exit 1
+          fi
+
       - name: Install frontend deps
         working-directory: frontend
         run: bun install --frozen-lockfile

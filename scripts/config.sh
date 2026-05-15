@@ -2,6 +2,15 @@
 # FullStackHex Configuration
 # Centralized configuration for all scripts
 
+set -o allexport
+
+# Guard: .env must exist — all scripts depend on it
+if [[ ! -f .env ]]; then
+  echo "Error: .env not found. Copy .env.example to .env and fill in required values." >&2
+  echo "  cp .env.example .env" >&2
+  exit 1
+fi
+
 # Source common functions
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/common.sh"

@@ -2,7 +2,9 @@
 # FullStackHex Configuration
 # Centralized configuration for all scripts
 
-set -o allexport
+# Selective exports for subprocesses — only non-sensitive vars exported
+# Secrets (POSTGRES_PASSWORD, REDIS_PASSWORD, JWT_SECRET, etc.) passed via
+# --env-file .env to docker compose or read directly when needed.
 
 # Guard: .env must exist — all scripts depend on it
 if [[ ! -f .env ]]; then

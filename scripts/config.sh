@@ -39,7 +39,8 @@ HTML_REPORT_DIR="${HTML_REPORT_DIR:-.performance}"
 
 # Process state
 PID_DIR="${PID_DIR:-/tmp/fullstackhex-dev}"
-PYTHON_SOCK="${PYTHON_SOCK:-/tmp/fullstackhex-python.sock}"
+# Fall back to PYTHON_SIDECAR_SOCKET from .env so dev.sh matches Rust's expectation
+PYTHON_SOCK="${PYTHON_SOCK:-${PYTHON_SIDECAR_SOCKET:-/tmp/py-api.sock}}"
 
 # Startup timing
 POSTGRES_RETRIES="${POSTGRES_RETRIES:-6}"

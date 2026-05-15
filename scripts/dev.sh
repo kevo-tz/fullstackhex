@@ -73,6 +73,11 @@ for _ in $(seq 1 "$POSTGRES_RETRIES"); do
     sleep "$POSTGRES_POLL_INTERVAL"
 done
 
+log_info "Ensuring PostgreSQL password matches .env (handles stale volumes)..."
+$COMPOSE_DEV exec -T postgres psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" \
+    -c "ALTER USER \"$POSTGRES_USER\" PASSWORD '$POSTGRES_PASSWORD'" 2>/dev/null || \
+    log_warning "Could not sync PostgreSQL password — auth may fail until volume is recreated"
+
 log_info "Starting Python sidecar..."
 (cd py-api && uv run uvicorn app.main:app --uds "$PYTHON_SOCK") &
 echo $! > "$PID_DIR/python.pid"

@@ -202,7 +202,7 @@ wheels = [
 [[package]]
 name = "py-api"
 version = "0.13.0"
-source = { virtual = "." }
+source = { editable = "." }
 dependencies = [
     { name = "fastapi" },
     { name = "prometheus-client" },

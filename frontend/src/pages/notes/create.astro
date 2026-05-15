@@ -1,0 +1,129 @@
+---
+import Layout from "../../components/Layout.astro";
+---
+
+<Layout title="New Note — FullStackHex">
+  <div class="max-w-lg mx-auto">
+    <a href="/notes" class="back-link">← Back to Notes</a>
+    <h1 class="text-2xl font-bold text-[#e2e8f0] mb-6">New Note</h1>
+
+    <form id="note-form" class="space-y-4" novalidate>
+      <div class="form-group">
+        <label for="title" class="form-label">Title</label>
+        <input type="text" id="title" name="title" class="form-input" required minlength="1" maxlength="255" placeholder="Note title" />
+        <span id="title-error" class="field-error hidden">Title is required</span>
+      </div>
+
+      <div class="form-group">
+        <label for="body" class="form-label">Body</label>
+        <textarea id="body" name="body" class="form-input" rows="6" placeholder="Write your note here…"></textarea>
+        <span id="body-error" class="field-error hidden"></span>
+      </div>
+
+      <div class="flex gap-3">
+        <button type="submit" id="submit-btn" class="btn-primary">Create Note</button>
+        <a href="/notes" class="btn-cancel">Cancel</a>
+      </div>
+
+      <div id="form-error" class="form-error-banner hidden"></div>
+    </form>
+  </div>
+</Layout>
+
+<script>
+  const form = document.getElementById("note-form") as HTMLFormElement;
+  const titleInput = document.getElementById("title") as HTMLInputElement;
+  const titleError = document.getElementById("title-error") as HTMLElement;
+  const submitBtn = document.getElementById("submit-btn") as HTMLButtonElement;
+  const formError = document.getElementById("form-error") as HTMLElement;
+
+  function showFieldError(el: HTMLElement, show: boolean) {
+    el.classList.toggle("hidden", !show);
+  }
+
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    formError.classList.add("hidden");
+
+    // Client-side validation
+    let valid = true;
+    if (!titleInput.value.trim()) {
+      showFieldError(titleError, true);
+      valid = false;
+    } else {
+      showFieldError(titleError, false);
+    }
+
+    if (!valid) return;
+
+    submitBtn.disabled = true;
+    submitBtn.textContent = "Creating…";
+
+    try {
+      const csrf = document.cookie.split("; ").find(r => r.startsWith("csrf_token="))?.split("=")[1] || "";
+      const res = await fetch("/api/notes", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...(csrf ? { "X-CSRF-Token": csrf } : {}) },
+        body: JSON.stringify({ title: titleInput.value.trim(), body: (document.getElementById("body") as HTMLTextAreaElement).value }),
+      });
+
+      if (res.ok) {
+        window.location.href = "/notes";
+      } else {
+        const data = await res.json().catch(() => ({}));
+        formError.textContent = (data as { error?: string }).error || "Failed to create note";
+        formError.classList.remove("hidden");
+      }
+    } catch {
+      formError.textContent = "Network error — could not reach server";
+      formError.classList.remove("hidden");
+    } finally {
+      submitBtn.disabled = false;
+      submitBtn.textContent = "Create Note";
+    }
+  });
+
+  // Clear field errors on input
+  titleInput.addEventListener("input", () => showFieldError(titleError, false));
+</script>
+
+<style>
+  .back-link { display: inline-block; color: var(--accent, #22c55e); font-size: 0.85rem; margin-bottom: 1rem; text-decoration: none; }
+  .back-link:hover { text-decoration: underline; }
+  .form-group { display: flex; flex-direction: column; gap: 0.35rem; }
+  .form-label { font-size: 0.8rem; color: #94a3b8; }
+  .form-input {
+    padding: 0.6rem 0.9rem;
+    border: 1px solid #1e293b;
+    border-radius: 6px;
+    background: #111827;
+    color: #e2e8f0;
+    font-size: 0.9rem;
+    font-family: inherit;
+    width: 100%;
+    box-sizing: border-box;
+  }
+  .form-input:focus { outline: none; border-color: var(--accent, #22c55e); }
+  .form-input:focus-visible { outline: 2px solid var(--accent, #22c55e); outline-offset: 2px; }
+  textarea.form-input { resize: vertical; }
+  .field-error { font-size: 0.78rem; color: #ef4444; }
+  .btn-primary {
+    padding: 0.5rem 1.25rem; border-radius: 6px; background: var(--accent, #22c55e);
+    color: #0d0d0d; border: none; font-size: 0.85rem; font-weight: 500; cursor: pointer;
+    font-family: inherit;
+  }
+  .btn-primary:hover { opacity: 0.9; }
+  .btn-primary:focus-visible { outline: 2px solid var(--accent, #22c55e); outline-offset: 2px; }
+  .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+  .btn-cancel {
+    padding: 0.5rem 1.25rem; border-radius: 6px; background: transparent;
+    color: #94a3b8; border: 1px solid #1e293b; font-size: 0.85rem;
+    text-decoration: none; display: inline-flex; align-items: center;
+  }
+  .btn-cancel:hover { border-color: #334155; }
+  .form-error-banner {
+    padding: 0.75rem; border-radius: 6px; background: #450a0a; border: 1px solid #7f1d1d;
+    color: #fca5a5; font-size: 0.85rem;
+  }
+  .hidden { display: none; }
+</style>

@@ -1,14 +1,7 @@
-# Production Infrastructure for FullStackHex
-# Usage: docker compose -f compose/prod.yml up -d
-#
-# Prerequisites:
-#   - Copy .env.example to .env and set all required values (no CHANGE_ME left)
-#   - TLS certificates in compose/nginx/certs/ (fullchain.pem and privkey.pem)
-#
 # Services:
 #   - nginx          (ports 80, 443)  - Reverse proxy + TLS termination
 #   - backend        (internal :8001) - Rust/Axum API server
-#   - py-api (internal socket) - Python FastAPI sidecar (managed by Rust)
+#   - py-api        (internal socket) - Python FastAPI sidecar (managed by Rust)
 #   - frontend       (internal :4321) - Astro SSR Node server
 #   - postgres       (internal :5432) - Primary database
 #   - redis          (internal :6379) - Cache layer
@@ -33,7 +26,7 @@ volumes:
 
 services:
   nginx:
-    image: nginx:1.27-alpine
+    image: nginx:1.31-alpine
     user: "101"
     container_name: fullstackhex_nginx
     restart: unless-stopped
@@ -248,7 +241,7 @@ services:
         max-file: "3"
 
   rustfs:
-    image: rustfs/rustfs:0.8.1
+    image: rustfs/rustfs:v1.0.0
     container_name: fullstackhex_rustfs
     restart: unless-stopped
     expose:
@@ -286,7 +279,7 @@ services:
         max-file: "3"
 
   redis-exporter:
-    image: oliver006/redis_exporter:v1.67.0
+    image: oliver006/redis_exporter:v1.83.0
     container_name: fullstackhex_redis_exporter
     restart: unless-stopped
     expose:
@@ -306,7 +299,7 @@ services:
           memory: 64M
 
   postgres-exporter:
-    image: prometheuscommunity/postgres-exporter:v0.16.0
+    image: prometheuscommunity/postgres-exporter:v0.19.1
     container_name: fullstackhex_postgres_exporter
     restart: unless-stopped
     expose:
@@ -331,7 +324,7 @@ services:
           memory: 64M
 
   nginx-exporter:
-    image: nginx/nginx-prometheus-exporter:1.4.1
+    image: nginx/nginx-prometheus-exporter:1.5.1
     container_name: fullstackhex_nginx_exporter
     restart: unless-stopped
     expose:
@@ -350,7 +343,7 @@ services:
           memory: 64M
 
   certbot:
-    image: certbot/certbot:v3.4.0
+    image: certbot/certbot:v5.6.0
     container_name: fullstackhex_certbot
     restart: unless-stopped
     volumes:

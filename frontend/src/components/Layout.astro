@@ -60,7 +60,10 @@ const { title } = Astro.props;
         try {
           const res = await fetch("/api/auth/me");
           if (!res.ok) return null;
-          return await res.json();
+          const data = await res.json();
+          // Fallback response when auth disabled: { status: "disabled" }
+          if (data?.status === "disabled") return null;
+          return data;
         } catch {
           return null;
         }

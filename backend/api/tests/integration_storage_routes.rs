@@ -21,6 +21,11 @@ fn test_state_without_storage() -> AppState {
         ),
         prometheus_handle: init_metrics_recorder(),
         gauge_task: None,
+        feature_flags: Some(domain::FeatureFlags {
+            chat_enabled: false,
+            storage_readonly: false,
+            maintenance_mode: false,
+        }),
     }
 }
 

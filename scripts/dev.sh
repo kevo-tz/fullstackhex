@@ -104,9 +104,7 @@ while true; do
         log_error "Health check timed out after ${TIMEOUT}s"
         exit 1
     fi
-    RUST_STATUS=$(curl -sk --max-time 5 http://localhost:8001/health 2>/dev/null \
-        | grep -o '"status":"[^"]*"' | head -1 | sed 's/"status":"//;s/"//' 2>/dev/null || echo "")
-    if [ "$RUST_STATUS" = "ok" ]; then
+    if curl -sf --max-time 5 http://localhost:8001/health 2>/dev/null | grep -q '"rust".*"status":"ok"'; then
         log_success "All services healthy (${ELAPSED}s)"
         break
     fi

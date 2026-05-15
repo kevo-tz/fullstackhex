@@ -1,6 +1,3 @@
-# FullStackHex Alert Rules
-# These rules are evaluated by Prometheus.
-# Alertmanager handles routing (see alertmanager.yml).
 
 groups:
   - name: fullstackhex

@@ -11,7 +11,6 @@ use axum::response::{IntoResponse, Response};
 use hmac::{Hmac, KeyInit, Mac};
 use sha2::Sha256;
 use std::sync::Arc;
-use tracing;
 
 /// Authenticated user context extracted from the request.
 #[derive(Debug, Clone)]
@@ -80,6 +79,16 @@ pub async fn auth_middleware(
     mut req: axum::http::Request<axum::body::Body>,
     next: axum::middleware::Next,
 ) -> Response {
+    // Skip auth for public routes
+    let path = req.uri().path();
+    if path == "/live"
+        || path.starts_with("/health")
+        || path == "/metrics"
+        || path.starts_with("/metrics/")
+    {
+        return next.run(req).await;
+    }
+
     let auth_service = req.extensions().get::<Arc<AuthService>>().cloned();
     let redis = req.extensions().get::<Arc<cache::RedisClient>>().cloned();
 

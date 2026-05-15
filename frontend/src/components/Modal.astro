@@ -1,0 +1,95 @@
+---
+export interface Props {
+  id?: string;
+  title?: string;
+}
+
+const { id = "modal", title = "" } = Astro.props;
+---
+<dialog id={id} class="modal">
+  <div class="modal-backdrop" data-close>
+    <div class="modal-content" role="dialog" aria-modal="true" aria-labelledby={`${id}-title`}>
+      <div class="modal-header">
+        <h2 id={`${id}-title`} class="modal-title">{title}</h2>
+        <button class="modal-close" data-close aria-label="Close">&times;</button>
+      </div>
+      <div class="modal-body">
+        <slot />
+      </div>
+    </div>
+  </div>
+</dialog>
+
+<script>
+  class ModalElement extends HTMLElement {
+    dialog: HTMLDialogElement | null;
+    constructor() {
+      super();
+      this.dialog = this.querySelector("dialog");
+      if (!this.dialog) return;
+
+      // Close on backdrop click or close button
+      this.dialog.addEventListener("click", (e) => {
+        const target = e.target as HTMLElement;
+        if (target.hasAttribute("data-close")) this.close();
+      });
+
+      // Close on Escape
+      this.dialog.addEventListener("keydown", (e) => {
+        if (e.key === "Escape") this.close();
+      });
+    }
+    open() { this.dialog?.showModal(); }
+    close() { this.dialog?.close(); }
+  }
+  customElements.define("modal-element", ModalElement);
+</script>
+
+<style>
+  .modal { display: contents; }
+  .modal::backdrop { background: rgba(0,0,0,0.6); }
+  .modal-backdrop {
+    position: fixed;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 100;
+    background: rgba(0,0,0,0.6);
+  }
+  .modal-content {
+    background: #111827;
+    border: 1px solid #1e293b;
+    border-radius: 12px;
+    padding: 0;
+    max-width: 480px;
+    width: 90%;
+    max-height: 80vh;
+    overflow-y: auto;
+    box-shadow: 0 25px 50px rgba(0,0,0,0.5);
+  }
+  .modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 1rem 1.25rem;
+    border-bottom: 1px solid #1e293b;
+  }
+  .modal-title {
+    font-size: 1rem;
+    font-weight: 600;
+    color: #e2e8f0;
+  }
+  .modal-close {
+    background: none;
+    border: none;
+    color: #475569;
+    font-size: 1.25rem;
+    cursor: pointer;
+    padding: 0.6rem;
+    line-height: 1;
+  }
+  .modal-close:hover { color: #94a3b8; }
+  .modal-close:focus-visible { outline: 2px solid var(--accent, #22c55e); outline-offset: 2px; }
+  .modal-body { padding: 1.25rem; }
+</style>

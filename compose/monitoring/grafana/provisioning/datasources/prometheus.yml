@@ -1,5 +1,3 @@
-# Grafana datasource configuration for Prometheus
-# Auto-provisioned on Grafana startup
 
 apiVersion: 1
 

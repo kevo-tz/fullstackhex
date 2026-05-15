@@ -9,14 +9,15 @@ authors.workspace = true
 
 [dependencies]
 tokio = { workspace = true }
-axum = { workspace = true }
+axum = { workspace = true, features = ["ws"] }
 tower = { workspace = true }
-serde_json = { workspace = true }
 sqlx = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 metrics = { workspace = true }
 metrics-exporter-prometheus = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
 dotenvy = "0.15"
 db = { path = "../db" }
 py-sidecar = { path = "../py-sidecar" }
@@ -25,8 +26,11 @@ auth = { path = "../auth" }
 storage = { path = "../storage" }
 domain = { path = "../domain" }
 reqwest = { version = "0.13", features = ["stream"] }
+futures-util = "0.3"
+uuid = { workspace = true }
 
 [dev-dependencies]
 serial_test = { workspace = true }
 tempfile = "3"
 tokio = { workspace = true, features = ["net", "io-util", "sync"] }
+proptest = { workspace = true }

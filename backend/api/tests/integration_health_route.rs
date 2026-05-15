@@ -360,6 +360,11 @@ async fn health_db_ok_with_real_pool() {
         redis: None,
         auth: None,
         storage: None,
+        feature_flags: Some(domain::FeatureFlags {
+            chat_enabled: false,
+            storage_readonly: false,
+            maintenance_mode: false,
+        }),
     };
 
     let app = api::router_with_state(state);
@@ -422,6 +427,11 @@ async fn health_python_ok_with_mock_socket() {
         redis: None,
         auth: None,
         storage: None,
+        feature_flags: Some(domain::FeatureFlags {
+            chat_enabled: false,
+            storage_readonly: false,
+            maintenance_mode: false,
+        }),
     };
 
     let app = router_with_state(state);

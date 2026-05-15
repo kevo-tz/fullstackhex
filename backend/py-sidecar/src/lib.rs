@@ -379,6 +379,9 @@ impl PythonSidecar {
 }
 
 #[cfg(test)]
+mod proptests;
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use tokio::io::AsyncWriteExt;

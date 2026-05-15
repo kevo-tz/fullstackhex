@@ -1,0 +1,82 @@
+---
+export interface Column {
+  key: string;
+  label: string;
+}
+
+export interface Props {
+  columns: Column[];
+  rows: Record<string, string>[];
+}
+
+const { columns, rows } = Astro.props;
+---
+<div class="table-wrapper">
+  <table class="data-table">
+    <thead>
+      <tr>
+        {columns.map(col => <th>{col.label}</th>)}
+      </tr>
+    </thead>
+    <tbody>
+      {rows.map(row => (
+        <tr>
+          {columns.map(col => <td data-label={col.label}>{row[col.key] ?? ""}</td>)}
+        </tr>
+      ))}
+    </tbody>
+  </table>
+</div>
+
+<style>
+  .table-wrapper {
+    overflow-x: auto;
+    border: 1px solid #1e293b;
+    border-radius: 8px;
+  }
+  .data-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.85rem;
+  }
+  th {
+    text-align: left;
+    padding: 0.75rem 1rem;
+    color: #475569;
+    font-size: 0.7rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    border-bottom: 1px solid #1e293b;
+    background: #0d0d0d;
+  }
+  td {
+    padding: 0.75rem 1rem;
+    color: #94a3b8;
+    border-bottom: 1px solid #1e293b;
+  }
+  tr:last-child td { border-bottom: none; }
+
+  @media (max-width: 640px) {
+    .data-table thead { display: none; }
+    .data-table tr {
+      display: flex;
+      flex-direction: column;
+      padding: 1rem;
+      border-bottom: 1px solid #1e293b;
+    }
+    .data-table td {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0.35rem 0;
+      border-bottom: none;
+    }
+    .data-table td::before {
+      content: attr(data-label);
+      font-size: 0.7rem;
+      color: #475569;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+    }
+  }
+</style>

@@ -20,9 +20,11 @@ done
 pkill -x uvicorn 2>/dev/null || true
 pkill -x api 2>/dev/null || true
 pkill -x bun 2>/dev/null || true
+# Catch orphaned Astro/node processes bun leaves behind on abnormal exit
+pkill -f "astro dev" 2>/dev/null || true
 
 $COMPOSE_DEV down
-$COMPOSE_MON down
+$COMPOSE_MON ps -q 2>/dev/null | grep -q . && $COMPOSE_MON down || true
 
 rm -f "$PYTHON_SOCK"
 

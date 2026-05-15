@@ -225,6 +225,10 @@ make status</pre>
 
     <script>
       import { SERVICE_IDS, isFullOutage as checkFullOutage } from "../lib/health";
+      import { connectLiveStream } from "../lib/live";
+
+      let wsFallbackTimer: ReturnType<typeof setTimeout> | null = null;
+      let wsDisconnected = true;
 
       function setStatus(id: string, status: string, label: string) {
         const dot  = document.getElementById("dot-"  + id);
@@ -288,6 +292,7 @@ make status</pre>
 
         try {
           const res  = await fetch("/api/health");
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
           const data = await res.json();
 
           if (rawJson) rawJson.textContent = JSON.stringify(data, null, 2);
@@ -376,6 +381,53 @@ make status</pre>
         }
       }
 
+      // ── WebSocket live updates with polling fallback ──
+      function applyHealthUpdate(event: import("../lib/live").LiveEvent) {
+        if (event.type !== "health_update") return;
+        const { service, status, detail } = event.data;
+        if (status === "ok") {
+          setStatus(service, "ok", "ok");
+          setDetail(service, "");
+          setDiagnostic(service, "");
+        } else {
+          setStatus(service, "error", status);
+          if (detail) setDetail(service, detail);
+        }
+      }
+
+      function initLiveStream() {
+        const live = connectLiveStream();
+
+        live.onEvent((event: import("../lib/live").LiveEvent) => {
+          wsDisconnected = false;
+          if (event.type === "connection_status") {
+            if (event.data.status === "connected") {
+              wsDisconnected = false;
+              cancelRetry();
+              if (wsFallbackTimer !== null) {
+                clearTimeout(wsFallbackTimer);
+                wsFallbackTimer = null;
+              }
+            } else if (event.data.status === "offline") {
+              wsDisconnected = true;
+              if (wsFallbackTimer === null) {
+                wsFallbackTimer = setTimeout(() => {
+                  wsFallbackTimer = null;
+                  if (wsDisconnected) {
+                    console.log("[dashboard] WS unavailable — falling back to polling");
+                    fetchHealth();
+                  }
+                }, 3000);
+              }
+            }
+            return;
+          }
+          applyHealthUpdate(event);
+        });
+
+        window.addEventListener("beforeunload", () => live.close());
+      }
+
       document.addEventListener("visibilitychange", () => {
         if (document.hidden) {
           cancelRetry();
@@ -390,6 +442,14 @@ make status</pre>
         fetchHealth();
       });
 
-      fetchHealth();
+      // Try WS first, fall back to polling if no connect within 2s
+      initLiveStream();
+      wsFallbackTimer = setTimeout(() => {
+        wsFallbackTimer = null;
+        if (wsDisconnected) {
+          console.log("[dashboard] WS connect timeout — using polling");
+          fetchHealth();
+        }
+      }, 2000);
     </script>
 </Layout>

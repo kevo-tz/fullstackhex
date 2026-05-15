@@ -18,3 +18,4 @@ thiserror = "2"
 tokio = { workspace = true, features = ["io-util", "macros", "rt-multi-thread", "net"] }
 tempfile = "3"
 serial_test = { workspace = true }
+proptest = { workspace = true }

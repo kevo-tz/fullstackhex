@@ -325,6 +325,13 @@ async fn health(State(state): State<Arc<AppState>>) -> impl IntoResponse {
     let python = health_python_value(&state).await;
     let auth = health_auth_value(&state);
 
+    // Sanitize error details before broadcasting to WS clients (prevents
+    // leaking internal paths, connection strings, or stack traces)
+    let sanitize = |s: &str| -> String {
+        let s = s.chars().take(500).collect::<String>();
+        s
+    };
+
     // Broadcast health events to WS subscribers
     broadcast_event(
         &state,
@@ -340,7 +347,7 @@ async fn health(State(state): State<Arc<AppState>>) -> impl IntoResponse {
         &LiveEvent::HealthUpdate {
             service: "db".into(),
             status: db["status"].as_str().unwrap_or("unknown").into(),
-            detail: db.get("error").and_then(|v| v.as_str()).map(String::from),
+            detail: db.get("error").and_then(|v| v.as_str()).map(&sanitize),
         },
     )
     .await;
@@ -349,7 +356,7 @@ async fn health(State(state): State<Arc<AppState>>) -> impl IntoResponse {
         &LiveEvent::HealthUpdate {
             service: "redis".into(),
             status: redis["status"].as_str().unwrap_or("unknown").into(),
-            detail: redis.get("error").and_then(|v| v.as_str()).map(String::from),
+            detail: redis.get("error").and_then(|v| v.as_str()).map(&sanitize),
         },
     )
     .await;
@@ -358,7 +365,7 @@ async fn health(State(state): State<Arc<AppState>>) -> impl IntoResponse {
         &LiveEvent::HealthUpdate {
             service: "storage".into(),
             status: storage["status"].as_str().unwrap_or("unknown").into(),
-            detail: storage.get("error").and_then(|v| v.as_str()).map(String::from),
+            detail: storage.get("error").and_then(|v| v.as_str()).map(&sanitize),
         },
     )
     .await;
@@ -367,7 +374,7 @@ async fn health(State(state): State<Arc<AppState>>) -> impl IntoResponse {
         &LiveEvent::HealthUpdate {
             service: "python".into(),
             status: python["status"].as_str().unwrap_or("unknown").into(),
-            detail: python.get("error").and_then(|v| v.as_str()).map(String::from),
+            detail: python.get("error").and_then(|v| v.as_str()).map(&sanitize),
         },
     )
     .await;

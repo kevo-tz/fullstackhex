@@ -8,6 +8,8 @@ REPO_ROOT="$(get_repo_root)"
 cd "$REPO_ROOT"
 
 load_env
+# Re-evaluate PYTHON_SOCK now that .env loaded PYTHON_SIDECAR_SOCKET
+PYTHON_SOCK="${PYTHON_SOCK:-${PYTHON_SIDECAR_SOCKET:-/tmp/fullstackhex-python.sock}}"
 
 for pidfile in "$PID_DIR"/*.pid; do
     if [ -f "$pidfile" ]; then

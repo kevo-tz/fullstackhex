@@ -8,6 +8,8 @@ REPO_ROOT="$(get_repo_root)"
 cd "$REPO_ROOT"
 
 load_env
+# Re-evaluate PYTHON_SOCK now that .env loaded PYTHON_SIDECAR_SOCKET
+PYTHON_SOCK="${PYTHON_SOCK:-${PYTHON_SIDECAR_SOCKET:-/tmp/fullstackhex-python.sock}}"
 
 WATCH_MODE=false
 if [ "${1:-}" = "--watch" ]; then
@@ -75,8 +77,10 @@ done
 
 log_info "Ensuring PostgreSQL password matches .env (handles stale volumes)..."
 $COMPOSE_DEV exec -T postgres psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" \
-    -c "ALTER USER \"$POSTGRES_USER\" PASSWORD '$POSTGRES_PASSWORD'" 2>/dev/null || \
-    log_warning "Could not sync PostgreSQL password — auth may fail until volume is recreated"
+    -c "ALTER USER \"$POSTGRES_USER\" PASSWORD '$POSTGRES_PASSWORD'" 2>/dev/null || {
+    log_error "PostgreSQL password sync failed — auth will fail on API calls"
+    exit 1
+}
 
 log_info "Starting Python sidecar..."
 (cd py-api && uv run uvicorn app.main:app --uds "$PYTHON_SOCK") &

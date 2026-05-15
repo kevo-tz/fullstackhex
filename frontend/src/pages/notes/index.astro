@@ -70,12 +70,14 @@ import Skeleton from "../../components/Skeleton.astro";
         throw new Error((body as { error?: string }).error || `HTTP ${res.status}`);
       }
       const data = await res.json();
-      const notes = Array.isArray(data) ? data : [];
+      const notes = data.items ?? [];
+      const total: number = data.total ?? 0;
 
       document.getElementById("notes-loading")!.classList.add("hidden");
 
       if (notes.length === 0) {
         document.getElementById("notes-empty")!.classList.remove("hidden");
+        document.getElementById("notes-pagination")!.innerHTML = "";
         return;
       }
 
@@ -91,12 +93,38 @@ import Skeleton from "../../components/Skeleton.astro";
           <td data-label="Created">${formatDate(n.created_at)}</td>
         </tr>
       `).join("");
+
+      renderPagination(total);
     } catch (err) {
       document.getElementById("notes-loading")!.classList.add("hidden");
       document.getElementById("notes-error")!.classList.remove("hidden");
       document.getElementById("notes-error-msg")!.textContent =
         err instanceof Error ? err.message : "Couldn't load notes";
     }
+  }
+
+  function renderPagination(total: number) {
+    const container = document.getElementById("notes-pagination")!;
+    const totalPages = Math.max(1, Math.ceil(total / perPage));
+    if (totalPages <= 1) { container.innerHTML = ""; return; }
+
+    const hasPrev = page > 1;
+    const hasNext = page < totalPages;
+
+    container.innerHTML = `
+      <nav aria-label="Pagination" class="pagination-nav">
+        <button class="page-btn" data-p="${page - 1}" ${hasPrev ? "" : "disabled"}>← Previous</button>
+        <span class="page-info">Page ${page} of ${totalPages}</span>
+        <button class="page-btn" data-p="${page + 1}" ${hasNext ? "" : "disabled"}>Next →</button>
+      </nav>
+    `;
+
+    container.querySelectorAll(".page-btn:not([disabled])").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const p = parseInt((btn as HTMLElement).dataset.p!, 10);
+        if (p > 0) { page = p; loadNotes(); }
+      });
+    });
   }
 
   function escapeHtml(s: string): string {
@@ -150,5 +178,27 @@ import Skeleton from "../../components/Skeleton.astro";
   }
   .retry-btn:hover { background: #7f1d1d; }
   .retry-btn:focus-visible { outline: 2px solid #fca5a5; outline-offset: 2px; }
+  .pagination-nav {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 1rem;
+    margin-top: 1.5rem;
+    padding: 0.75rem 0;
+  }
+  .page-btn {
+    padding: 0.4rem 0.9rem;
+    border-radius: 6px;
+    background: #1e293b;
+    color: #e2e8f0;
+    border: none;
+    cursor: pointer;
+    font-size: 0.85rem;
+    font-family: inherit;
+  }
+  .page-btn:hover { background: #334155; }
+  .page-btn:disabled { opacity: 0.4; cursor: default; pointer-events: none; }
+  .page-btn:focus-visible { outline: 2px solid var(--accent, #22c55e); outline-offset: 2px; }
+  .page-info { font-size: 0.8rem; color: #64748b; }
   .hidden { display: none; }
 </style>

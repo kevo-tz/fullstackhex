@@ -256,13 +256,33 @@ jobs:
           done
           echo "Frontend ready"
 
-      - name: Run e2e tests
+      - name: Run e2e tests (vitest)
         working-directory: frontend
         env:
           VITE_RUST_BACKEND_URL: http://localhost:8001
           FRONTEND_URL: http://localhost:4321
         run: |
           bun run test:e2e
+
+      - name: Install Playwright browsers
+        working-directory: frontend
+        run: |
+          npx playwright install --with-deps chromium
+
+      - name: Run e2e tests (Playwright)
+        working-directory: frontend
+        env:
+          FRONTEND_URL: http://localhost:4321
+        run: |
+          bun run test:e2e:playwright
+
+      - name: Upload Playwright report on failure
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f48907a1d7  # v6
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 7
 
   infra:
     name: infra

@@ -205,7 +205,7 @@ impl RedisClient {
 }
 
 /// Returns (ttl_seconds, label) for the given failure count.
-fn backoff_params(count: u64) -> (u64, &'static str) {
+pub(crate) fn backoff_params(count: u64) -> (u64, &'static str) {
     if count >= 20 {
         (1800, "30min") // 30 minutes
     } else if count >= 10 {

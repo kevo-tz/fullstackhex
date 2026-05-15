@@ -1,0 +1,32 @@
+---
+export interface Props {
+  title?: string;
+  variant?: "default" | "outline" | "elevated";
+}
+
+const { title, variant = "default" } = Astro.props;
+const variantClass = variant !== "default" ? `card-${variant}` : "";
+---
+
+<div class:list={["card", variantClass]}>
+  {title && <div class="card-label">{title}</div>}
+  <slot />
+</div>
+
+<style>
+  .card-label {
+    font-size: 0.7rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: #475569;
+    margin-bottom: 0.75rem;
+  }
+
+  .card-outline {
+    border-color: var(--accent, #22c55e);
+  }
+
+  .card-elevated {
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  }
+</style>

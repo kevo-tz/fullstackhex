@@ -2,6 +2,7 @@
 import Layout from "../../components/Layout.astro";
 import Modal from "../../components/Modal.astro";
 import Skeleton from "../../components/Skeleton.astro";
+import Toast from "../../components/Toast.astro";
 export const prerender = false;
 const { id } = Astro.params;
 ---
@@ -46,7 +47,7 @@ const { id } = Astro.params;
   </Modal>
 
   <!-- Toast -->
-  <div id="toast-container" class="fixed top-4 right-4 z-50"></div>
+  <Toast />
 </Layout>
 
 <script>
@@ -89,12 +90,8 @@ const { id } = Astro.params;
   const cancelBtn = document.getElementById("cancel-delete") as HTMLElement;
 
   function showToast(msg: string, type: "info" | "error" = "info") {
-    const container = document.getElementById("toast-container")!;
-    const toast = document.createElement("div");
-    toast.className = `toast toast-${type}`;
-    toast.textContent = msg;
-    container.appendChild(toast);
-    setTimeout(() => toast.remove(), 5000);
+    const container = document.querySelector("toast-container") as any;
+    container?.show(msg, type);
   }
 
   deleteBtn.addEventListener("click", () => modal?.open());
@@ -168,7 +165,5 @@ const { id } = Astro.params;
   .btn-danger:hover { opacity: 0.9; }
   .btn-danger:focus-visible { outline: 2px solid #ef4444; outline-offset: 2px; }
   .btn-danger:disabled { opacity: 0.5; cursor: not-allowed; }
-  .toast-info { padding: 0.75rem 1.25rem; border-radius: 8px; background: #1e293b; color: #94a3b8; border: 1px solid #334155; font-size: 0.85rem; margin-bottom: 0.5rem; box-shadow: 0 4px 12px rgba(0,0,0,0.3); }
-  .toast-error { padding: 0.75rem 1.25rem; border-radius: 8px; background: #450a0a; color: #ef4444; border: 1px solid #7f1d1d; font-size: 0.85rem; margin-bottom: 0.5rem; box-shadow: 0 4px 12px rgba(0,0,0,0.3); }
   .hidden { display: none; }
 </style>

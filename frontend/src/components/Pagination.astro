@@ -1,0 +1,80 @@
+---
+export interface Props {
+  currentPage: number;
+  total: number;
+  perPage: number;
+  baseUrl: string;
+}
+
+const { currentPage, total, perPage, baseUrl } = Astro.props;
+const totalPages = Math.max(1, Math.ceil(total / perPage));
+const hasPrev = currentPage > 1;
+const hasNext = currentPage < totalPages;
+
+function renderPageLink(p: number): string {
+  return `${baseUrl}?page=${p}&per_page=${perPage}`;
+}
+---
+
+<nav aria-label="Pagination" class="pagination">
+  <a
+    href={hasPrev ? renderPageLink(currentPage - 1) : "#"}
+    class:list={["page-link", "prev", { disabled: !hasPrev }]}
+    aria-disabled={!hasPrev}
+    data-page={hasPrev ? currentPage - 1 : undefined}
+  >← Previous</a>
+
+  <span class="page-info">Page {currentPage} of {totalPages}</span>
+
+  <a
+    href={hasNext ? renderPageLink(currentPage + 1) : "#"}
+    class:list={["page-link", "next", { disabled: !hasNext }]}
+    aria-disabled={!hasNext}
+    data-page={hasNext ? currentPage + 1 : undefined}
+  >Next →</a>
+</nav>
+
+<script>
+  document.querySelectorAll(".page-link:not(.disabled)").forEach((el) => {
+    el.addEventListener("click", (e) => {
+      const page = (el as HTMLElement).dataset.page;
+      if (page) {
+        e.preventDefault();
+        document.dispatchEvent(
+          new CustomEvent("page-change", { detail: { page: Number(page) } }),
+        );
+      }
+    });
+  });
+</script>
+
+<style>
+  .pagination {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 1rem;
+    margin-top: 1.5rem;
+    padding: 0.75rem 0;
+  }
+  .page-link {
+    padding: 0.4rem 0.9rem;
+    border-radius: 6px;
+    background: #1e293b;
+    color: #e2e8f0;
+    text-decoration: none;
+    font-size: 0.85rem;
+    transition: background 0.15s;
+  }
+  .page-link:hover { background: #334155; }
+  .page-link.disabled {
+    opacity: 0.4;
+    cursor: default;
+    pointer-events: none;
+  }
+  .page-link:focus-visible { outline: 2px solid var(--accent, #22c55e); outline-offset: 2px; }
+  .page-info {
+    font-size: 0.8rem;
+    color: #64748b;
+  }
+</style>

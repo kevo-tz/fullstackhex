@@ -49,6 +49,15 @@ fn pool_from_state(state: &AppState) -> Option<&sqlx::PgPool> {
     }
 }
 
+/// Paginated response wrapper.
+#[derive(serde::Serialize)]
+pub struct PaginatedNotes {
+    pub items: Vec<Note>,
+    pub total: i64,
+    pub page: i64,
+    pub per_page: i64,
+}
+
 /// List notes for the authenticated user.
 pub async fn list_notes(
     auth: auth::middleware::AuthUser,
@@ -66,8 +75,28 @@ pub async fn list_notes(
         }
     };
 
+    let page = params.page.max(1);
     let limit = params.per_page.clamp(1, 100);
-    let offset = params.page.max(1).saturating_sub(1).saturating_mul(limit);
+    let offset = page.saturating_sub(1).saturating_mul(limit);
+
+    let (total,): (i64,) = match sqlx::query_as(
+        r#"SELECT COUNT(*)::bigint FROM notes WHERE user_id = $1::uuid"#,
+    )
+    .bind(&auth.user_id)
+    .fetch_one(pool)
+    .await
+    {
+        Ok(r) => r,
+        Err(e) => {
+            tracing::warn!(error = %e, "failed to count notes");
+            ::metrics::counter!("notes_query_errors_total").increment(1);
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({"error":"failed to list notes"})),
+            )
+                .into_response();
+        }
+    };
 
     match sqlx::query_as::<_, (String, String, String, String)>(
         r#"
@@ -85,7 +114,7 @@ pub async fn list_notes(
     .await
     {
         Ok(rows) => {
-            let notes: Vec<Note> = rows
+            let items: Vec<Note> = rows
                 .into_iter()
                 .map(|r| Note {
                     id: r.0,
@@ -96,7 +125,16 @@ pub async fn list_notes(
                     updated_at: r.3,
                 })
                 .collect();
-            (StatusCode::OK, Json(notes)).into_response()
+            (
+                StatusCode::OK,
+                Json(PaginatedNotes {
+                    items,
+                    total,
+                    page,
+                    per_page: limit,
+                }),
+            )
+                .into_response()
         }
         Err(e) => {
             tracing::warn!(error = %e, "failed to list notes");

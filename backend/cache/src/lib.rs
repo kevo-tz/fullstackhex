@@ -13,6 +13,8 @@ pub mod rate_limit;
 pub mod session;
 #[cfg(test)]
 pub mod test_util;
+#[cfg(test)]
+mod proptests;
 
 /// Errors from the Redis cache layer.
 #[derive(Debug, thiserror::Error)]

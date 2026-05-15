@@ -131,7 +131,7 @@ const { id } = Astro.params;
   .back-link:hover { text-decoration: underline; }
   .error-state { text-align: center; padding: 3rem 1.5rem; }
   .error-state h2 { font-size: 1.25rem; color: #ef4444; margin-bottom: 0.5rem; }
-  .error-state p { color: #64748b; margin-bottom: 1.25rem; font-size: 0.85rem; }
+  .error-state p { color: var(--text-muted, #94a3b8); margin-bottom: 1.25rem; font-size: 0.85rem; }
   .note-body {
     font-size: 1rem;
     color: #cbd5e1;
@@ -154,9 +154,9 @@ const { id } = Astro.params;
   .delete-btn:focus-visible { outline: 2px solid #ef4444; outline-offset: 2px; }
   .btn-cancel {
     padding: 0.5rem 1.25rem; border-radius: 6px; background: transparent;
-    color: #94a3b8; border: 1px solid #1e293b; font-size: 0.85rem; cursor: pointer; font-family: inherit;
+    color: var(--text-muted, #94a3b8); border: 1px solid var(--border, #1e293b); font-size: 0.85rem; cursor: pointer; font-family: inherit;
   }
-  .btn-cancel:hover { border-color: #334155; }
+  .btn-cancel:hover { border-color: var(--text-muted, #94a3b8); }
   .btn-cancel:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   .btn-danger {
     padding: 0.5rem 1.25rem; border-radius: 6px; background: #ef4444;

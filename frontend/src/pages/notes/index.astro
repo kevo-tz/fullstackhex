@@ -150,7 +150,7 @@ import Skeleton from "../../components/Skeleton.astro";
     padding: 0.5rem 1.25rem;
     border-radius: 6px;
     background: var(--accent, #22c55e);
-    color: #0d0d0d;
+    color: var(--btn-text, #0d0d0d);
     text-decoration: none;
     font-size: 0.85rem;
     font-weight: 500;
@@ -189,8 +189,8 @@ import Skeleton from "../../components/Skeleton.astro";
   .page-btn {
     padding: 0.4rem 0.9rem;
     border-radius: 6px;
-    background: #1e293b;
-    color: #e2e8f0;
+    background: var(--border, #1e293b);
+    color: var(--text, #e2e8f0);
     border: none;
     cursor: pointer;
     font-size: 0.85rem;
@@ -199,6 +199,6 @@ import Skeleton from "../../components/Skeleton.astro";
   .page-btn:hover { background: #334155; }
   .page-btn:disabled { opacity: 0.4; cursor: default; pointer-events: none; }
   .page-btn:focus-visible { outline: 2px solid var(--accent, #22c55e); outline-offset: 2px; }
-  .page-info { font-size: 0.8rem; color: #64748b; }
+  .page-info { font-size: 0.8rem; color: var(--text-muted, #94a3b8); }
   .hidden { display: none; }
 </style>

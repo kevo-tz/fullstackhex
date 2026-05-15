@@ -16,5 +16,6 @@ cache = { path = "../cache" }
 db = { path = "../db" }
 
 [dev-dependencies]
+proptest = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 serde_json = { workspace = true }

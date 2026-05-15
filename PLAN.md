@@ -223,25 +223,6 @@ These items are actually fixed but marked `[ ]` in TODOS.md:
 
 | Review | Trigger | Why | Runs | Status | Findings |
 |--------|---------|-----|------|--------|----------|
-| Design Review | `/plan-design-review` | UI/UX gaps | 1 | ISSUES (resolved) | score: 2/10 → 7/10, 9 decisions, 0 unresolved |
-
-**DECISIONS MADE (all resolved in code):**
-1. Nav label: "Dashboard" → "Health" (Layout.astro)
-2. Merge `/dashboard` → `/profile`, delete dashboard.astro (redirects updated)
-3. Loading skeleton on profile page (profile.astro)
-4. Homepage subtitle already present — no change needed
-5. Form label already present — no change needed
-6. `--text-muted` lightened from #64748b → #94a3b8 (WCAG AA)
-7. Status dots aria-live region + sr-only spans (index.astro)
-8. Skip-to-content link (Layout.astro)
-9. Hardcoded colors → CSS vars across all notes pages
-
-**VERDICT:** CLEARED — all design issues resolved in code during review pass.
-
-## GSTACK REVIEW REPORT
-
-| Review | Trigger | Why | Runs | Status | Findings |
-|--------|---------|-----|------|--------|----------|
 | Eng Review | `/plan-eng-review` | Architecture & tests (required) | 1 | ISSUES (5 resolved) | 17 issues (1 P0, 4 P1, 5 P2, 7 P3) |
 | Design Review | `/plan-design-review` | UI/UX gaps | 1 | CLEAR | 9 design decisions, all resolved |
 

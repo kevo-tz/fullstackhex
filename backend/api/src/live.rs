@@ -31,7 +31,6 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 use tokio::sync::Semaphore;
 
-
 /// Redis pub/sub channel for live events.
 const LIVE_EVENTS_CHANNEL: &str = "live:events";
 
@@ -111,7 +110,10 @@ pub async fn ws_handler(
     // by design so the health dashboard works without authentication.
 
     // Validate Origin header against ALLOWED_ORIGIN when configured
-    if let Some(allowed) = std::env::var("ALLOWED_ORIGIN").ok().filter(|s| !s.is_empty()) {
+    if let Some(allowed) = std::env::var("ALLOWED_ORIGIN")
+        .ok()
+        .filter(|s| !s.is_empty())
+    {
         let origin = headers
             .get("origin")
             .and_then(|v| v.to_str().ok())

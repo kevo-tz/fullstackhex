@@ -12,7 +12,6 @@ use hmac::{Hmac, KeyInit, Mac};
 use sha2::Sha256;
 use std::sync::Arc;
 
-
 /// Authenticated user context extracted from the request.
 #[derive(Debug, Clone)]
 pub struct AuthUser {

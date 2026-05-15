@@ -8,7 +8,7 @@ set -o allexport
 if [[ ! -f .env ]]; then
   echo "Error: .env not found. Copy .env.example to .env and fill in required values." >&2
   echo "  cp .env.example .env" >&2
-  exit 1
+  return 1
 fi
 
 # Source common functions

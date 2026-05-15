@@ -128,7 +128,7 @@ Browser                    Rust Backend                  Redis
 - Frontend: `live.ts` — native `WebSocket` with exponential backoff reconnect (max 10 retries)
 - Fallback: When Redis is unavailable or `/live` returns 404/503, dashboard falls back to HTTP polling via `setInterval`
 - Limits: 100 concurrent connections (semaphore), 300s idle timeout, Origin header validation
-- No auth on `/live` — health dashboard is intentionally public
+- Auth on `/live` — requires valid JWT token (query param) or session cookie when `AUTH_MODE` is configured; falls back to public when auth is disabled
 
 ### Feature Flags
 

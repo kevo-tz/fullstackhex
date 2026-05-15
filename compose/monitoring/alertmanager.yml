@@ -10,12 +10,11 @@ route:
   group_interval: 5m
   repeat_interval: 4h
   receiver: 'dev'
-
-routes:
-  - match:
-      severity: critical
-    receiver: 'dev'
-    continue: true
+  routes:
+    - match:
+        severity: critical
+      receiver: 'dev'
+      continue: true
 
 receivers:
   # Dev receiver: logs alerts to stdout via a local health-check endpoint.

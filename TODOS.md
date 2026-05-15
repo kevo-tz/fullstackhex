@@ -11,4 +11,3 @@
 
 - [ ] **WS connection pooling on Rust side** — `MAX_WS_CONNECTIONS=100` is hardcoded. Make configurable via env var.
 - [ ] **Property test count low** — Only 3 proptest files. Add more invariant tests for domain types, rate limiting, session logic.
-- [ ] **Pagination on notes list** — `Pagination.astro` exists but backend notes endpoint lacks pagination params. Currently returns all notes.

@@ -16,10 +16,10 @@ test.describe("Auth Login", () => {
       await page.fill('input[name="password"]', testUser.password);
       await page.click('button[type="submit"]');
 
-      // Should redirect to dashboard
-      await page.waitForURL("/dashboard", { timeout: 15000 });
+      // Should redirect to profile
+      await page.waitForURL("/profile", { timeout: 15000 });
 
-      // Dashboard content should be visible (not auth guard)
+      // Profile content should be visible (not auth guard)
       await expect(page.locator("#dashboard-content")).toBeVisible();
 
       // User info should match registered user

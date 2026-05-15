@@ -225,7 +225,7 @@ describe("Token refresh interceptor", () => {
 
     const originalLocation = window.location.href;
     Object.defineProperty(window, "location", {
-      value: { href: "/dashboard" },
+      value: { href: "/profile" },
       writable: true,
     });
 

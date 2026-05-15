@@ -1,9 +1,18 @@
 ---
 import Layout from "../components/Layout.astro";
 import Card from "../components/Card.astro";
+import Skeleton from "../components/Skeleton.astro";
 ---
 
 <Layout title="Profile — FullStackHex">
+
+  <!-- Loading state -->
+  <div id="profile-loading">
+    <div class="max-w-2xl mx-auto">
+      <h1 class="text-2xl font-bold text-[#e2e8f0] mb-6">Profile</h1>
+      <Skeleton lines={3} height="3rem" />
+    </div>
+  </div>
 
   <div id="profile-content" style="display:none">
     <div class="max-w-2xl mx-auto">
@@ -35,6 +44,8 @@ import Card from "../components/Card.astro";
     async function initProfile() {
       try {
         const res = await fetch("/api/auth/me");
+        const loading = document.getElementById("profile-loading");
+        if (loading) loading.style.display = "none";
         if (!res.ok) {
           const guard = document.getElementById("auth-guard");
           if (guard) guard.style.display = "block";
@@ -50,6 +61,8 @@ import Card from "../components/Card.astro";
         const userProvider = document.getElementById("user-provider");
         if (userProvider) userProvider.textContent = user.provider || "email";
       } catch {
+        const loading = document.getElementById("profile-loading");
+        if (loading) loading.style.display = "none";
         const guard = document.getElementById("auth-guard");
         if (guard) guard.style.display = "block";
       }

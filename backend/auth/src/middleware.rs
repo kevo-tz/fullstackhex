@@ -166,7 +166,7 @@ pub async fn auth_middleware(
 }
 
 /// Extract and validate a Bearer token from the Authorization header.
-fn extract_bearer(
+pub(crate) fn extract_bearer(
     req: &axum::http::Request<axum::body::Body>,
     auth_service: &AuthService,
 ) -> Option<AuthUser> {

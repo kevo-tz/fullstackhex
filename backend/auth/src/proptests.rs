@@ -101,5 +101,80 @@ proptest! {
             assert!(result.is_err(), "invalid input should be rejected");
         }
     }
+
+    /// compute_auth_signature never panics on arbitrary inputs.
+    #[test]
+    fn auth_signature_never_panics(user_id: String, email: String, name: String) {
+        prop_assume!(user_id.len() <= 256);
+        prop_assume!(email.len() <= 256);
+        prop_assume!(name.len() <= 256);
+        let _ = crate::middleware::compute_auth_signature("test-secret", &user_id, &email, &name);
+    }
+
+    /// compute_auth_signature with empty secret returns error.
+    #[test]
+    fn auth_signature_empty_secret(user_id: String, email: String) {
+        prop_assume!(user_id.len() <= 256);
+        prop_assume!(email.len() <= 256);
+        let result = crate::middleware::compute_auth_signature("", &user_id, &email, "test");
+        assert!(result.is_err());
+    }
+
+    /// verify_auth_signature round-trip: valid signature verifies successfully.
+    #[test]
+    fn auth_signature_roundtrip(user_id: String, email: String, name: String) {
+        prop_assume!(user_id.len() <= 256);
+        prop_assume!(email.len() <= 256);
+        prop_assume!(name.len() <= 256);
+        let Ok(sig) = crate::middleware::compute_auth_signature("test-secret", &user_id, &email, &name) else {
+            return Ok(());
+        };
+        assert!(crate::middleware::verify_auth_signature("test-secret", &user_id, &email, &name, &sig));
+    }
+
+    /// verify_auth_signature rejects wrong secret.
+    #[test]
+    fn auth_signature_wrong_secret_fails(user_id: String) {
+        prop_assume!(user_id.len() <= 256);
+        let Ok(sig) = crate::middleware::compute_auth_signature("secret-a", &user_id, "a@b.com", "test") else {
+            return Ok(());
+        };
+        assert!(!crate::middleware::verify_auth_signature("secret-b", &user_id, "a@b.com", "test", &sig));
+    }
+
+    /// verify_auth_signature constant-time: wrong email payload must not verify.
+    #[test]
+    fn auth_signature_wrong_payload_fails(user_id: String) {
+        prop_assume!(user_id.len() <= 256);
+        let Ok(sig) = crate::middleware::compute_auth_signature("secret", &user_id, "a@b.com", "T") else { return Ok(()); };
+        // Different email -> different payload -> signature must not match
+        assert!(!crate::middleware::verify_auth_signature("secret", &user_id, "wrong@email.com", "T", &sig));
+    }
+
+    /// extract_bearer never panics on arbitrary Authorization header values.
+    #[test]
+    fn extract_bearer_never_panics(header_value: String) {
+        prop_assume!(header_value.len() <= 4096);
+        let req = axum::http::Request::builder()
+            .header("authorization", &header_value)
+            .body(axum::body::Body::empty())
+            .unwrap();
+        let config = crate::AuthConfig {
+            jwt_secret: "test-secret-key-for-testing".to_string(),
+            jwt_issuer: "test-issuer".to_string(),
+            jwt_expiry: 900,
+            refresh_expiry: 604800,
+            auth_mode: crate::AuthMode::Bearer,
+            google_client_id: None,
+            google_client_secret: None,
+            github_client_id: None,
+            github_client_secret: None,
+            oauth_redirect_url: None,
+            sidecar_shared_secret: None,
+            fail_open_on_redis_error: true,
+        };
+        let svc = crate::AuthService::new(config);
+        let _ = crate::middleware::extract_bearer(&req, &svc);
+    }
 }
 

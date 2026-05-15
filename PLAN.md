@@ -430,3 +430,22 @@ These items are actually fixed but marked `[ ]` in TODOS.md:
 5. **Dockerfile health check hardcoded socket path** — It uses `os.environ.get()` with a configurable `ENV`. Mark `[x]`.
 6. **Missing `conftest.py` in py-api/tests/** — `conftest.py` exists with autouse fixture. Mark `[x]`.
 7. **`backoff_increment` doc says BackoffBlocked** — This is a doc bug to fix, not a missing item. Update the doc.
+
+## GSTACK REVIEW REPORT
+
+| Review | Trigger | Why | Runs | Status | Findings |
+|--------|---------|-----|------|--------|----------|
+| Design Review | `/plan-design-review` | UI/UX gaps | 1 | ISSUES (resolved) | score: 2/10 → 7/10, 9 decisions, 0 unresolved |
+
+**DECISIONS MADE (all resolved in code):**
+1. Nav label: "Dashboard" → "Health" (Layout.astro)
+2. Merge `/dashboard` → `/profile`, delete dashboard.astro (redirects updated)
+3. Loading skeleton on profile page (profile.astro)
+4. Homepage subtitle already present — no change needed
+5. Form label already present — no change needed
+6. `--text-muted` lightened from #64748b → #94a3b8 (WCAG AA)
+7. Status dots aria-live region + sr-only spans (index.astro)
+8. Skip-to-content link (Layout.astro)
+9. Hardcoded colors → CSS vars across all notes pages
+
+**VERDICT:** CLEARED — all design issues resolved in code during review pass.

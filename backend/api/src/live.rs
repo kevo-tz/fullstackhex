@@ -26,9 +26,12 @@ use cache::pubsub::PubSubMessage;
 use serde::{Deserialize, Serialize};
 
 use futures_util::sink::SinkExt;
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
+use tokio::sync::Mutex;
+use tokio::sync::Notify;
 
 /// Redis pub/sub channel for live events.
 const LIVE_EVENTS_CHANNEL: &str = "live:events";
@@ -100,20 +103,36 @@ pub async fn ws_handler(
     State(state): State<Arc<AppState>>,
 ) -> impl IntoResponse {
     // Auth check: when auth is configured, require valid credentials
-    if let Some(ref auth_service) = state.auth {
-        let authenticated = token_from_query(&uri)
-            .and_then(|t| auth_service.jwt.validate_token(&t).ok())
-            .is_some()
-            || cookie_authenticated(&headers, auth_service, &state).await;
-
-        if !authenticated {
-            tracing::info!("WS connection rejected — not authenticated");
-            return (
-                StatusCode::UNAUTHORIZED,
-                "{\"error\":\"Authentication required\"}",
-            )
-                .into_response();
+    let maybe_user_id = if let Some(ref auth_service) = state.auth {
+        match (&state.redis, token_from_query(&uri)) {
+            // Token from query param: validate + blacklist check + extract user_id
+            (Some(redis), Some(token)) => {
+                match auth_service.jwt.validate_token(&token) {
+                    Ok(claims) => {
+                        if is_jti_blacklisted(redis, &claims.jti).await {
+                            tracing::info!(jti = %claims.jti, "WS connection rejected — blacklisted JWT");
+                            None
+                        } else {
+                            Some(claims.sub)
+                        }
+                    }
+                    Err(_) => None,
+                }
+            }
+            // Try cookie auth
+            _ => cookie_authenticated(&headers, auth_service, &state).await,
         }
+    } else {
+        None
+    };
+
+    if state.auth.is_some() && maybe_user_id.is_none() {
+        tracing::info!("WS connection rejected — not authenticated");
+        return (
+            StatusCode::UNAUTHORIZED,
+            "{\"error\":\"Authentication required\"}",
+        )
+            .into_response();
     }
 
     // Validate Origin header against ALLOWED_ORIGIN when configured
@@ -138,6 +157,21 @@ pub async fn ws_handler(
                     .into_response();
             }
         }
+    }
+
+    // Per-user quota check
+    if let Some(user_id) = &maybe_user_id {
+        let mut conns = state.ws_user_connections.lock().await;
+        let count = conns.entry(user_id.clone()).or_insert(0);
+        if *count >= state.ws_per_user_max {
+            tracing::warn!(%user_id, count = %count, "WS connection rejected — per-user limit reached");
+            return (
+                StatusCode::TOO_MANY_REQUESTS,
+                "{\"error\":\"Too many connections from this user\"}",
+            )
+                .into_response();
+        }
+        *count += 1;
     }
 
     let redis = match &state.redis {
@@ -165,7 +199,11 @@ pub async fn ws_handler(
         }
     };
     let idle_timeout = state.ws_idle_timeout;
-    ws.on_upgrade(move |socket| handle_socket(socket, redis, idle_timeout, permit))
+    let ws_shutdown = state.ws_shutdown.clone();
+    let user_connections = state.ws_user_connections.clone();
+    ws.on_upgrade(move |socket| {
+        handle_socket(socket, redis, idle_timeout, ws_shutdown, user_connections, maybe_user_id.clone(), permit)
+    })
 }
 
 /// Extract JWT token from WebSocket upgrade URI query parameter.
@@ -188,11 +226,12 @@ fn token_from_query(uri: &Uri) -> Option<String> {
 ///
 /// Extracts the `session=` cookie from the `Cookie` header, looks up the
 /// session token in Redis, and validates it with the JWT service.
+/// Returns the user_id on success.
 async fn cookie_authenticated(
     headers: &HeaderMap,
     auth_service: &auth::AuthService,
     state: &AppState,
-) -> bool {
+) -> Option<String> {
     let session_id = match headers
         .get("cookie")
         .and_then(|v| v.to_str().ok())
@@ -203,19 +242,38 @@ async fn cookie_authenticated(
             })
         }) {
         Some(s) if !s.is_empty() => s.to_string(),
-        _ => return false,
+        _ => return None,
     };
 
     let redis = match &state.redis {
         Some(r) => r.clone(),
-        None => return false,
+        None => return None,
     };
 
     let token: Option<String> = redis.cache_get("session", &session_id).await.unwrap_or(None);
     match token {
-        Some(t) => auth_service.jwt.validate_token(&t).is_ok(),
-        None => false,
+        Some(t) => match auth_service.jwt.validate_token(&t) {
+            Ok(claims) => {
+                if is_jti_blacklisted(&redis, &claims.jti).await {
+                    None
+                } else {
+                    Some(claims.sub)
+                }
+            }
+            Err(_) => None,
+        },
+        None => None,
     }
+}
+
+/// Check Redis blacklist for a JWT identifier.
+/// Returns `false` (allow) when blacklist check fails (fail-open compatible).
+async fn is_jti_blacklisted(redis: &cache::RedisClient, jti: &str) -> bool {
+    redis
+        .cache_get::<bool>("blacklist", jti)
+        .await
+        .unwrap_or(None)
+        .unwrap_or(false)
 }
 
 /// Drop guard that decrements the active connection counter,
@@ -230,14 +288,44 @@ impl Drop for WsGuard {
     }
 }
 
+/// Drop guard that decrements the per-user connection count.
+struct WsUserGuard {
+    user_id: String,
+    connections: Arc<Mutex<HashMap<String, usize>>>,
+}
+
+impl Drop for WsUserGuard {
+    fn drop(&mut self) {
+        // Best-effort: spawn a blocking task since Drop runs in any context
+        let uid = self.user_id.clone();
+        let conns = self.connections.clone();
+        tokio::spawn(async move {
+            let mut map = conns.lock().await;
+            if let Some(count) = map.get_mut(&uid) {
+                *count = count.saturating_sub(1);
+                if *count == 0 {
+                    map.remove(&uid);
+                }
+            }
+        });
+    }
+}
+
 /// Run the WebSocket session: subscribe to Redis events and forward to client.
 async fn handle_socket(
     mut socket: WebSocket,
     redis: Arc<cache::RedisClient>,
     ws_idle_timeout: Duration,
+    ws_shutdown: Arc<Notify>,
+    user_connections: Arc<Mutex<HashMap<String, usize>>>,
+    user_id: Option<String>,
     _permit: tokio::sync::OwnedSemaphorePermit,
 ) {
-    let _guard = WsGuard;
+    let _ws_guard = WsGuard;
+    let _user_guard = user_id.map(|uid| WsUserGuard {
+        user_id: uid,
+        connections: user_connections,
+    });
     ACTIVE_WS_CONNECTIONS.fetch_add(1, Ordering::SeqCst);
     ::metrics::gauge!("ws_active_connections").increment(1.0);
 
@@ -253,6 +341,13 @@ async fn handle_socket(
     let mut subscriber = subscriber;
     loop {
         tokio::select! {
+            // Shutdown signal — server is stopping
+            _ = ws_shutdown.notified() => {
+                tracing::info!("WS connection closing — server shutdown");
+                let _ = socket.close().await;
+                break;
+            }
+
             // Forward Redis message to WebSocket, with idle timeout
             msg = tokio::time::timeout(ws_idle_timeout, subscriber.recv()) => {
                 match msg {
@@ -395,6 +490,9 @@ mod tests {
                 feature_flags: None,
                 ws_connection_permits: std::sync::Arc::new(tokio::sync::Semaphore::new(100)),
                 ws_idle_timeout: std::time::Duration::from_secs(300),
+                ws_shutdown: std::sync::Arc::new(tokio::sync::Notify::new()),
+                ws_user_connections: std::sync::Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new())),
+                ws_per_user_max: 10,
             }));
 
         // Without Upgrade header, WebSocketUpgrade extractor returns 400
@@ -430,6 +528,9 @@ mod tests {
             feature_flags: None,
             ws_connection_permits: std::sync::Arc::new(tokio::sync::Semaphore::new(100)),
             ws_idle_timeout: std::time::Duration::from_secs(300),
+            ws_shutdown: std::sync::Arc::new(tokio::sync::Notify::new()),
+            ws_user_connections: std::sync::Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new())),
+            ws_per_user_max: 10,
         };
 
         let event = LiveEvent::ConnectionStatus {

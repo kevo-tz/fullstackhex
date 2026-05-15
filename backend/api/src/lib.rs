@@ -12,12 +12,17 @@ use py_sidecar::PythonSidecar;
 use serde_json::json;
 use sqlx::PgPool;
 use sqlx::postgres::PgPoolOptions;
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
+use tokio::sync::Mutex;
+use tokio::sync::Notify;
 use tokio::sync::Semaphore;
 
 pub mod live;
 pub mod metrics;
+
+use live::{broadcast_event, LiveEvent};
 pub mod notes;
 
 /// Status of the database connection pool.
@@ -38,6 +43,9 @@ pub struct AppState {
     pub feature_flags: Option<domain::FeatureFlags>,
     pub ws_connection_permits: Arc<Semaphore>,
     pub ws_idle_timeout: Duration,
+    pub ws_shutdown: Arc<Notify>,
+    pub ws_user_connections: Arc<Mutex<HashMap<String, usize>>>,
+    pub ws_per_user_max: usize,
 }
 
 pub async fn router(
@@ -100,6 +108,21 @@ pub async fn router(
         tracing::info!("RUSTFS_ENDPOINT not set — storage disabled");
     }
 
+    let ws_max_connections: usize = std::env::var("WS_MAX_CONNECTIONS")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(100);
+    let ws_idle_timeout_secs: u64 = std::env::var("WS_IDLE_TIMEOUT_SECS")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(300);
+
+    let ws_shutdown = Arc::new(Notify::new());
+    let ws_per_user_max: usize = std::env::var("WS_PER_USER_MAX")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(10);
+
     let state = Arc::new(AppState {
         db,
         redis,
@@ -109,8 +132,11 @@ pub async fn router(
         prometheus_handle,
         gauge_task,
         feature_flags: Some(domain::FeatureFlags::from_env()),
-        ws_connection_permits: Arc::new(Semaphore::new(100)),
-        ws_idle_timeout: Duration::from_secs(300),
+        ws_connection_permits: Arc::new(Semaphore::new(ws_max_connections)),
+        ws_idle_timeout: Duration::from_secs(ws_idle_timeout_secs),
+        ws_shutdown,
+        ws_user_connections: Arc::new(Mutex::new(HashMap::new())),
+        ws_per_user_max,
     });
 
     Ok((build_router(state.clone()), state))
@@ -298,6 +324,63 @@ async fn health(State(state): State<Arc<AppState>>) -> impl IntoResponse {
     let storage = health_storage_value(&state);
     let python = health_python_value(&state).await;
     let auth = health_auth_value(&state);
+
+    // Broadcast health events to WS subscribers
+    broadcast_event(
+        &state,
+        &LiveEvent::HealthUpdate {
+            service: "rust".into(),
+            status: "ok".into(),
+            detail: None,
+        },
+    )
+    .await;
+    broadcast_event(
+        &state,
+        &LiveEvent::HealthUpdate {
+            service: "db".into(),
+            status: db["status"].as_str().unwrap_or("unknown").into(),
+            detail: db.get("error").and_then(|v| v.as_str()).map(String::from),
+        },
+    )
+    .await;
+    broadcast_event(
+        &state,
+        &LiveEvent::HealthUpdate {
+            service: "redis".into(),
+            status: redis["status"].as_str().unwrap_or("unknown").into(),
+            detail: redis.get("error").and_then(|v| v.as_str()).map(String::from),
+        },
+    )
+    .await;
+    broadcast_event(
+        &state,
+        &LiveEvent::HealthUpdate {
+            service: "storage".into(),
+            status: storage["status"].as_str().unwrap_or("unknown").into(),
+            detail: storage.get("error").and_then(|v| v.as_str()).map(String::from),
+        },
+    )
+    .await;
+    broadcast_event(
+        &state,
+        &LiveEvent::HealthUpdate {
+            service: "python".into(),
+            status: python["status"].as_str().unwrap_or("unknown").into(),
+            detail: python.get("error").and_then(|v| v.as_str()).map(String::from),
+        },
+    )
+    .await;
+    broadcast_event(
+        &state,
+        &LiveEvent::HealthUpdate {
+            service: "auth".into(),
+            status: auth["status"].as_str().unwrap_or("unknown").into(),
+            detail: None,
+        },
+    )
+    .await;
+
     let flags = state.feature_flags.map(|f| {
         json!({
             "chat_enabled": f.chat_enabled,
@@ -604,6 +687,9 @@ mod tests {
             }),
             ws_connection_permits: Arc::new(Semaphore::new(100)),
             ws_idle_timeout: Duration::from_secs(300),
+            ws_shutdown: Arc::new(Notify::new()),
+            ws_user_connections: Arc::new(Mutex::new(HashMap::new())),
+            ws_per_user_max: 10,
         }
     }
 

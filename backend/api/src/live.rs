@@ -148,7 +148,21 @@ pub async fn ws_handler(
             let allowed_host = allowed
                 .trim_start_matches("https://")
                 .trim_start_matches("http://");
-            if !origin.contains(allowed_host) {
+            // Extract host from Origin URI for exact matching (prevents
+            // substring bypass like "evil-example.com" when "example.com" is allowed)
+            let origin_host = origin
+                .trim_start_matches("https://")
+                .trim_start_matches("http://")
+                .split('/')
+                .next()
+                .unwrap_or("");
+            let origin_host = origin_host.split(':').next().unwrap_or("");
+            let matches = origin_host == allowed_host
+                || origin_host.strip_prefix(".").map_or(false, |s| {
+                    format!(".{s}").as_str() == allowed_host
+                        || allowed_host == s
+                });
+            if !matches {
                 tracing::warn!(%origin, "WS connection rejected — Origin not allowed");
                 return (
                     StatusCode::UPGRADE_REQUIRED,
@@ -268,12 +282,19 @@ async fn cookie_authenticated(
 
 /// Check Redis blacklist for a JWT identifier.
 /// Returns `false` (allow) when blacklist check fails (fail-open compatible).
+/// Check Redis blacklist for a JWT identifier.
+/// Logs a warning on Redis error. Considers a JWT blacklisted (fail-closed)
+/// when Redis is unreachable, preventing blacklisted tokens from being
+/// accepted during Redis outages.
 async fn is_jti_blacklisted(redis: &cache::RedisClient, jti: &str) -> bool {
-    redis
-        .cache_get::<bool>("blacklist", jti)
-        .await
-        .unwrap_or(None)
-        .unwrap_or(false)
+    match redis.cache_get::<bool>("blacklist", jti).await {
+        Ok(Some(true)) => true,
+        Ok(_) => false,
+        Err(e) => {
+            tracing::warn!(error = %e, "Redis blacklist check failed — rejecting JWT (fail-closed)");
+            true
+        }
+    }
 }
 
 /// Drop guard that decrements the active connection counter,
@@ -321,13 +342,13 @@ async fn handle_socket(
     user_id: Option<String>,
     _permit: tokio::sync::OwnedSemaphorePermit,
 ) {
+    ACTIVE_WS_CONNECTIONS.fetch_add(1, Ordering::SeqCst);
+    ::metrics::gauge!("ws_active_connections").increment(1.0);
     let _ws_guard = WsGuard;
     let _user_guard = user_id.map(|uid| WsUserGuard {
         user_id: uid,
         connections: user_connections,
     });
-    ACTIVE_WS_CONNECTIONS.fetch_add(1, Ordering::SeqCst);
-    ::metrics::gauge!("ws_active_connections").increment(1.0);
 
     let subscriber = match redis.subscribe(LIVE_EVENTS_CHANNEL).await {
         Ok(rx) => rx,

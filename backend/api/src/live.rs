@@ -173,19 +173,18 @@ pub async fn ws_handler(
         }
     }
 
-    // Per-user quota check
-    if let Some(user_id) = &maybe_user_id {
-        let mut conns = state.ws_user_connections.lock().await;
-        let count = conns.entry(user_id.clone()).or_insert(0);
-        if *count >= state.ws_per_user_max {
-            tracing::warn!(%user_id, count = %count, "WS connection rejected — per-user limit reached");
+    // Per-user quota check — read-only, increment after all other guards pass
+    let user_id = maybe_user_id.clone();
+    if let Some(ref uid) = maybe_user_id {
+        let conns = state.ws_user_connections.lock().await;
+        if *conns.get(uid).unwrap_or(&0) >= state.ws_per_user_max {
+            tracing::warn!(user_id = %uid, "WS connection rejected — per-user limit reached");
             return (
                 StatusCode::TOO_MANY_REQUESTS,
                 "{\"error\":\"Too many connections from this user\"}",
             )
                 .into_response();
         }
-        *count += 1;
     }
 
     let redis = match &state.redis {
@@ -212,11 +211,18 @@ pub async fn ws_handler(
                 .into_response();
         }
     };
+
+    // All guards passed — now increment per-user count (paired with WsUserGuard decrement)
+    if let Some(ref uid) = user_id {
+        let mut conns = state.ws_user_connections.lock().await;
+        *conns.entry(uid.clone()).or_insert(0) += 1;
+    }
+
     let idle_timeout = state.ws_idle_timeout;
     let ws_shutdown = state.ws_shutdown.clone();
     let user_connections = state.ws_user_connections.clone();
     ws.on_upgrade(move |socket| {
-        handle_socket(socket, redis, idle_timeout, ws_shutdown, user_connections, maybe_user_id.clone(), permit)
+        handle_socket(socket, redis, idle_timeout, ws_shutdown, user_connections, user_id, permit)
     })
 }
 
@@ -281,11 +287,7 @@ async fn cookie_authenticated(
 }
 
 /// Check Redis blacklist for a JWT identifier.
-/// Returns `false` (allow) when blacklist check fails (fail-open compatible).
-/// Check Redis blacklist for a JWT identifier.
-/// Logs a warning on Redis error. Considers a JWT blacklisted (fail-closed)
-/// when Redis is unreachable, preventing blacklisted tokens from being
-/// accepted during Redis outages.
+/// Returns `false` (allow) on cache-miss. On Redis error, rejects (fail-closed).
 async fn is_jti_blacklisted(redis: &cache::RedisClient, jti: &str) -> bool {
     match redis.cache_get::<bool>("blacklist", jti).await {
         Ok(Some(true)) => true,

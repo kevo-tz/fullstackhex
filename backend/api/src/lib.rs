@@ -28,6 +28,24 @@ pub mod notes;
 /// Max length for health error details broadcast to WS clients.
 const MAX_DETAIL_LENGTH: usize = 500;
 
+/// Parse an env var, logging a warning on parse failure before returning default.
+fn parse_env_or<T: std::str::FromStr>(key: &str, default: T) -> T {
+    match std::env::var(key) {
+        Ok(val) => match val.parse::<T>() {
+            Ok(parsed) => parsed,
+            Err(_) => {
+                tracing::warn!(key = %key, value = %val, "failed to parse env var, using default");
+                default
+            }
+        },
+        Err(std::env::VarError::NotPresent) => default,
+        Err(e) => {
+            tracing::warn!(key = %key, error = %e, "error reading env var, using default");
+            default
+        }
+    }
+}
+
 /// Status of the database connection pool.
 pub enum DbStatus {
     NotConfigured,
@@ -111,20 +129,11 @@ pub async fn router(
         tracing::info!("RUSTFS_ENDPOINT not set — storage disabled");
     }
 
-    let ws_max_connections: usize = std::env::var("WS_MAX_CONNECTIONS")
-        .ok()
-        .and_then(|v| v.parse().ok())
-        .unwrap_or(100);
-    let ws_idle_timeout_secs: u64 = std::env::var("WS_IDLE_TIMEOUT_SECS")
-        .ok()
-        .and_then(|v| v.parse().ok())
-        .unwrap_or(300);
+    let ws_max_connections: usize = parse_env_or("WS_MAX_CONNECTIONS", 100);
+    let ws_idle_timeout_secs: u64 = parse_env_or("WS_IDLE_TIMEOUT_SECS", 300);
 
     let ws_shutdown = Arc::new(Notify::new());
-    let ws_per_user_max: usize = std::env::var("WS_PER_USER_MAX")
-        .ok()
-        .and_then(|v| v.parse().ok())
-        .unwrap_or(10);
+    let ws_per_user_max: usize = parse_env_or("WS_PER_USER_MAX", 10);
 
     let state = Arc::new(AppState {
         db,
@@ -328,45 +337,52 @@ async fn health(State(state): State<Arc<AppState>>) -> impl IntoResponse {
     let python = health_python_value(&state).await;
     let auth = health_auth_value(&state);
 
-    // Sanitize error details before broadcasting to WS clients (prevents
-    // leaking internal paths, connection strings, or stack traces)
-    let sanitize = |s: &str| -> String {
+    // Truncate error details before broadcasting to WS clients (prevents
+    // unbounded message growth)
+    let truncate = |s: &str| -> String {
         let s = s.chars().take(MAX_DETAIL_LENGTH).collect::<String>();
         s
     };
 
-    // Broadcast health events to WS subscribers concurrently
-    futures_util::future::join_all([
-        broadcast_event(&state, &LiveEvent::HealthUpdate {
-            service: "rust".into(), status: "ok".into(), detail: None,
-        }),
-        broadcast_event(&state, &LiveEvent::HealthUpdate {
-            service: "db".into(),
-            status: db["status"].as_str().unwrap_or("unknown").into(),
-            detail: db.get("error").and_then(|v| v.as_str()).map(&sanitize),
-        }),
-        broadcast_event(&state, &LiveEvent::HealthUpdate {
-            service: "redis".into(),
-            status: redis["status"].as_str().unwrap_or("unknown").into(),
-            detail: redis.get("error").and_then(|v| v.as_str()).map(&sanitize),
-        }),
-        broadcast_event(&state, &LiveEvent::HealthUpdate {
-            service: "storage".into(),
-            status: storage["status"].as_str().unwrap_or("unknown").into(),
-            detail: storage.get("error").and_then(|v| v.as_str()).map(&sanitize),
-        }),
-        broadcast_event(&state, &LiveEvent::HealthUpdate {
-            service: "python".into(),
-            status: python["status"].as_str().unwrap_or("unknown").into(),
-            detail: python.get("error").and_then(|v| v.as_str()).map(&sanitize),
-        }),
-        broadcast_event(&state, &LiveEvent::HealthUpdate {
-            service: "auth".into(),
-            status: auth["status"].as_str().unwrap_or("unknown").into(),
-            detail: None,
-        }),
-    ])
-    .await;
+    // Fire-and-forget health broadcasts to WS subscribers (must not delay HTTP response)
+    // Clone values for the spawned task since they're also used in the HTTP response below
+    let (db_clone, redis_clone, storage_clone, python_clone, auth_clone) = (
+        db.clone(), redis.clone(), storage.clone(), python.clone(), auth.clone()
+    );
+    let broadcast_state = state.clone();
+    tokio::spawn(async move {
+        futures_util::future::join_all([
+            broadcast_event(&broadcast_state, &LiveEvent::HealthUpdate {
+                service: "rust".into(), status: "ok".into(), detail: None,
+            }),
+            broadcast_event(&broadcast_state, &LiveEvent::HealthUpdate {
+                service: "db".into(),
+                status: db_clone["status"].as_str().unwrap_or("unknown").into(),
+                detail: db_clone.get("error").and_then(|v| v.as_str()).map(&truncate),
+            }),
+            broadcast_event(&broadcast_state, &LiveEvent::HealthUpdate {
+                service: "redis".into(),
+                status: redis_clone["status"].as_str().unwrap_or("unknown").into(),
+                detail: redis_clone.get("error").and_then(|v| v.as_str()).map(&truncate),
+            }),
+            broadcast_event(&broadcast_state, &LiveEvent::HealthUpdate {
+                service: "storage".into(),
+                status: storage_clone["status"].as_str().unwrap_or("unknown").into(),
+                detail: storage_clone.get("error").and_then(|v| v.as_str()).map(&truncate),
+            }),
+            broadcast_event(&broadcast_state, &LiveEvent::HealthUpdate {
+                service: "python".into(),
+                status: python_clone["status"].as_str().unwrap_or("unknown").into(),
+                detail: python_clone.get("error").and_then(|v| v.as_str()).map(&truncate),
+            }),
+            broadcast_event(&broadcast_state, &LiveEvent::HealthUpdate {
+                service: "auth".into(),
+                status: auth_clone["status"].as_str().unwrap_or("unknown").into(),
+                detail: None,
+            }),
+        ])
+        .await;
+    });
 
     let flags = state.feature_flags.map(|f| {
         json!({

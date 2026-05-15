@@ -175,7 +175,7 @@ All source files, configs, and tests ship in the repo. CI jobs check out the rep
 
 The `smoke` job also runs `cargo sqlx prepare --check` to verify offline metadata is up to date.
 
-The `e2e` job starts a full backend (Rust with PostgreSQL + Redis) and frontend, then runs the Bun-based e2e tests in \`frontend/tests/e2e/\`. It uses a dedicated `JWT_SECRET` and runs with `AUTH_MODE=bearer`.
+The `e2e` job starts a full backend (Rust with PostgreSQL + Redis) and frontend, then runs Playwright-based e2e tests in \`frontend/tests/e2e/playwright/\`. It uses a dedicated `JWT_SECRET` and runs with `AUTH_MODE=cookie` for full auth flow testing.
 
 ```yaml
 jobs:
@@ -187,6 +187,28 @@ jobs:
   infra:   # compose validation, Docker builds, performance check
   security: # detect-secrets + gitleaks
 ```
+
+## E2E Test Details
+
+Tests use Playwright with Chromium (\`frontend/playwright.config.ts\`). Three spec files:
+
+| Spec | Coverage |
+|------|----------|
+| \`auth.spec.ts\` | Login, register, redirect to dashboard, session persistence |
+| \`dashboard.spec.ts\` | Health cards render, status dots, WebSocket fallback polling |
+| \`notes.spec.ts\` | Create note → appears in list → delete → disappears |
+
+CI installs Playwright via \`bunx playwright install --with-deps chromium\`. Screenshots and traces upload on failure (\`playwright-1\` artifact). Failed tests retry once.
+
+The e2e job runs with a Redis service container, exercising the WebSocket live event code path end-to-end.
+
+### E2E Auth Modes
+
+CI runs e2e in two configurations:
+- **Cookie auth** (default): Full Playwright suite — login form, session cookies, CSRF-protected CRUD
+- **Bearer auth**: Limited subset — API-level auth flows for programmatic/SPA clients
+
+Both modes share \`playwright.config.ts\` and spec files. \`AUTH_MODE\` env var selects routing behavior during test setup.
 
 ## Troubleshooting
 

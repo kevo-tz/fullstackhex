@@ -93,3 +93,7 @@ The sidecar validates the signature on every non-public request. Set `SIDECAR_SH
 Sessions are stored in Redis with configurable TTL. Session cookies are `HttpOnly`, `SameSite=Lax`, `Path=/`.
 
 Logout destroys the Redis session, blacklists the JWT's JTI for the remaining token lifetime, and clears the session cookie.
+
+## WebSocket Auth (Deferred)
+
+The `/live` WebSocket endpoint is intentionally public — the health dashboard is unauthenticated so operators can check service status without login. Real-world WS applications typically need token-based auth during the upgrade handshake (e.g., passing JWT as query param or in the first message). This pattern is deferred until driven by a concrete WS feature that requires authentication (e.g., per-user realtime notifications or chat). When added, WS auth will follow the existing Bearer token pattern.

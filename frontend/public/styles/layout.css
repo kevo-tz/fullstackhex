@@ -340,6 +340,7 @@ nav .logout-btn:focus-visible { outline: 2px solid var(--accent); outline-offset
   transition: border-color 0.15s, color 0.15s;
 }
 .refresh-btn:hover { border-color: #334155; color: #94a3b8; }
+.refresh-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
 /* Dashboard user info */
 .user-info {

@@ -206,7 +206,7 @@ pub async fn register(
     let csrf_token = super::csrf::generate_csrf_token();
     headers.insert(
         header::SET_COOKIE,
-        format!("csrf_token={csrf_token}; HttpOnly; Path=/; Max-Age={jwt_expiry}; SameSite=Lax")
+        format!("csrf_token={csrf_token}; Path=/; Max-Age={jwt_expiry}; SameSite=Lax")
             .parse()
             .expect("cookie header format is always valid"),
     );
@@ -374,7 +374,7 @@ pub async fn login(
     let csrf_token = super::csrf::generate_csrf_token();
     headers.insert(
         header::SET_COOKIE,
-        format!("csrf_token={csrf_token}; HttpOnly; Path=/; Max-Age={jwt_expiry}; SameSite=Lax")
+        format!("csrf_token={csrf_token}; Path=/; Max-Age={jwt_expiry}; SameSite=Lax")
             .parse()
             .expect("cookie header format is always valid"),
     );
@@ -526,7 +526,7 @@ pub async fn refresh(
     resp_headers.insert(
         header::SET_COOKIE,
         format!(
-            "csrf_token={csrf_token}; HttpOnly; Path=/; Max-Age={}; SameSite=Lax",
+            "csrf_token={csrf_token}; Path=/; Max-Age={}; SameSite=Lax",
             state.auth.config.jwt_expiry
         )
         .parse()

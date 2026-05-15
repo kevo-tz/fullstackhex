@@ -96,7 +96,7 @@ pub struct UserInfo {
 }
 
 /// Validate registration request fields.
-fn validate_registration(body: &RegisterRequest) -> Result<(), ApiError> {
+pub(crate) fn validate_registration(body: &RegisterRequest) -> Result<(), ApiError> {
     if body.email.is_empty() || !body.email.contains('@') {
         return Err(ApiError::ValidationError("Invalid email".to_string()));
     }

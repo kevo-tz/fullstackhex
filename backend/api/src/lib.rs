@@ -25,6 +25,9 @@ pub mod metrics;
 use live::{broadcast_event, LiveEvent};
 pub mod notes;
 
+/// Max length for health error details broadcast to WS clients.
+const MAX_DETAIL_LENGTH: usize = 500;
+
 /// Status of the database connection pool.
 pub enum DbStatus {
     NotConfigured,
@@ -328,64 +331,41 @@ async fn health(State(state): State<Arc<AppState>>) -> impl IntoResponse {
     // Sanitize error details before broadcasting to WS clients (prevents
     // leaking internal paths, connection strings, or stack traces)
     let sanitize = |s: &str| -> String {
-        let s = s.chars().take(500).collect::<String>();
+        let s = s.chars().take(MAX_DETAIL_LENGTH).collect::<String>();
         s
     };
 
-    // Broadcast health events to WS subscribers
-    broadcast_event(
-        &state,
-        &LiveEvent::HealthUpdate {
-            service: "rust".into(),
-            status: "ok".into(),
-            detail: None,
-        },
-    )
-    .await;
-    broadcast_event(
-        &state,
-        &LiveEvent::HealthUpdate {
+    // Broadcast health events to WS subscribers concurrently
+    futures_util::future::join_all([
+        broadcast_event(&state, &LiveEvent::HealthUpdate {
+            service: "rust".into(), status: "ok".into(), detail: None,
+        }),
+        broadcast_event(&state, &LiveEvent::HealthUpdate {
             service: "db".into(),
             status: db["status"].as_str().unwrap_or("unknown").into(),
             detail: db.get("error").and_then(|v| v.as_str()).map(&sanitize),
-        },
-    )
-    .await;
-    broadcast_event(
-        &state,
-        &LiveEvent::HealthUpdate {
+        }),
+        broadcast_event(&state, &LiveEvent::HealthUpdate {
             service: "redis".into(),
             status: redis["status"].as_str().unwrap_or("unknown").into(),
             detail: redis.get("error").and_then(|v| v.as_str()).map(&sanitize),
-        },
-    )
-    .await;
-    broadcast_event(
-        &state,
-        &LiveEvent::HealthUpdate {
+        }),
+        broadcast_event(&state, &LiveEvent::HealthUpdate {
             service: "storage".into(),
             status: storage["status"].as_str().unwrap_or("unknown").into(),
             detail: storage.get("error").and_then(|v| v.as_str()).map(&sanitize),
-        },
-    )
-    .await;
-    broadcast_event(
-        &state,
-        &LiveEvent::HealthUpdate {
+        }),
+        broadcast_event(&state, &LiveEvent::HealthUpdate {
             service: "python".into(),
             status: python["status"].as_str().unwrap_or("unknown").into(),
             detail: python.get("error").and_then(|v| v.as_str()).map(&sanitize),
-        },
-    )
-    .await;
-    broadcast_event(
-        &state,
-        &LiveEvent::HealthUpdate {
+        }),
+        broadcast_event(&state, &LiveEvent::HealthUpdate {
             service: "auth".into(),
             status: auth["status"].as_str().unwrap_or("unknown").into(),
             detail: None,
-        },
-    )
+        }),
+    ])
     .await;
 
     let flags = state.feature_flags.map(|f| {

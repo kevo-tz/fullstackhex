@@ -34,13 +34,21 @@ export const ALL: APIRoute = async ({ request, params }) => {
   try {
     const backendRes = await fetch(url, init);
 
+    const responseHeaders = new Headers();
+    responseHeaders.set(
+      "content-type",
+      backendRes.headers.get("content-type") || "application/json",
+    );
+    // Forward Set-Cookie headers so login form auth session works
+    const setCookieHeaders = backendRes.headers.getSetCookie();
+    for (const cookie of setCookieHeaders) {
+      responseHeaders.append("set-cookie", cookie);
+    }
+
     return new Response(backendRes.body, {
       status: backendRes.status,
       statusText: backendRes.statusText,
-      headers: {
-        "content-type":
-          backendRes.headers.get("content-type") || "application/json",
-      },
+      headers: responseHeaders,
     });
   } catch {
     return new Response(JSON.stringify({ error: "Backend unreachable" }), {

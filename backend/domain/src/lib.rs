@@ -53,6 +53,9 @@ pub struct CreateNoteInput {
 }
 
 #[cfg(test)]
+mod proptests;
+
+#[cfg(test)]
 mod tests {
     use super::*;
 
@@ -70,5 +73,36 @@ mod tests {
         let deserialized: Note = serde_json::from_str(&json).unwrap();
         assert_eq!(deserialized.id, "uuid-1");
         assert_eq!(deserialized.title, "Test Note");
+    }
+
+    #[test]
+    fn env_bool_truthy_values() {
+        unsafe { std::env::set_var("_TEST_FEATURE", "true") };
+        assert!(FeatureFlags::env_bool("_TEST_FEATURE"));
+        unsafe { std::env::set_var("_TEST_FEATURE", "TRUE") };
+        assert!(FeatureFlags::env_bool("_TEST_FEATURE"));
+        unsafe { std::env::set_var("_TEST_FEATURE", "True") };
+        assert!(FeatureFlags::env_bool("_TEST_FEATURE"));
+        unsafe { std::env::set_var("_TEST_FEATURE", "1") };
+        assert!(FeatureFlags::env_bool("_TEST_FEATURE"));
+        unsafe { std::env::remove_var("_TEST_FEATURE") };
+    }
+
+    #[test]
+    fn env_bool_falsy_values() {
+        unsafe { std::env::set_var("_TEST_FEATURE", "false") };
+        assert!(!FeatureFlags::env_bool("_TEST_FEATURE"));
+        unsafe { std::env::set_var("_TEST_FEATURE", "FALSE") };
+        assert!(!FeatureFlags::env_bool("_TEST_FEATURE"));
+        unsafe { std::env::set_var("_TEST_FEATURE", "0") };
+        assert!(!FeatureFlags::env_bool("_TEST_FEATURE"));
+        unsafe { std::env::set_var("_TEST_FEATURE", "") };
+        assert!(!FeatureFlags::env_bool("_TEST_FEATURE"));
+        unsafe { std::env::set_var("_TEST_FEATURE", "yes") };
+        assert!(!FeatureFlags::env_bool("_TEST_FEATURE"));
+        unsafe { std::env::set_var("_TEST_FEATURE", "random") };
+        assert!(!FeatureFlags::env_bool("_TEST_FEATURE"));
+        unsafe { std::env::remove_var("_TEST_FEATURE") };
+        assert!(!FeatureFlags::env_bool("_TEST_FEATURE"));
     }
 }

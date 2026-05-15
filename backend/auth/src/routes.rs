@@ -114,6 +114,11 @@ pub(crate) fn validate_registration(body: &RegisterRequest) -> Result<(), ApiErr
 }
 
 /// POST /auth/register — create user with email/password, return JWT.
+///
+/// # Errors
+///
+/// Returns `ValidationError` if email is invalid, password is weak, or user already exists.
+/// Returns `InternalError` on database or token generation failure.
 pub async fn register(
     State(state): State<AuthState>,
     headers: HeaderMap,
@@ -223,6 +228,11 @@ pub async fn register(
 }
 
 /// POST /auth/login — authenticate with email/password, return JWT.
+///
+/// # Errors
+///
+/// Returns `Unauthorized` for invalid credentials or rate-limited requests.
+/// Returns `InternalError` on database or token generation failure.
 pub async fn login(
     State(state): State<AuthState>,
     headers: HeaderMap,
@@ -373,6 +383,10 @@ pub async fn login(
 }
 
 /// POST /auth/logout — destroy session, blacklist token, delete refresh token.
+///
+/// # Errors
+///
+/// Returns `InternalError` if Redis operations fail.
 pub async fn logout(
     State(state): State<AuthState>,
     auth_user: AuthUser,
@@ -416,6 +430,11 @@ pub struct RefreshRequest {
 }
 
 /// POST /auth/refresh — refresh access token using refresh token.
+///
+/// # Errors
+///
+/// Returns `Unauthorized` if refresh token is invalid, expired, or not found.
+/// Returns `InternalError` on database or token generation failure.
 pub async fn refresh(
     State(state): State<AuthState>,
     headers: HeaderMap,
@@ -549,6 +568,10 @@ pub async fn providers(State(state): State<AuthState>) -> impl IntoResponse {
 }
 
 /// GET /auth/me — return current user info.
+///
+/// # Errors
+///
+/// Returns `Unauthorized` if auth token is missing, invalid, or expired.
 pub async fn me(auth_user: AuthUser) -> impl IntoResponse {
     Json(serde_json::json!({
         "user_id": auth_user.user_id,

@@ -173,20 +173,7 @@ pub async fn ws_handler(
         }
     }
 
-    // Per-user quota check — read-only, increment after all other guards pass
-    let user_id = maybe_user_id.clone();
-    if let Some(ref uid) = maybe_user_id {
-        let conns = state.ws_user_connections.lock().await;
-        if *conns.get(uid).unwrap_or(&0) >= state.ws_per_user_max {
-            tracing::warn!(user_id = %uid, "WS connection rejected — per-user limit reached");
-            return (
-                StatusCode::TOO_MANY_REQUESTS,
-                "{\"error\":\"Too many connections from this user\"}",
-            )
-                .into_response();
-        }
-    }
-
+    // Check Redis availability before touching per-user state
     let redis = match &state.redis {
         Some(r) => r.clone(),
         None => {
@@ -212,10 +199,21 @@ pub async fn ws_handler(
         }
     };
 
-    // All guards passed — now increment per-user count (paired with WsUserGuard decrement)
-    if let Some(ref uid) = user_id {
+    // Per-user quota: check AND increment in one critical section to prevent
+    // TOCTOU race where concurrent connections from the same user both pass
+    let user_id = maybe_user_id.clone();
+    if let Some(ref uid) = maybe_user_id {
         let mut conns = state.ws_user_connections.lock().await;
-        *conns.entry(uid.clone()).or_insert(0) += 1;
+        let current = *conns.get(uid).unwrap_or(&0);
+        if current >= state.ws_per_user_max {
+            tracing::warn!(user_id = %uid, "WS connection rejected — per-user limit reached");
+            return (
+                StatusCode::TOO_MANY_REQUESTS,
+                "{\"error\":\"Too many connections from this user\"}",
+            )
+                .into_response();
+        }
+        conns.insert(uid.clone(), current + 1);
     }
 
     let idle_timeout = state.ws_idle_timeout;
@@ -270,7 +268,13 @@ async fn cookie_authenticated(
         None => return None,
     };
 
-    let token: Option<String> = redis.cache_get("session", &session_id).await.unwrap_or(None);
+    let token: Option<String> = match redis.cache_get("session", &session_id).await {
+        Ok(t) => t,
+        Err(e) => {
+            tracing::warn!(error = %e, "Redis session lookup failed in cookie_authenticated");
+            None
+        }
+    };
     match token {
         Some(t) => match auth_service.jwt.validate_token(&t) {
             Ok(claims) => {

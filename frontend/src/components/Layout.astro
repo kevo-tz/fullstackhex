@@ -16,10 +16,11 @@ const { title } = Astro.props;
     <link rel="stylesheet" href="/styles/layout.css" />
   </head>
   <body>
+    <a href="#main-content" class="skip-link">Skip to content</a>
     <nav>
       <a href="/" class="brand">FullStackHex</a>
       <div class="nav-links">
-        <a href="/">Dashboard</a>
+        <a href="/">Health</a>
         <div id="auth-nav"></div>
         <button class="theme-btn" id="theme-toggle" aria-label="Toggle theme">
           <svg class="sun-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
@@ -40,7 +41,7 @@ const { title } = Astro.props;
       </button>
     </nav>
     <div id="nav-menu" role="navigation" aria-label="Main menu" aria-hidden="true">
-      <a href="/">Dashboard</a>
+      <a href="/">Health</a>
       <div id="auth-nav-mobile"></div>
       <button class="theme-btn" id="theme-toggle-mobile" aria-label="Toggle theme">
         <svg class="sun-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
@@ -51,7 +52,7 @@ const { title } = Astro.props;
         </svg>
       </button>
     </div>
-    <div class="container">
+    <div class="container" id="main-content">
       <slot />
     </div>
     <footer>port 8001 &middot; <a href="https://github.com/kevo-tz/fullstackhex" style="color:inherit">github.com/kevo-tz/fullstackhex</a></footer>

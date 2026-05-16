@@ -82,7 +82,7 @@ services:
         max-file: "3"
 
   rustfs:
-    image: rustfs/rustfs:v1.0.0
+    image: rustfs/rustfs:1.0.0-beta.3
     container_name: fullstackhex_rustfs
     restart: unless-stopped
     ports:

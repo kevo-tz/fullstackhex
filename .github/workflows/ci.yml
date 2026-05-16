@@ -271,12 +271,16 @@ jobs:
         working-directory: frontend
         run: bun install --frozen-lockfile
 
-      - name: Start frontend
+      - name: Build frontend
         working-directory: frontend
         env:
           VITE_RUST_BACKEND_URL: http://localhost:8001
+        run: bun run build
+
+      - name: Start frontend
+        working-directory: frontend
         run: |
-          bun run dev &
+          bun run preview &
           for i in $(seq 1 30); do
             curl -s http://localhost:4321 && break
             sleep 1

@@ -46,6 +46,13 @@ fn parse_env_or<T: std::str::FromStr>(key: &str, default: T) -> T {
     }
 }
 
+/// Small helper wrapping sqlx errors into ApiError with logging + metrics.
+fn db_err(e: sqlx::Error, context: &'static str) -> domain::error::ApiError {
+    tracing::warn!(error = %e, "{context}");
+    ::metrics::counter!("notes_query_errors_total").increment(1);
+    domain::error::ApiError::InternalError(context.into())
+}
+
 /// Status of the database connection pool.
 pub enum DbStatus {
     NotConfigured,
@@ -67,6 +74,19 @@ pub struct AppState {
     pub ws_shutdown: Arc<Notify>,
     pub ws_user_connections: Arc<Mutex<HashMap<String, usize>>>,
     pub ws_per_user_max: usize,
+}
+
+impl AppState {
+    /// Returns a reference to the PgPool, or an `ApiError::ServiceUnavailable`
+    /// if the database is not configured or not connected.
+    fn db_pool(&self) -> Result<&sqlx::PgPool, domain::error::ApiError> {
+        match &self.db {
+            DbStatus::Connected(pool) => Ok(pool),
+            _ => Err(domain::error::ApiError::ServiceUnavailable(
+                "database not configured".into(),
+            )),
+        }
+    }
 }
 
 pub async fn router(
@@ -257,6 +277,7 @@ fn build_router(state: Arc<AppState>) -> Router {
             .route("/", axum::routing::post(notes::create_note))
             .route("/{id}", axum::routing::get(notes::get_note))
             .route("/{id}", axum::routing::delete(notes::delete_note))
+            .layer(DefaultBodyLimit::max(128 * 1024))
             .with_state(state.clone());
         router = router.nest("/notes", notes_router);
     }

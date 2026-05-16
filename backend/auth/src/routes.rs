@@ -654,38 +654,26 @@ pub async fn oauth_callback(
         .await
         .map_err(|_e| ApiError::Unauthorized("OAuth authentication failed".to_string()))?;
 
-    // Find or create user
-    let user_id = match sqlx::query_as::<_, (String,)>(
-        "SELECT id::text FROM users WHERE email = $1",
+    // Find or create user (UPSERT to handle concurrent OAuth callbacks)
+    let id = uuid::Uuid::new_v4().to_string();
+    let user_id = sqlx::query_scalar::<_, String>(
+        "INSERT INTO users (id, email, name, provider, password_hash)
+         VALUES ($1, $2, $3, $4, NULL)
+         ON CONFLICT (email) DO UPDATE SET
+           name = EXCLUDED.name,
+           provider = EXCLUDED.provider
+         RETURNING id::text",
     )
+    .bind(&id)
     .bind(&user_info.email)
-    .fetch_optional(&state.db)
+    .bind(&user_info.name)
+    .bind(provider.to_string())
+    .fetch_one(&state.db)
     .await
-    {
-        Ok(Some((id,))) => id,
-        Ok(None) => {
-            // Create new OAuth user
-            let id = uuid::Uuid::new_v4().to_string();
-            sqlx::query(
-                "INSERT INTO users (id, email, name, provider, password_hash) VALUES ($1, $2, $3, $4, NULL)",
-            )
-            .bind(&id)
-            .bind(&user_info.email)
-            .bind(&user_info.name)
-            .bind(provider.to_string())
-            .execute(&state.db)
-            .await
-            .map_err(|e| {
-            tracing::error!(error = %e, "database query failed");
-            ApiError::InternalError("Internal server error".to_string())
-        })?;
-            id
-        }
-        Err(e) => {
-            tracing::error!(error = %e, "database query failed during OAuth callback");
-            return Err(ApiError::InternalError("Internal server error".to_string()));
-        }
-    };
+    .map_err(|e| {
+        tracing::error!(error = %e, "database query failed during OAuth callback");
+        ApiError::InternalError("Internal server error".to_string())
+    })?;
 
     // Create JWT
     let access_token = state.auth.jwt.create_token(

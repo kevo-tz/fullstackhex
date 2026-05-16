@@ -59,7 +59,7 @@ const { title } = Astro.props;
     <script>
       async function fetchUser(): Promise<Record<string, string> | null> {
         try {
-          const res = await fetch("/api/auth/me");
+          const res = await origFetch("/api/auth/me");
           if (!res.ok) return null;
           const data = await res.json();
           // Fallback response when auth disabled: { status: "disabled" }

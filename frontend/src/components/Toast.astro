@@ -19,7 +19,7 @@ const { duration = 5000 } = Astro.props;
       const closeBtn = document.createElement("button");
       closeBtn.className = "toast-close";
       closeBtn.setAttribute("aria-label", "Close");
-      closeBtn.innerHTML = "&times;";
+      closeBtn.textContent = "\u00D7";
       closeBtn.addEventListener("click", () => toast.remove());
       toast.appendChild(msgSpan);
       toast.appendChild(closeBtn);

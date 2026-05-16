@@ -202,8 +202,8 @@ async fn refresh_token_lifecycle() {
 
     assert_eq!(
         response.status(),
-        StatusCode::OK,
-        "logout should return 200"
+        StatusCode::NO_CONTENT,
+        "logout should return 204"
     );
 
     // 5. Use the OLD refresh token after logout → should fail

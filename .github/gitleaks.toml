@@ -41,4 +41,5 @@ regexes = [
   '''CHANGE_ME''',
   '''dummy_''',
   '''\$\{[A-Z_]+\}''',
+  '''dGhlIHNhbXBsZSBub25jZQ==''',  # RFC 6455 WebSocket test nonce ("the sample nonce")
 ]

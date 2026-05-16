@@ -255,7 +255,7 @@ jobs:
           status=$(curl -s -o /dev/null -w '%{http_code}' \
             -H "Upgrade: websocket" \
             -H "Connection: Upgrade" \
-            -H "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==" \  # gitleaks:allow
+            -H "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==" \
             -H "Sec-WebSocket-Version: 13" \
             "http://localhost:8001/live?token=${token}")
           if [ "$status" = "101" ]; then

@@ -157,15 +157,10 @@ pub async fn ws_handler(
                 .next()
                 .unwrap_or("");
             let origin_host = origin_host.split(':').next().unwrap_or("");
-            let matches = origin_host == allowed_host
-                || origin_host.strip_prefix(".").map_or(false, |s| {
-                    format!(".{s}").as_str() == allowed_host
-                        || allowed_host == s
-                });
-            if !matches {
+            if origin_host != allowed_host {
                 tracing::warn!(%origin, "WS connection rejected — Origin not allowed");
                 return (
-                    StatusCode::UPGRADE_REQUIRED,
+                    StatusCode::FORBIDDEN,
                     "{\"error\":\"Origin not allowed\"}",
                 )
                     .into_response();

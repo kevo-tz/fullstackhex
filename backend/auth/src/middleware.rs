@@ -114,7 +114,6 @@ pub async fn auth_middleware(
                 _ => return next.run(req).await,
             };
             match Box::pin(resolve_cookie_user(
-                auth_service.jwt.clone(),
                 rd.clone(),
                 sess,
             ))
@@ -238,24 +237,22 @@ fn cookie_auth_prepare(req: &axum::http::Request<axum::body::Body>) -> Option<St
 
 /// Async: Resolve a cookie session via Redis lookup + JWT validation.
 async fn resolve_cookie_user(
-    jwt: super::jwt::JwtService,
     redis: Arc<cache::RedisClient>,
     session_id: String,
 ) -> Option<AuthUser> {
-    let session_data: Option<String> = redis
+    let session: Option<cache::session::Session> = redis
         .cache_get("session", &session_id)
         .await
         .unwrap_or(None);
 
-    let token = session_data?;
-    let claims = jwt.validate_token(&token).ok()?;
+    let session = session?;
 
     Some(AuthUser {
-        user_id: claims.sub,
-        email: claims.email,
-        name: claims.name,
-        provider: claims.provider,
-        jti: claims.jti,
+        user_id: session.user_id,
+        email: session.email,
+        name: session.name,
+        provider: session.provider,
+        jti: String::new(),
         session_id: Some(session_id),
     })
 }

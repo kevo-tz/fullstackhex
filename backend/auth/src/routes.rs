@@ -219,6 +219,23 @@ pub async fn register(
         },
     };
 
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_err(|_| ApiError::InternalError("Time went backwards".to_string()))?
+        .as_secs();
+    let session = cache::session::Session {
+        user_id: response.user.id.clone(),
+        email: response.user.email.clone(),
+        name: response.user.name.clone(),
+        provider: response.user.provider.clone(),
+        created_at: now,
+    };
+    let session_id = state
+        .redis
+        .session_create(&session, std::time::Duration::from_secs(jwt_expiry))
+        .await?;
+    super::cookies::set_cookie(&mut headers, "session", &session_id, jwt_expiry, true)?;
+
     Ok((StatusCode::CREATED, headers, Json(response)))
 }
 
@@ -364,6 +381,23 @@ pub async fn login(
     )?;
     let csrf_token = super::csrf::generate_csrf_token();
     super::cookies::set_cookie(&mut headers, "csrf_token", &csrf_token, jwt_expiry, false)?;
+
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_err(|_| ApiError::InternalError("Time went backwards".to_string()))?
+        .as_secs();
+    let session = cache::session::Session {
+        user_id: response.user.id.clone(),
+        email: response.user.email.clone(),
+        name: response.user.name.clone(),
+        provider: response.user.provider.clone(),
+        created_at: now,
+    };
+    let session_id = state
+        .redis
+        .session_create(&session, std::time::Duration::from_secs(jwt_expiry))
+        .await?;
+    super::cookies::set_cookie(&mut headers, "session", &session_id, jwt_expiry, true)?;
 
     Ok((headers, Json(response)))
 }

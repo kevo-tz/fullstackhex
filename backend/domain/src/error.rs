@@ -84,9 +84,11 @@ impl IntoResponse for ApiError {
             ApiError::Unauthorized(msg) => (StatusCode::UNAUTHORIZED, "UNAUTHORIZED", msg.clone()),
             ApiError::Forbidden(msg) => (StatusCode::FORBIDDEN, "FORBIDDEN", msg.clone()),
             ApiError::NotFound(msg) => (StatusCode::NOT_FOUND, "NOT_FOUND", msg.clone()),
-            ApiError::ValidationError(msg) => {
-                (StatusCode::UNPROCESSABLE_ENTITY, "VALIDATION_ERROR", msg.clone())
-            }
+            ApiError::ValidationError(msg) => (
+                StatusCode::UNPROCESSABLE_ENTITY,
+                "VALIDATION_ERROR",
+                msg.clone(),
+            ),
             ApiError::RateLimited(msg) => {
                 (StatusCode::TOO_MANY_REQUESTS, "RATE_LIMITED", msg.clone())
             }

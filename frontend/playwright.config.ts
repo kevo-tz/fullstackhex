@@ -8,8 +8,6 @@ export default defineConfig({
   use: {
     baseURL: process.env.FRONTEND_URL || "http://localhost:4321",
     headless: true,
-    screenshot: "on",
-    trace: "retain-on-failure",
   },
   projects: [
     {

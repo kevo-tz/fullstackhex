@@ -11,17 +11,16 @@ test.describe("Notes CRUD", () => {
   });
 
   async function authenticate(page: import("@playwright/test").Page) {
-    if (page.url().includes("/login")) {
-      await page.fill('input[name="email"]', testUser.email);
-      await page.fill('input[name="password"]', testUser.password);
-      await page.click('button[type="submit"]');
-      await page.waitForURL("/notes", { timeout: 10000 });
-    }
+    await page.goto("/login");
+    await page.fill('input[name="email"]', testUser.email);
+    await page.fill('input[name="password"]', testUser.password);
+    await page.click('button[type="submit"]');
+    await page.waitForURL("/profile", { timeout: 15000 });
   }
 
   test("create note via form and see it in list", async ({ page }) => {
-    await page.goto("/notes");
     await authenticate(page);
+    await page.goto("/notes");
 
     await page.waitForSelector("#notes-loading", { state: "hidden", timeout: 10000 }).catch(() => {});
     await page.waitForTimeout(500);
@@ -38,8 +37,8 @@ test.describe("Notes CRUD", () => {
   });
 
   test("view note detail and delete", async ({ page }) => {
-    await page.goto("/notes");
     await authenticate(page);
+    await page.goto("/notes");
 
     await page.waitForSelector("#notes-loading", { state: "hidden", timeout: 10000 }).catch(() => {});
 

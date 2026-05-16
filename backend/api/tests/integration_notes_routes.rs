@@ -175,7 +175,7 @@ async fn notes_create_list_get_delete() {
         .clone()
         .oneshot(
             Request::builder()
-                .uri(&format!("/notes/{note_id}"))
+                .uri(format!("/notes/{note_id}"))
                 .method("GET")
                 .header("authorization", format!("Bearer {token}"))
                 .body(axum::body::Body::empty())
@@ -195,7 +195,7 @@ async fn notes_create_list_get_delete() {
         .clone()
         .oneshot(
             Request::builder()
-                .uri(&format!("/notes/{note_id}"))
+                .uri(format!("/notes/{note_id}"))
                 .method("DELETE")
                 .header("authorization", format!("Bearer {token}"))
                 .body(axum::body::Body::empty())
@@ -211,7 +211,7 @@ async fn notes_create_list_get_delete() {
         .clone()
         .oneshot(
             Request::builder()
-                .uri(&format!("/notes/{note_id}"))
+                .uri(format!("/notes/{note_id}"))
                 .method("GET")
                 .header("authorization", format!("Bearer {token}"))
                 .body(axum::body::Body::empty())
@@ -277,7 +277,7 @@ async fn notes_get_nonexistent_returns_404() {
         .clone()
         .oneshot(
             Request::builder()
-                .uri(&format!("/notes/{fake_id}"))
+                .uri(format!("/notes/{fake_id}"))
                 .method("GET")
                 .header("authorization", format!("Bearer {token}"))
                 .body(axum::body::Body::empty())

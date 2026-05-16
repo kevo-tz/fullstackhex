@@ -328,6 +328,7 @@ mod tests {
             oauth_redirect_url: None,
             sidecar_shared_secret: None,
             fail_open_on_redis_error: true,
+            rate_limits: Default::default(),
         };
         AuthService::new(config)
     }

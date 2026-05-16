@@ -124,13 +124,13 @@ pub async fn register(
     headers: HeaderMap,
     Json(body): Json<RegisterRequest>,
 ) -> Result<impl IntoResponse, ApiError> {
-    // Rate limit by IP (5 registrations per 15 minutes)
+    // Rate limit by IP (configurable, default: 5 per 15 minutes)
     let ip = client_ip(&headers);
     check_rate_limit(
         &state.redis,
         &format!("register:{ip}"),
-        Duration::from_secs(900),
-        5,
+        Duration::from_secs(state.auth.config.rate_limits.register_window_secs),
+        state.auth.config.rate_limits.register_max,
     )
     .await?;
 
@@ -243,21 +243,21 @@ pub async fn login(
         }
     }
 
-    // Rate limit by email (5 attempts per 5 minutes)
+    // Rate limit by email (configurable, default: 5 per 5 minutes)
     check_rate_limit(
         &state.redis,
         &format!("login:email:{}", body.email),
-        Duration::from_secs(300),
-        5,
+        Duration::from_secs(state.auth.config.rate_limits.login_email_window_secs),
+        state.auth.config.rate_limits.login_email_max,
     )
     .await?;
 
-    // Rate limit by IP (10 attempts per 5 minutes)
+    // Rate limit by IP (configurable, default: 10 per 5 minutes)
     check_rate_limit(
         &state.redis,
         &format!("login:ip:{ip}"),
-        Duration::from_secs(300),
-        10,
+        Duration::from_secs(state.auth.config.rate_limits.login_ip_window_secs),
+        state.auth.config.rate_limits.login_ip_max,
     )
     .await?;
 
@@ -809,6 +809,7 @@ mod route_tests {
             oauth_redirect_url: None,
             sidecar_shared_secret: None,
             fail_open_on_redis_error: true,
+            rate_limits: Default::default(),
         };
         let list = list_providers(&config);
         assert!(list.is_empty());
@@ -829,6 +830,7 @@ mod route_tests {
             oauth_redirect_url: None,
             sidecar_shared_secret: None,
             fail_open_on_redis_error: true,
+            rate_limits: Default::default(),
         };
         let list = list_providers(&config);
         assert_eq!(list, vec!["google"]);
@@ -849,6 +851,7 @@ mod route_tests {
             oauth_redirect_url: None,
             sidecar_shared_secret: None,
             fail_open_on_redis_error: true,
+            rate_limits: Default::default(),
         };
         let list = list_providers(&config);
         assert_eq!(list, vec!["github"]);
@@ -869,6 +872,7 @@ mod route_tests {
             oauth_redirect_url: None,
             sidecar_shared_secret: None,
             fail_open_on_redis_error: true,
+            rate_limits: Default::default(),
         };
         let list = list_providers(&config);
         assert_eq!(list, vec!["google", "github"]);

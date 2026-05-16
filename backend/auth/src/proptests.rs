@@ -160,8 +160,8 @@ proptest! {
             .body(axum::body::Body::empty())
             .unwrap();
         let config = crate::AuthConfig {
-            jwt_secret: "test-secret-key-for-testing".to_string(),
-            jwt_issuer: "test-issuer".to_string(),
+            jwt_secret: "test-secret".into(),
+            jwt_issuer: "test".into(),
             jwt_expiry: 900,
             refresh_expiry: 604800,
             auth_mode: crate::AuthMode::Bearer,
@@ -172,6 +172,7 @@ proptest! {
             oauth_redirect_url: None,
             sidecar_shared_secret: None,
             fail_open_on_redis_error: true,
+            rate_limits: Default::default(),
         };
         let svc = crate::AuthService::new(config);
         let _ = crate::middleware::extract_bearer(&req, &svc);

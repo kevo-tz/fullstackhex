@@ -304,8 +304,8 @@ struct WsGuard;
 
 impl Drop for WsGuard {
     fn drop(&mut self) {
-        let _prev = ACTIVE_WS_CONNECTIONS.fetch_sub(1, Ordering::SeqCst);
-        let remaining = _prev.saturating_sub(1);
+        let prev = ACTIVE_WS_CONNECTIONS.fetch_sub(1, Ordering::SeqCst);
+        let remaining = prev.saturating_sub(1);
         ::metrics::gauge!("ws_active_connections").set(remaining as f64);
     }
 }

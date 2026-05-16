@@ -16,6 +16,6 @@ pub fn set_cookie(
     let header_value: HeaderValue = cookie.parse().map_err(|e| {
         ApiError::InternalError(format!("failed to construct Set-Cookie header: {e}"))
     })?;
-    headers.insert(header::SET_COOKIE, header_value);
+    headers.append(header::SET_COOKIE, header_value);
     Ok(())
 }

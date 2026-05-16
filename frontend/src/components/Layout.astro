@@ -156,7 +156,7 @@ const { title } = Astro.props;
 
       window.fetch = (async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
         const res = await origFetch(input, init);
-        if (res.status === 401 && !(init?.method === "POST" && typeof init?.body === "string" && (init.headers as Record<string, string>)?.["Content-Type"]?.includes("multipart/form-data"))) {
+        if (res.status === 401 && !(init?.body instanceof FormData)) {
           if (!refreshPromise) {
             refreshPromise = performRefresh().finally(() => { refreshPromise = null; });
           }

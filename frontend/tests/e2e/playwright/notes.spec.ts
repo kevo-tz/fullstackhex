@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { registerTestUser } from "./auth-helpers";
+import { getSharedTestUser, registerTestUser } from "./auth-helpers";
 
 test.describe("Notes CRUD", () => {
   const title = `Test Note ${Date.now()}`;
@@ -7,7 +7,7 @@ test.describe("Notes CRUD", () => {
   let testUser: Awaited<ReturnType<typeof registerTestUser>>;
 
   test.beforeAll(async () => {
-    testUser = await registerTestUser();
+    testUser = getSharedTestUser() ?? await registerTestUser();
   });
 
   async function authenticate(page: import("@playwright/test").Page) {

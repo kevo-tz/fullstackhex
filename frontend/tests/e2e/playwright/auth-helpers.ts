@@ -1,4 +1,5 @@
 import { request } from "@playwright/test";
+import { readFileSync } from "fs";
 
 export interface TestUser {
   email: string;
@@ -6,6 +7,19 @@ export interface TestUser {
   name: string;
   accessToken: string;
   userId: string;
+}
+
+/**
+ * Read the shared test user registered by global-setup.ts.
+ * Returns null when running test files individually (no global setup).
+ */
+export function getSharedTestUser(): TestUser | null {
+  try {
+    const data = readFileSync("e2e-test-user.json", "utf-8");
+    return JSON.parse(data) as TestUser;
+  } catch {
+    return null;
+  }
 }
 
 /**

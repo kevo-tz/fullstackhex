@@ -230,6 +230,8 @@ jobs:
           AUTH_MODE: both
           RUSTFS_ENDPOINT: ""
           PYTHON_SIDECAR_SOCKET: ""
+          RATE_LIMIT_REGISTER_MAX: 20
+          RATE_LIMIT_LOGIN_IP_MAX: 50
         working-directory: backend
         run: |
           cargo run --locked -p api &
@@ -274,8 +276,7 @@ jobs:
         env:
           VITE_RUST_BACKEND_URL: http://localhost:8001
         run: |
-          bun run build
-          bun run preview &
+          bun run dev &
           for i in $(seq 1 30); do
             curl -s http://localhost:4321 && break
             sleep 1
@@ -293,7 +294,7 @@ jobs:
       - name: Install Playwright browsers
         working-directory: frontend
         run: |
-          npx playwright install --with-deps chromium firefox webkit
+          npx playwright install --with-deps chromium
 
       - name: Run e2e tests (Playwright)
         working-directory: frontend

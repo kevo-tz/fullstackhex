@@ -1,11 +1,11 @@
 import { test, expect } from "@playwright/test";
-import { registerTestUser } from "./auth-helpers";
+import { getSharedTestUser, registerTestUser } from "./auth-helpers";
 
 test.describe("Auth Login", () => {
   let testUser: Awaited<ReturnType<typeof registerTestUser>>;
 
   test.beforeAll(async () => {
-    testUser = await registerTestUser();
+    testUser = getSharedTestUser() ?? await registerTestUser();
   });
 
   test("login form submits, redirects, and shows user info", async ({ page }) => {

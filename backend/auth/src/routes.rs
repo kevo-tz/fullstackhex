@@ -376,7 +376,17 @@ pub async fn login(
 pub async fn logout(
     State(state): State<AuthState>,
     auth_user: AuthUser,
+    body: Option<Json<RefreshRequest>>,
 ) -> Result<impl IntoResponse, ApiError> {
+    // Delete the refresh token from Redis so it cannot be reused
+    if let Some(refresh_token) = body
+        .as_ref()
+        .map(|b| b.refresh_token.clone())
+        .filter(|t| !t.is_empty())
+    {
+        state.redis.cache_delete("refresh", &refresh_token).await?;
+    }
+
     // Blacklist the access token JTI so it cannot be reused
     let blacklist_ttl = std::time::Duration::from_secs(state.auth.config.jwt_expiry);
     state

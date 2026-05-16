@@ -154,6 +154,12 @@ impl RedisClient {
 
         let (_ttl, label) = backoff_params(count);
 
+        // Counts below 5 are tracking-only — never block, just let failures
+        // accumulate until the threshold is reached.
+        if count < 5 {
+            return Ok(());
+        }
+
         let remaining_ttl: i64 = self
             .client
             .ttl(&key)

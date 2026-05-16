@@ -74,6 +74,7 @@ impl From<db::DbError> for ApiError {
     }
 }
 
+#[cfg(feature = "api")]
 impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
         let (status, code, message) = match &self {

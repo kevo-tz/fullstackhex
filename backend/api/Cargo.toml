@@ -24,7 +24,7 @@ py-sidecar = { path = "../py-sidecar" }
 cache = { path = "../cache" }
 auth = { path = "../auth" }
 storage = { path = "../storage" }
-domain = { path = "../domain" }
+domain = { path = "../domain", features = ["api"] }
 reqwest = { version = "0.13", features = ["stream"] }
 futures-util = "0.3"
 uuid = { workspace = true }

@@ -340,8 +340,7 @@ async fn health(State(state): State<Arc<AppState>>) -> impl IntoResponse {
     // Truncate error details before broadcasting to WS clients (prevents
     // unbounded message growth)
     let truncate = |s: &str| -> String {
-        let s = s.chars().take(MAX_DETAIL_LENGTH).collect::<String>();
-        s
+        s.chars().take(MAX_DETAIL_LENGTH).collect::<String>()
     };
 
     // Fire-and-forget health broadcasts to WS subscribers (must not delay HTTP response)

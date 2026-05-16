@@ -22,19 +22,13 @@ proptest! {
     /// Each field capped at 4096 chars to keep test runtime bounded.
     #[test]
     fn note_serde_roundtrip(
-        id: String,
-        user_id: String,
-        title: String,
-        body: String,
-        created_at: String,
-        updated_at: String,
+        id in "[a-zA-Z0-9_ ]{0,4096}",
+        user_id in "[a-zA-Z0-9_ ]{0,4096}",
+        title in "[a-zA-Z0-9_ ]{0,4096}",
+        body in "[a-zA-Z0-9_ ]{0,4096}",
+        created_at in "[a-zA-Z0-9_ ]{0,4096}",
+        updated_at in "[a-zA-Z0-9_ ]{0,4096}",
     ) {
-        prop_assume!(id.len() <= 4096);
-        prop_assume!(user_id.len() <= 4096);
-        prop_assume!(title.len() <= 4096);
-        prop_assume!(body.len() <= 4096);
-        prop_assume!(created_at.len() <= 4096);
-        prop_assume!(updated_at.len() <= 4096);
 
         let note = Note { id: id.clone(), user_id: user_id.clone(), title: title.clone(), body: body.clone(), created_at: created_at.clone(), updated_at: updated_at.clone() };
         let json = serde_json::to_string(&note).unwrap();

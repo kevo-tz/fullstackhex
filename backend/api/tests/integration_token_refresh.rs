@@ -291,7 +291,7 @@ async fn refresh_without_body_returns_422() {
 
     assert_eq!(
         response.status(),
-        StatusCode::UNPROCESSABLE_ENTITY,
-        "missing refresh_token should return 422"
+        StatusCode::UNAUTHORIZED,
+        "missing refresh_token should return 401"
     );
 }

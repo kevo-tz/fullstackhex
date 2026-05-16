@@ -37,37 +37,18 @@ test.describe("Notes CRUD", () => {
   });
 
   test("view note detail and delete", async ({ page }) => {
-    page.on("response", (res) => {
-      console.log("API:", res.status(), res.url());
-    });
-    page.on("pageerror", (err) => {
-      console.log("PAGE ERROR:", err.message);
-    });
-
     await authenticate(page);
     await page.goto("/notes");
 
     await page.waitForSelector("#notes-loading", { state: "hidden", timeout: 10000 }).catch(() => {});
 
-    const firstNote = page.locator('a[href^="/notes/"]').first();
+    // + New Note button also matches a[href^="/notes/"] — exclude it
+    const firstNote = page.locator('#notes-table a[href^="/notes/"]').first();
     await expect(firstNote).toBeVisible({ timeout: 10000 });
 
     const href = await firstNote.getAttribute("href");
-    console.log("Navigating to:", href);
     await firstNote.click();
     await page.waitForURL(href!);
-    console.log("After nav URL:", page.url());
-
-    // Wait for content or error
-    try {
-      await page.waitForSelector("#detail-content:not(.hidden)", { timeout: 10000 });
-    } catch {
-      const errVisible = await page.locator("#detail-error:not(.hidden)").count();
-      console.log("detail-error visible:", errVisible);
-      const errMsg = await page.locator("#detail-error-msg").textContent();
-      console.log("detail-error msg:", errMsg);
-      throw new Error("Note detail did not load");
-    }
 
     await page.click("#delete-btn");
     await page.click("#confirm-delete");

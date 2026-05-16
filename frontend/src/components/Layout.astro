@@ -146,7 +146,6 @@ const { title } = Astro.props;
           }
           document.cookie = "access_token=; path=/; max-age=0";
           document.cookie = "refresh_token=; path=/; max-age=0";
-          window.location.href = "/login";
           return false;
         } catch (err) {
           console.warn("Token refresh failed:", err instanceof Error ? err.message : String(err));

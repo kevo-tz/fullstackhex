@@ -85,7 +85,7 @@ impl IntoResponse for ApiError {
             ApiError::Forbidden(msg) => (StatusCode::FORBIDDEN, "FORBIDDEN", msg.clone()),
             ApiError::NotFound(msg) => (StatusCode::NOT_FOUND, "NOT_FOUND", msg.clone()),
             ApiError::ValidationError(msg) => {
-                (StatusCode::BAD_REQUEST, "VALIDATION_ERROR", msg.clone())
+                (StatusCode::UNPROCESSABLE_ENTITY, "VALIDATION_ERROR", msg.clone())
             }
             ApiError::RateLimited(msg) => {
                 (StatusCode::TOO_MANY_REQUESTS, "RATE_LIMITED", msg.clone())
@@ -129,10 +129,10 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn validation_error_returns_400() {
+    async fn validation_error_returns_422() {
         let err = ApiError::ValidationError("bad input".to_string());
         let resp = err.into_response();
-        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+        assert_eq!(resp.status(), StatusCode::UNPROCESSABLE_ENTITY);
     }
 
     #[tokio::test]

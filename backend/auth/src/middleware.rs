@@ -113,12 +113,7 @@ pub async fn auth_middleware(
                 (Some(s), Some(r)) => (s, r),
                 _ => return next.run(req).await,
             };
-            match Box::pin(resolve_cookie_user(
-                rd.clone(),
-                sess,
-            ))
-            .await
-            {
+            match Box::pin(resolve_cookie_user(rd.clone(), sess)).await {
                 Some(user) => Some(user),
                 None => return next.run(req).await,
             }

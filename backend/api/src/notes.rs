@@ -89,12 +89,15 @@ pub async fn list_notes(
             updated_at: r.4,
         })
         .collect();
-    Ok((StatusCode::OK, Json(PaginatedNotes {
-        items,
-        total,
-        page,
-        per_page: limit,
-    })))
+    Ok((
+        StatusCode::OK,
+        Json(PaginatedNotes {
+            items,
+            total,
+            page,
+            per_page: limit,
+        }),
+    ))
 }
 
 /// Create a new note.
@@ -151,7 +154,8 @@ pub async fn get_note(
     Path(id): Path<String>,
     State(state): State<Arc<AppState>>,
 ) -> Result<impl IntoResponse, ApiError> {
-    let _ = Uuid::parse_str(&id).map_err(|_| ApiError::ValidationError("invalid note id".into()))?;
+    let _ =
+        Uuid::parse_str(&id).map_err(|_| ApiError::ValidationError("invalid note id".into()))?;
     let pool = state.db_pool()?;
 
     let r = sqlx::query_as::<_, (String, String, String, String, String, String)>(
@@ -186,7 +190,8 @@ pub async fn update_note(
     State(state): State<Arc<AppState>>,
     Json(input): Json<UpdateNoteInput>,
 ) -> Result<impl IntoResponse, ApiError> {
-    let _ = Uuid::parse_str(&id).map_err(|_| ApiError::ValidationError("invalid note id".into()))?;
+    let _ =
+        Uuid::parse_str(&id).map_err(|_| ApiError::ValidationError("invalid note id".into()))?;
     let pool = state.db_pool()?;
 
     if input.title.trim().is_empty() {
@@ -237,7 +242,8 @@ pub async fn delete_note(
     Path(id): Path<String>,
     State(state): State<Arc<AppState>>,
 ) -> Result<impl IntoResponse, ApiError> {
-    let _ = Uuid::parse_str(&id).map_err(|_| ApiError::ValidationError("invalid note id".into()))?;
+    let _ =
+        Uuid::parse_str(&id).map_err(|_| ApiError::ValidationError("invalid note id".into()))?;
     let pool = state.db_pool()?;
 
     let res = sqlx::query("DELETE FROM notes WHERE id = $1::uuid AND user_id = $2::uuid")

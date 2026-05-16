@@ -102,9 +102,7 @@ async fn login_rate_limit_by_email() {
                     .uri("/auth/login")
                     .method("POST")
                     .header("content-type", "application/json")
-                    .body(axum::body::Body::from(
-                        serde_json::to_vec(&body).unwrap(),
-                    ))
+                    .body(axum::body::Body::from(serde_json::to_vec(&body).unwrap()))
                     .unwrap(),
             )
             .await
@@ -151,9 +149,7 @@ async fn register_rate_limit_by_ip() {
                     .uri("/auth/register")
                     .method("POST")
                     .header("content-type", "application/json")
-                    .body(axum::body::Body::from(
-                        serde_json::to_vec(&body).unwrap(),
-                    ))
+                    .body(axum::body::Body::from(serde_json::to_vec(&body).unwrap()))
                     .unwrap(),
             )
             .await

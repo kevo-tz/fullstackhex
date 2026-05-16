@@ -178,4 +178,3 @@ proptest! {
         let _ = crate::middleware::extract_bearer(&req, &svc);
     }
 }
-

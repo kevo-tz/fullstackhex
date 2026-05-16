@@ -57,7 +57,10 @@ impl RateLimitConfig {
     }
 
     fn env_or(key: &str, default: u64) -> u64 {
-        std::env::var(key).ok().and_then(|v| v.parse().ok()).unwrap_or(default)
+        std::env::var(key)
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(default)
     }
 }
 

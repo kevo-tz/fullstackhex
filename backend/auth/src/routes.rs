@@ -189,8 +189,20 @@ pub async fn register(
     let jwt_expiry = state.auth.config.jwt_expiry;
     let refresh_expiry = state.auth.config.refresh_expiry;
     let mut headers = HeaderMap::new();
-    super::cookies::set_cookie(&mut headers, "access_token", &access_token, jwt_expiry, true)?;
-    super::cookies::set_cookie(&mut headers, "refresh_token", &refresh_token, refresh_expiry, true)?;
+    super::cookies::set_cookie(
+        &mut headers,
+        "access_token",
+        &access_token,
+        jwt_expiry,
+        true,
+    )?;
+    super::cookies::set_cookie(
+        &mut headers,
+        "refresh_token",
+        &refresh_token,
+        refresh_expiry,
+        true,
+    )?;
     let csrf_token = super::csrf::generate_csrf_token();
     super::cookies::set_cookie(&mut headers, "csrf_token", &csrf_token, jwt_expiry, false)?;
 
@@ -336,8 +348,20 @@ pub async fn login(
     let jwt_expiry = state.auth.config.jwt_expiry;
     let refresh_expiry = state.auth.config.refresh_expiry;
     let mut headers = HeaderMap::new();
-    super::cookies::set_cookie(&mut headers, "access_token", &response.access_token, jwt_expiry, true)?;
-    super::cookies::set_cookie(&mut headers, "refresh_token", &response.refresh_token, refresh_expiry, true)?;
+    super::cookies::set_cookie(
+        &mut headers,
+        "access_token",
+        &response.access_token,
+        jwt_expiry,
+        true,
+    )?;
+    super::cookies::set_cookie(
+        &mut headers,
+        "refresh_token",
+        &response.refresh_token,
+        refresh_expiry,
+        true,
+    )?;
     let csrf_token = super::csrf::generate_csrf_token();
     super::cookies::set_cookie(&mut headers, "csrf_token", &csrf_token, jwt_expiry, false)?;
 
@@ -466,10 +490,28 @@ pub async fn refresh(
     metrics::counter!("token_refresh_total", "status" => "success").increment(1);
 
     let mut resp_headers = HeaderMap::new();
-    super::cookies::set_cookie(&mut resp_headers, "access_token", &access_token, state.auth.config.jwt_expiry, true)?;
-    super::cookies::set_cookie(&mut resp_headers, "refresh_token", &new_refresh_token, state.auth.config.refresh_expiry, true)?;
+    super::cookies::set_cookie(
+        &mut resp_headers,
+        "access_token",
+        &access_token,
+        state.auth.config.jwt_expiry,
+        true,
+    )?;
+    super::cookies::set_cookie(
+        &mut resp_headers,
+        "refresh_token",
+        &new_refresh_token,
+        state.auth.config.refresh_expiry,
+        true,
+    )?;
     let csrf_token = super::csrf::generate_csrf_token();
-    super::cookies::set_cookie(&mut resp_headers, "csrf_token", &csrf_token, state.auth.config.jwt_expiry, false)?;
+    super::cookies::set_cookie(
+        &mut resp_headers,
+        "csrf_token",
+        &csrf_token,
+        state.auth.config.jwt_expiry,
+        false,
+    )?;
 
     Ok((
         resp_headers,

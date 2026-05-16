@@ -84,7 +84,9 @@ async fn full_state() -> Option<AppState> {
 #[serial]
 async fn refresh_token_lifecycle() {
     let Some(state) = full_state().await else {
-        eprintln!("SKIP: DATABASE_URL or REDIS_URL not set/unreachable — skipping token refresh test");
+        eprintln!(
+            "SKIP: DATABASE_URL or REDIS_URL not set/unreachable — skipping token refresh test"
+        );
         return;
     };
 
@@ -112,7 +114,11 @@ async fn refresh_token_lifecycle() {
         .await
         .unwrap();
 
-    assert_eq!(response.status(), StatusCode::CREATED, "register should return 201");
+    assert_eq!(
+        response.status(),
+        StatusCode::CREATED,
+        "register should return 201"
+    );
 
     let bytes = to_bytes(response.into_body(), usize::MAX).await.unwrap();
     let reg: Value = serde_json::from_slice(&bytes).unwrap();
@@ -156,7 +162,11 @@ async fn refresh_token_lifecycle() {
         .await
         .unwrap();
 
-    assert_eq!(response.status(), StatusCode::OK, "refresh should return 200");
+    assert_eq!(
+        response.status(),
+        StatusCode::OK,
+        "refresh should return 200"
+    );
 
     let bytes = to_bytes(response.into_body(), usize::MAX).await.unwrap();
     let refreshed: Value = serde_json::from_slice(&bytes).unwrap();
@@ -186,7 +196,11 @@ async fn refresh_token_lifecycle() {
         .await
         .unwrap();
 
-    assert_eq!(response.status(), StatusCode::OK, "logout should return 200");
+    assert_eq!(
+        response.status(),
+        StatusCode::OK,
+        "logout should return 200"
+    );
 
     // 5. Use the OLD refresh token after logout → should fail
     let refresh_body = serde_json::json!({
@@ -243,7 +257,11 @@ async fn refresh_with_invalid_token_returns_401() {
         .await
         .unwrap();
 
-    assert_eq!(response.status(), StatusCode::UNAUTHORIZED, "invalid refresh token should return 401");
+    assert_eq!(
+        response.status(),
+        StatusCode::UNAUTHORIZED,
+        "invalid refresh token should return 401"
+    );
 }
 
 #[tokio::test]

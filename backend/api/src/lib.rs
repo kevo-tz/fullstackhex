@@ -22,7 +22,7 @@ use tokio::sync::Semaphore;
 pub mod live;
 pub mod metrics;
 
-use live::{broadcast_event, LiveEvent};
+use live::{LiveEvent, broadcast_event};
 pub mod notes;
 
 /// Max length for health error details broadcast to WS clients.
@@ -292,7 +292,12 @@ fn build_router(state: Arc<AppState>) -> Router {
     if state.auth.is_none() || !matches!(state.db, DbStatus::Connected(_)) {
         let fb = Router::new()
             .route("/", get(notes_fallback).post(notes_fallback))
-            .route("/{id}", get(notes_fallback).put(notes_fallback).delete(notes_fallback));
+            .route(
+                "/{id}",
+                get(notes_fallback)
+                    .put(notes_fallback)
+                    .delete(notes_fallback),
+            );
         router = router.nest("/notes", fb);
     }
 
@@ -361,46 +366,80 @@ async fn health(State(state): State<Arc<AppState>>) -> impl IntoResponse {
 
     // Truncate error details before broadcasting to WS clients (prevents
     // unbounded message growth)
-    let truncate = |s: &str| -> String {
-        s.chars().take(MAX_DETAIL_LENGTH).collect::<String>()
-    };
+    let truncate = |s: &str| -> String { s.chars().take(MAX_DETAIL_LENGTH).collect::<String>() };
 
     // Fire-and-forget health broadcasts to WS subscribers (must not delay HTTP response)
     // Clone values for the spawned task since they're also used in the HTTP response below
     let (db_clone, redis_clone, storage_clone, python_clone, auth_clone) = (
-        db.clone(), redis.clone(), storage.clone(), python.clone(), auth.clone()
+        db.clone(),
+        redis.clone(),
+        storage.clone(),
+        python.clone(),
+        auth.clone(),
     );
     let broadcast_state = state.clone();
     tokio::spawn(async move {
         futures_util::future::join_all([
-            broadcast_event(&broadcast_state, &LiveEvent::HealthUpdate {
-                service: "rust".into(), status: "ok".into(), detail: None,
-            }),
-            broadcast_event(&broadcast_state, &LiveEvent::HealthUpdate {
-                service: "db".into(),
-                status: db_clone["status"].as_str().unwrap_or("unknown").into(),
-                detail: db_clone.get("error").and_then(|v| v.as_str()).map(&truncate),
-            }),
-            broadcast_event(&broadcast_state, &LiveEvent::HealthUpdate {
-                service: "redis".into(),
-                status: redis_clone["status"].as_str().unwrap_or("unknown").into(),
-                detail: redis_clone.get("error").and_then(|v| v.as_str()).map(&truncate),
-            }),
-            broadcast_event(&broadcast_state, &LiveEvent::HealthUpdate {
-                service: "storage".into(),
-                status: storage_clone["status"].as_str().unwrap_or("unknown").into(),
-                detail: storage_clone.get("error").and_then(|v| v.as_str()).map(&truncate),
-            }),
-            broadcast_event(&broadcast_state, &LiveEvent::HealthUpdate {
-                service: "python".into(),
-                status: python_clone["status"].as_str().unwrap_or("unknown").into(),
-                detail: python_clone.get("error").and_then(|v| v.as_str()).map(&truncate),
-            }),
-            broadcast_event(&broadcast_state, &LiveEvent::HealthUpdate {
-                service: "auth".into(),
-                status: auth_clone["status"].as_str().unwrap_or("unknown").into(),
-                detail: None,
-            }),
+            broadcast_event(
+                &broadcast_state,
+                &LiveEvent::HealthUpdate {
+                    service: "rust".into(),
+                    status: "ok".into(),
+                    detail: None,
+                },
+            ),
+            broadcast_event(
+                &broadcast_state,
+                &LiveEvent::HealthUpdate {
+                    service: "db".into(),
+                    status: db_clone["status"].as_str().unwrap_or("unknown").into(),
+                    detail: db_clone
+                        .get("error")
+                        .and_then(|v| v.as_str())
+                        .map(&truncate),
+                },
+            ),
+            broadcast_event(
+                &broadcast_state,
+                &LiveEvent::HealthUpdate {
+                    service: "redis".into(),
+                    status: redis_clone["status"].as_str().unwrap_or("unknown").into(),
+                    detail: redis_clone
+                        .get("error")
+                        .and_then(|v| v.as_str())
+                        .map(&truncate),
+                },
+            ),
+            broadcast_event(
+                &broadcast_state,
+                &LiveEvent::HealthUpdate {
+                    service: "storage".into(),
+                    status: storage_clone["status"].as_str().unwrap_or("unknown").into(),
+                    detail: storage_clone
+                        .get("error")
+                        .and_then(|v| v.as_str())
+                        .map(&truncate),
+                },
+            ),
+            broadcast_event(
+                &broadcast_state,
+                &LiveEvent::HealthUpdate {
+                    service: "python".into(),
+                    status: python_clone["status"].as_str().unwrap_or("unknown").into(),
+                    detail: python_clone
+                        .get("error")
+                        .and_then(|v| v.as_str())
+                        .map(&truncate),
+                },
+            ),
+            broadcast_event(
+                &broadcast_state,
+                &LiveEvent::HealthUpdate {
+                    service: "auth".into(),
+                    status: auth_clone["status"].as_str().unwrap_or("unknown").into(),
+                    detail: None,
+                },
+            ),
         ])
         .await;
     });

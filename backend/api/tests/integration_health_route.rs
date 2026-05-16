@@ -368,7 +368,9 @@ async fn health_db_ok_with_real_pool() {
         ws_connection_permits: std::sync::Arc::new(tokio::sync::Semaphore::new(100)),
         ws_idle_timeout: std::time::Duration::from_secs(300),
         ws_shutdown: std::sync::Arc::new(tokio::sync::Notify::new()),
-        ws_user_connections: std::sync::Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new())),
+        ws_user_connections: std::sync::Arc::new(tokio::sync::Mutex::new(
+            std::collections::HashMap::new(),
+        )),
         ws_per_user_max: 10,
     };
 
@@ -440,7 +442,9 @@ async fn health_python_ok_with_mock_socket() {
         ws_connection_permits: std::sync::Arc::new(tokio::sync::Semaphore::new(100)),
         ws_idle_timeout: std::time::Duration::from_secs(300),
         ws_shutdown: std::sync::Arc::new(tokio::sync::Notify::new()),
-        ws_user_connections: std::sync::Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new())),
+        ws_user_connections: std::sync::Arc::new(tokio::sync::Mutex::new(
+            std::collections::HashMap::new(),
+        )),
         ws_per_user_max: 10,
     };
 

@@ -85,11 +85,7 @@ async fn connect_db() -> Option<(AppState, PgPool)> {
 }
 
 /// Register a test user in the database and return (user_id, token_string).
-async fn create_test_user(
-    pool: &PgPool,
-    auth: &AuthService,
-    email: &str,
-) -> (Uuid, String) {
+async fn create_test_user(pool: &PgPool, auth: &AuthService, email: &str) -> (Uuid, String) {
     let user_id = Uuid::new_v4();
     sqlx::query(
         "INSERT INTO users (id, email, provider, password_hash) VALUES ($1::uuid, $2, 'local', 'test')",
@@ -169,7 +165,10 @@ async fn notes_create_list_get_delete() {
     let bytes = to_bytes(response.into_body(), usize::MAX).await.unwrap();
     let list: Value = serde_json::from_slice(&bytes).unwrap();
     assert!(list["total"].as_i64().unwrap_or(0) >= 1);
-    assert_eq!(list["items"].as_array().unwrap().len() as i64, list["total"].as_i64().unwrap());
+    assert_eq!(
+        list["items"].as_array().unwrap().len() as i64,
+        list["total"].as_i64().unwrap()
+    );
 
     // GET note by ID
     let response = app

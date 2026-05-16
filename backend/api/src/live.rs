@@ -106,19 +106,17 @@ pub async fn ws_handler(
     let maybe_user_id = if let Some(ref auth_service) = state.auth {
         match (&state.redis, token_from_query(&uri)) {
             // Token from query param: validate + blacklist check + extract user_id
-            (Some(redis), Some(token)) => {
-                match auth_service.jwt.validate_token(&token) {
-                    Ok(claims) => {
-                        if is_jti_blacklisted(redis, &claims.jti).await {
-                            tracing::info!(jti = %claims.jti, "WS connection rejected — blacklisted JWT");
-                            None
-                        } else {
-                            Some(claims.sub)
-                        }
+            (Some(redis), Some(token)) => match auth_service.jwt.validate_token(&token) {
+                Ok(claims) => {
+                    if is_jti_blacklisted(redis, &claims.jti).await {
+                        tracing::info!(jti = %claims.jti, "WS connection rejected — blacklisted JWT");
+                        None
+                    } else {
+                        Some(claims.sub)
                     }
-                    Err(_) => None,
                 }
-            }
+                Err(_) => None,
+            },
             // Try cookie auth
             _ => cookie_authenticated(&headers, auth_service, &state).await,
         }
@@ -159,10 +157,7 @@ pub async fn ws_handler(
             let origin_host = origin_host.split(':').next().unwrap_or("");
             if origin_host != allowed_host {
                 tracing::warn!(%origin, "WS connection rejected — Origin not allowed");
-                return (
-                    StatusCode::FORBIDDEN,
-                    "{\"error\":\"Origin not allowed\"}",
-                )
+                return (StatusCode::FORBIDDEN, "{\"error\":\"Origin not allowed\"}")
                     .into_response();
             }
         }
@@ -215,7 +210,15 @@ pub async fn ws_handler(
     let ws_shutdown = state.ws_shutdown.clone();
     let user_connections = state.ws_user_connections.clone();
     ws.on_upgrade(move |socket| {
-        handle_socket(socket, redis, idle_timeout, ws_shutdown, user_connections, user_id, permit)
+        handle_socket(
+            socket,
+            redis,
+            idle_timeout,
+            ws_shutdown,
+            user_connections,
+            user_id,
+            permit,
+        )
     })
 }
 
@@ -513,7 +516,9 @@ mod tests {
                 ws_connection_permits: std::sync::Arc::new(tokio::sync::Semaphore::new(100)),
                 ws_idle_timeout: std::time::Duration::from_secs(300),
                 ws_shutdown: std::sync::Arc::new(tokio::sync::Notify::new()),
-                ws_user_connections: std::sync::Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new())),
+                ws_user_connections: std::sync::Arc::new(tokio::sync::Mutex::new(
+                    std::collections::HashMap::new(),
+                )),
                 ws_per_user_max: 10,
             }));
 
@@ -551,7 +556,9 @@ mod tests {
             ws_connection_permits: std::sync::Arc::new(tokio::sync::Semaphore::new(100)),
             ws_idle_timeout: std::time::Duration::from_secs(300),
             ws_shutdown: std::sync::Arc::new(tokio::sync::Notify::new()),
-            ws_user_connections: std::sync::Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new())),
+            ws_user_connections: std::sync::Arc::new(tokio::sync::Mutex::new(
+                std::collections::HashMap::new(),
+            )),
             ws_per_user_max: 10,
         };
 

@@ -34,7 +34,7 @@ async fn full_state() -> Option<AppState> {
         .await
         .ok()?;
 
-    let redis = Arc::new(cache::RedisClient::new(&redis_url, "test").await.ok()?);
+    let redis = Arc::new(cache::RedisClient::new(&redis_url, "test-refresh").await.ok()?);
 
     let auth_config = auth::AuthConfig {
         jwt_secret: "test-refresh-token-secret".to_string(),

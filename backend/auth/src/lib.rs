@@ -3,6 +3,7 @@
 //! Provides JWT + sessions + OAuth authentication.
 //! Auth validates in Rust only — Python sidecar gets auth via HMAC-signed headers.
 
+pub mod cookies;
 pub mod csrf;
 pub mod jwt;
 pub mod metrics;

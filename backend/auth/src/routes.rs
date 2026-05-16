@@ -189,27 +189,10 @@ pub async fn register(
     let jwt_expiry = state.auth.config.jwt_expiry;
     let refresh_expiry = state.auth.config.refresh_expiry;
     let mut headers = HeaderMap::new();
-    headers.insert(
-        header::SET_COOKIE,
-        format!(
-            "access_token={access_token}; HttpOnly; Path=/; Max-Age={jwt_expiry}; SameSite=Lax"
-        )
-        .parse()
-        .expect("cookie header format is always valid"),
-    );
-    headers.insert(
-        header::SET_COOKIE,
-        format!("refresh_token={refresh_token}; HttpOnly; Path=/; Max-Age={refresh_expiry}; SameSite=Lax")
-            .parse()
-            .expect("cookie header format is always valid"),
-    );
+    super::cookies::set_cookie(&mut headers, "access_token", &access_token, jwt_expiry, true)?;
+    super::cookies::set_cookie(&mut headers, "refresh_token", &refresh_token, refresh_expiry, true)?;
     let csrf_token = super::csrf::generate_csrf_token();
-    headers.insert(
-        header::SET_COOKIE,
-        format!("csrf_token={csrf_token}; Path=/; Max-Age={jwt_expiry}; SameSite=Lax")
-            .parse()
-            .expect("cookie header format is always valid"),
-    );
+    super::cookies::set_cookie(&mut headers, "csrf_token", &csrf_token, jwt_expiry, false)?;
 
     let response = TokenResponse {
         access_token,
@@ -353,31 +336,10 @@ pub async fn login(
     let jwt_expiry = state.auth.config.jwt_expiry;
     let refresh_expiry = state.auth.config.refresh_expiry;
     let mut headers = HeaderMap::new();
-    headers.insert(
-        header::SET_COOKIE,
-        format!(
-            "access_token={}; HttpOnly; Path=/; Max-Age={jwt_expiry}; SameSite=Lax",
-            response.access_token
-        )
-        .parse()
-        .expect("cookie header format is always valid"),
-    );
-    headers.insert(
-        header::SET_COOKIE,
-        format!(
-            "refresh_token={}; HttpOnly; Path=/; Max-Age={refresh_expiry}; SameSite=Lax",
-            response.refresh_token
-        )
-        .parse()
-        .expect("cookie header format is always valid"),
-    );
+    super::cookies::set_cookie(&mut headers, "access_token", &response.access_token, jwt_expiry, true)?;
+    super::cookies::set_cookie(&mut headers, "refresh_token", &response.refresh_token, refresh_expiry, true)?;
     let csrf_token = super::csrf::generate_csrf_token();
-    headers.insert(
-        header::SET_COOKIE,
-        format!("csrf_token={csrf_token}; Path=/; Max-Age={jwt_expiry}; SameSite=Lax")
-            .parse()
-            .expect("cookie header format is always valid"),
-    );
+    super::cookies::set_cookie(&mut headers, "csrf_token", &csrf_token, jwt_expiry, false)?;
 
     Ok((headers, Json(response)))
 }
@@ -504,34 +466,10 @@ pub async fn refresh(
     metrics::counter!("token_refresh_total", "status" => "success").increment(1);
 
     let mut resp_headers = HeaderMap::new();
-    resp_headers.insert(
-        header::SET_COOKIE,
-        format!(
-            "access_token={}; HttpOnly; Path=/; Max-Age={}; SameSite=Lax",
-            access_token, state.auth.config.jwt_expiry
-        )
-        .parse()
-        .expect("cookie header format is always valid"),
-    );
-    resp_headers.insert(
-        header::SET_COOKIE,
-        format!(
-            "refresh_token={}; HttpOnly; Path=/; Max-Age={}; SameSite=Lax",
-            new_refresh_token, state.auth.config.refresh_expiry
-        )
-        .parse()
-        .expect("cookie header format is always valid"),
-    );
+    super::cookies::set_cookie(&mut resp_headers, "access_token", &access_token, state.auth.config.jwt_expiry, true)?;
+    super::cookies::set_cookie(&mut resp_headers, "refresh_token", &new_refresh_token, state.auth.config.refresh_expiry, true)?;
     let csrf_token = super::csrf::generate_csrf_token();
-    resp_headers.insert(
-        header::SET_COOKIE,
-        format!(
-            "csrf_token={csrf_token}; Path=/; Max-Age={}; SameSite=Lax",
-            state.auth.config.jwt_expiry
-        )
-        .parse()
-        .expect("cookie header format is always valid"),
-    );
+    super::cookies::set_cookie(&mut resp_headers, "csrf_token", &csrf_token, state.auth.config.jwt_expiry, false)?;
 
     Ok((
         resp_headers,

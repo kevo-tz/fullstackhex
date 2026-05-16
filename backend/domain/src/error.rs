@@ -3,8 +3,11 @@
 //! All domain crates (auth, cache, storage) convert their errors to `ApiError`.
 //! The api crate converts `ApiError` to JSON response.
 
+#[cfg(feature = "api")]
 use axum::http::StatusCode;
+#[cfg(feature = "api")]
 use axum::response::{IntoResponse, Response};
+#[cfg(feature = "api")]
 use serde_json::json;
 
 /// Unified API error type.
@@ -110,7 +113,7 @@ impl IntoResponse for ApiError {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "api"))]
 mod tests {
     use super::*;
     use axum::body::to_bytes;

@@ -52,6 +52,13 @@ pub struct CreateNoteInput {
     pub body: String,
 }
 
+/// Input for updating an existing note.
+#[derive(Debug, Clone, serde::Deserialize)]
+pub struct UpdateNoteInput {
+    pub title: String,
+    pub body: String,
+}
+
 #[cfg(test)]
 mod proptests;
 

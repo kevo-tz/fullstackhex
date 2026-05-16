@@ -276,6 +276,7 @@ fn build_router(state: Arc<AppState>) -> Router {
             .route("/", axum::routing::get(notes::list_notes))
             .route("/", axum::routing::post(notes::create_note))
             .route("/{id}", axum::routing::get(notes::get_note))
+            .route("/{id}", axum::routing::put(notes::update_note))
             .route("/{id}", axum::routing::delete(notes::delete_note))
             .layer(DefaultBodyLimit::max(128 * 1024))
             .with_state(state.clone());
@@ -291,7 +292,7 @@ fn build_router(state: Arc<AppState>) -> Router {
     if state.auth.is_none() || !matches!(state.db, DbStatus::Connected(_)) {
         let fb = Router::new()
             .route("/", get(notes_fallback).post(notes_fallback))
-            .route("/{id}", get(notes_fallback).delete(notes_fallback));
+            .route("/{id}", get(notes_fallback).put(notes_fallback).delete(notes_fallback));
         router = router.nest("/notes", fb);
     }
 

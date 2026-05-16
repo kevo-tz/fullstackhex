@@ -9,7 +9,7 @@ use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use domain::error::ApiError;
-use domain::{CreateNoteInput, Note};
+use domain::{CreateNoteInput, Note, UpdateNoteInput};
 use serde::Deserialize;
 use std::sync::Arc;
 use uuid::Uuid;
@@ -166,6 +166,58 @@ pub async fn get_note(
     .fetch_optional(pool)
     .await
     .map_err(|e| super::db_err(e, "failed to get note"))?
+    .ok_or_else(|| ApiError::NotFound("note not found".into()))?;
+
+    let note = Note {
+        id: r.0,
+        user_id: r.1,
+        title: r.2,
+        body: r.3,
+        created_at: r.4,
+        updated_at: r.5,
+    };
+    Ok((StatusCode::OK, Json(note)))
+}
+
+/// Update an existing note (full replacement of title and body).
+pub async fn update_note(
+    auth: auth::middleware::AuthUser,
+    Path(id): Path<String>,
+    State(state): State<Arc<AppState>>,
+    Json(input): Json<UpdateNoteInput>,
+) -> Result<impl IntoResponse, ApiError> {
+    let _ = Uuid::parse_str(&id).map_err(|_| ApiError::ValidationError("invalid note id".into()))?;
+    let pool = state.db_pool()?;
+
+    if input.title.trim().is_empty() {
+        return Err(ApiError::ValidationError("title is required".into()));
+    }
+    if input.title.len() > 255 {
+        return Err(ApiError::ValidationError(
+            "title must be 255 characters or fewer".into(),
+        ));
+    }
+    if input.body.len() > 100_000 {
+        return Err(ApiError::ValidationError(
+            "body must be 100KB or fewer".into(),
+        ));
+    }
+
+    let r = sqlx::query_as::<_, (String, String, String, String, String, String)>(
+        r#"
+        UPDATE notes
+        SET title = $1, body = $2, updated_at = NOW()
+        WHERE id = $3::uuid AND user_id = $4::uuid
+        RETURNING id::text, user_id::text, title, body, created_at::text, updated_at::text
+        "#,
+    )
+    .bind(&input.title)
+    .bind(&input.body)
+    .bind(&id)
+    .bind(&auth.user_id)
+    .fetch_optional(pool)
+    .await
+    .map_err(|e| super::db_err(e, "failed to update note"))?
     .ok_or_else(|| ApiError::NotFound("note not found".into()))?;
 
     let note = Note {

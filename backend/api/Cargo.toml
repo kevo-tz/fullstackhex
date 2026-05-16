@@ -32,5 +32,6 @@ uuid = { workspace = true }
 [dev-dependencies]
 serial_test = { workspace = true }
 tempfile = "3"
+uuid = { workspace = true }
 tokio = { workspace = true, features = ["net", "io-util", "sync"] }
 proptest = { workspace = true }

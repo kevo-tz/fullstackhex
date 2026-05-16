@@ -49,6 +49,9 @@ test.describe("Notes CRUD", () => {
     await firstNote.click();
     await page.waitForURL(href!);
 
+    // Wait for note content to finish loading (loadNote async)
+    await page.waitForSelector("#detail-content:not(.hidden)", { timeout: 10000 });
+
     await page.click("#delete-btn");
     await page.click("#confirm-delete");
 

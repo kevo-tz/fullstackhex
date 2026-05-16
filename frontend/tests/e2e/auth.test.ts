@@ -63,11 +63,12 @@ describe("e2e auth flow", () => {
   });
 
   test("POST /auth/register creates user and returns JWT", async () => {
+    const uniqueEmail = `e2e-reg-${Date.now()}@test.example.com`;
     const res = await fetch(`${BACKEND}/auth/register`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        email: TEST_USER.email,
+        email: uniqueEmail,
         password: TEST_USER.password,
         name: "E2E Test",
       }),
@@ -77,10 +78,6 @@ describe("e2e auth flow", () => {
       console.warn("SKIP: /auth/register returned 404 — auth not configured");
       return;
     }
-    if (res.status === 400) {
-      console.warn("SKIP: /auth/register returned 400 — likely rate limited or duplicate");
-      return;
-    }
 
     expect(res.status).toBe(201);
 
@@ -88,7 +85,7 @@ describe("e2e auth flow", () => {
     expect(data.access_token).toBeTruthy();
     expect(data.token_type).toBe("Bearer");
     expect(data.expires_in).toBeGreaterThan(0);
-    expect(data.user.email).toBe(TEST_USER.email);
+    expect(data.user.email).toBe(uniqueEmail);
     expect(data.user.provider).toBe("local");
   });
 

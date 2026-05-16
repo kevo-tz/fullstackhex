@@ -5,6 +5,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/config.sh"
 
 REPO_ROOT="$(get_repo_root)"
+export REPO_ROOT
 cd "$REPO_ROOT"
 
 load_env
@@ -62,6 +63,19 @@ log_success "Preflight passed"
 
 mkdir -p "$PID_DIR"
 rm -f "$PID_DIR"/*.pid "$PYTHON_SOCK"
+
+# Generate temporary Redis config to avoid exposing password in ps aux
+mkdir -p .tmp
+cat > .tmp/redis.conf <<REDIS_CONF
+requirepass ${REDIS_PASSWORD}
+appendonly yes
+appendfsync everysec
+save 900 1
+save 300 10
+save 60 10000
+maxmemory ${REDIS_MAX_MEMORY:-512mb}
+maxmemory-policy ${REDIS_MAXMEMORY_POLICY:-allkeys-lru}
+REDIS_CONF
 
 log_info "Starting infrastructure (PostgreSQL, Redis)..."
 $COMPOSE_DEV up -d

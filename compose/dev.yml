@@ -58,9 +58,10 @@ services:
     ports:
       - "127.0.0.1:${REDIS_PORT:-6379}:6379"
     command: >
-      redis-server --maxmemory ${REDIS_MAX_MEMORY:-512mb} --maxmemory-policy ${REDIS_MAXMEMORY_POLICY:-allkeys-lru} --appendonly ${REDIS_APPENDONLY:-yes} --save ${REDIS_SAVE:-900 1 300 10 60 10000} --requirepass ${REDIS_PASSWORD:?REDIS_PASSWORD must be set in .env}
+      redis-server /usr/local/etc/redis/redis.conf
     volumes:
       - redis_data:/data
+      - ${REPO_ROOT:-.}/.tmp/redis.conf:/usr/local/etc/redis/redis.conf:ro
     healthcheck:
       test: [ "CMD", "redis-cli", "ping" ]
       interval: 10s

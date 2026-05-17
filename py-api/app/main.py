@@ -63,7 +63,10 @@ def register_metrics() -> None:
 register_metrics()
 
 # Cache py-api version at module level — avoids importlib.metadata lookup per request
-PY_API_VERSION = version("py-api")
+try:
+    PY_API_VERSION = version("py-api")
+except Exception:
+    PY_API_VERSION = "0.0.0"
 
 
 class JsonFormatter(logging.Formatter):

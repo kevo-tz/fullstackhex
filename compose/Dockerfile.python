@@ -12,7 +12,11 @@ COPY py-api/pyproject.toml ./
 # Install all runtime dependencies into a venv
 RUN uv venv /app/.venv && \
     uv pip install --python /app/.venv/bin/python --no-cache \
-    fastapi uvicorn "prometheus-client>=0.21,<0.26"
+    fastapi uvicorn "prometheus-client>=0.21,<0.27"
+
+# Install the py-api package itself so importlib.metadata.version("py-api") works
+COPY py-api/ ./py-api/
+RUN uv pip install --python /app/.venv/bin/python --no-cache -e ./py-api/
 
 # Stage2: Runtime - Minimal image
 FROM python:3.14-slim-trixie

@@ -196,6 +196,7 @@ pub async fn register(
         &access_token,
         jwt_expiry,
         true,
+        true,
     )?;
     super::cookies::set_cookie(
         &mut headers,
@@ -203,9 +204,10 @@ pub async fn register(
         &refresh_token,
         refresh_expiry,
         true,
+        true,
     )?;
     let csrf_token = super::csrf::generate_csrf_token();
-    super::cookies::set_cookie(&mut headers, "csrf_token", &csrf_token, jwt_expiry, false)?;
+    super::cookies::set_cookie(&mut headers, "csrf_token", &csrf_token, jwt_expiry, false, false)?;
 
     let response = TokenResponse {
         access_token: access_token.clone(),
@@ -236,7 +238,7 @@ pub async fn register(
         .redis
         .session_create(&session, std::time::Duration::from_secs(jwt_expiry))
         .await?;
-    super::cookies::set_cookie(&mut headers, "session", &session_id, jwt_expiry, true)?;
+    super::cookies::set_cookie(&mut headers, "session", &session_id, jwt_expiry, true, true)?;
 
     Ok((StatusCode::CREATED, headers, Json(response)))
 }
@@ -376,6 +378,7 @@ pub async fn login(
         &response.access_token,
         jwt_expiry,
         true,
+        true,
     )?;
     super::cookies::set_cookie(
         &mut headers,
@@ -383,8 +386,9 @@ pub async fn login(
         &response.refresh_token,
         refresh_expiry,
         true,
+        true,
     )?;
-    super::cookies::set_cookie(&mut headers, "csrf_token", &csrf_token, jwt_expiry, false)?;
+    super::cookies::set_cookie(&mut headers, "csrf_token", &csrf_token, jwt_expiry, false, false)?;
 
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -401,7 +405,7 @@ pub async fn login(
         .redis
         .session_create(&session, std::time::Duration::from_secs(jwt_expiry))
         .await?;
-    super::cookies::set_cookie(&mut headers, "session", &session_id, jwt_expiry, true)?;
+    super::cookies::set_cookie(&mut headers, "session", &session_id, jwt_expiry, true, true)?;
 
     Ok((headers, Json(response)))
 }
@@ -550,12 +554,14 @@ pub async fn refresh(
         &access_token,
         state.auth.config.jwt_expiry,
         true,
+        true,
     )?;
     super::cookies::set_cookie(
         &mut resp_headers,
         "refresh_token",
         &new_refresh_token,
         state.auth.config.refresh_expiry,
+        true,
         true,
     )?;
     let csrf_token = super::csrf::generate_csrf_token();
@@ -564,6 +570,7 @@ pub async fn refresh(
         "csrf_token",
         &csrf_token,
         state.auth.config.jwt_expiry,
+        false,
         false,
     )?;
 

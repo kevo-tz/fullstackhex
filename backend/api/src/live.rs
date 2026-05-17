@@ -263,19 +263,15 @@ struct WsUserGuard {
 
 impl Drop for WsUserGuard {
     fn drop(&mut self) {
-        // Best-effort: spawn a blocking task since Drop runs in any context.
-        // The JoinHandle is dropped immediately (cannot await in Drop).
-        let uid = self.user_id.clone();
-        let conns = self.connections.clone();
-        drop(tokio::spawn(async move {
-            let mut map = conns.lock().await;
-            if let Some(count) = map.get_mut(&uid) {
-                *count = count.saturating_sub(1);
-                if *count == 0 {
-                    map.remove(&uid);
-                }
+        let uid = &self.user_id;
+        if let Ok(mut map) = self.connections.try_lock()
+            && let Some(count) = map.get_mut(uid)
+        {
+            *count = count.saturating_sub(1);
+            if *count == 0 {
+                map.remove(uid);
             }
-        }));
+        }
     }
 }
 

@@ -17,8 +17,8 @@ route:
       continue: true
 
 receivers:
-  # Dev receiver: logs alerts to stdout via a local health-check endpoint.
-  # Production teams should replace this with Slack, PagerDuty, or email.
+  # Dev receiver: logs alerts to stdout via webhook.
+  # Replace the URL below with a reachable receiver endpoint in your environment.
   - name: 'dev'
     webhook_configs:
       - url: 'http://localhost:5001/alerts'

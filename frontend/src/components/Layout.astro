@@ -123,8 +123,7 @@ const { title } = Astro.props;
         try {
           await fetch("/api/auth/logout", { method: "POST" });
         } catch { /* server session cleanup is best-effort */ }
-        document.cookie = "access_token=; path=/; max-age=0";
-        document.cookie = "refresh_token=; path=/; max-age=0";
+        sessionStorage.removeItem("csrf_token");
         window.location.href = "/login";
       }
       interface CustomWindow extends Window {

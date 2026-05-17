@@ -10,7 +10,9 @@ pub fn set_cookie(
     secure: bool,
 ) -> Result<(), ApiError> {
     let cookie = {
-        let mut parts = vec![format!("{name}={value}; Path=/; Max-Age={max_age}; SameSite=Lax")];
+        let mut parts = vec![format!(
+            "{name}={value}; Path=/; Max-Age={max_age}; SameSite=Lax"
+        )];
         if http_only {
             parts.push("HttpOnly".into());
         }

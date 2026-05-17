@@ -122,10 +122,7 @@ pub async fn auth_middleware(
 
     // JWT blacklist check
     if let (Some(user), Some(redis)) = (&auth_user, &redis) {
-        let is_blacklisted: Option<bool> = match redis
-            .cache_get("blacklist", &user.jti)
-            .await
-        {
+        let is_blacklisted: Option<bool> = match redis.cache_get("blacklist", &user.jti).await {
             Ok(Some(v)) => Some(v),
             Ok(None) => Some(false),
             Err(e) => {

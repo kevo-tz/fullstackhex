@@ -211,10 +211,7 @@ pub async fn ws_handler(
 ///
 /// Extracts the `session=` cookie from the `Cookie` header, looks up the
 /// session in Redis, and returns the user_id on success.
-async fn cookie_authenticated(
-    headers: &HeaderMap,
-    state: &AppState,
-) -> Option<String> {
+async fn cookie_authenticated(headers: &HeaderMap, state: &AppState) -> Option<String> {
     let session_id = match headers
         .get("cookie")
         .and_then(|v| v.to_str().ok())
@@ -233,13 +230,14 @@ async fn cookie_authenticated(
         None => return None,
     };
 
-    let session: Option<cache::session::Session> = match redis.cache_get("session", &session_id).await {
-        Ok(s) => s,
-        Err(e) => {
-            tracing::warn!(error = %e, "Redis session lookup failed in cookie_authenticated");
-            None
-        }
-    };
+    let session: Option<cache::session::Session> =
+        match redis.cache_get("session", &session_id).await {
+            Ok(s) => s,
+            Err(e) => {
+                tracing::warn!(error = %e, "Redis session lookup failed in cookie_authenticated");
+                None
+            }
+        };
     session.map(|s| s.user_id)
 }
 

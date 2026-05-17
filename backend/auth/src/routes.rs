@@ -215,7 +215,14 @@ pub async fn register(
         true,
     )?;
     let csrf_token = super::csrf::generate_csrf_token();
-    super::cookies::set_cookie(&mut headers, "csrf_token", &csrf_token, jwt_expiry, false, false)?;
+    super::cookies::set_cookie(
+        &mut headers,
+        "csrf_token",
+        &csrf_token,
+        jwt_expiry,
+        false,
+        false,
+    )?;
 
     let response = TokenResponse {
         access_token: access_token.clone(),
@@ -396,7 +403,14 @@ pub async fn login(
         true,
         true,
     )?;
-    super::cookies::set_cookie(&mut headers, "csrf_token", &csrf_token, jwt_expiry, false, false)?;
+    super::cookies::set_cookie(
+        &mut headers,
+        "csrf_token",
+        &csrf_token,
+        jwt_expiry,
+        false,
+        false,
+    )?;
 
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)

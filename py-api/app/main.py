@@ -56,8 +56,8 @@ def register_metrics() -> None:
             ["method", "endpoint"],
             buckets=[0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0],
         )
-    except ValueError:
-        pass
+    except ValueError as e:
+        logging.warning("register_metrics failed (may be duplicate import): %s", e)
 
 
 register_metrics()
@@ -98,7 +98,8 @@ def setup_logging() -> None:
     handler = logging.StreamHandler(sys.stderr)
     handler.setFormatter(JsonFormatter())
     root.addHandler(handler)
-    root.setLevel(logging.INFO)
+    level_name = os.environ.get("PYTHON_LOG_LEVEL", "INFO").upper()
+    root.setLevel(getattr(logging, level_name, logging.INFO))
 
 
 logger = logging.getLogger("py-api")

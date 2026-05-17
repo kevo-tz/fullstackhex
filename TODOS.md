@@ -38,9 +38,9 @@
 
 ## P3 — Code Quality & Observability
 
-- [ ] **P3: `PYTHON_LOG_LEVEL` env var defined in 3 places, consumed nowhere** — `py-api/app/main.py:98` hardcodes `logging.INFO`. Fix: read env var with `getattr(logging, os.environ.get("PYTHON_LOG_LEVEL", "INFO").upper())`.
+- [x] **P3: `PYTHON_LOG_LEVEL` env var defined in 3 places, consumed nowhere** — `py-api/app/main.py:98` hardcodes `logging.INFO`. Fix: read env var with `getattr(logging, os.environ.get("PYTHON_LOG_LEVEL", "INFO").upper())`.
 
-- [ ] **P3: `register_metrics()` swallows all ValueError silently** — `py-api/app/main.py:59-60`: `except ValueError: pass`. No logging. Fix: log the error, catch only duplicate registration errors.
+- [x] **P3: `register_metrics()` swallows all ValueError silently** — `py-api/app/main.py:59-60`: `except ValueError: pass`. No logging. Fix: log the error, catch only duplicate registration errors.
 
 - [x] **P3: `normalize_route` missing 10+ route patterns** — `api/src/metrics.rs:50-72`. Notes, storage multipart, OAuth routes all map to `"unknown"`. Fix: add match arms for `/notes`, `/notes/*`, `/storage/multipart/*`, `/auth/providers`, `/auth/oauth/*`.
 
@@ -64,6 +64,6 @@
 
 - [x] **P3: Prometheus rule file `alerts.yml` not mounted** — `compose/monitoring/prometheus.yml:16` references `alerts.yml`, but `monitor.yml` doesn't mount it. Fix: add volume mount.
 
-- [ ] **P3: Docs outdated** — CI.md says 7 jobs (actual: 6), INFRASTRUCTURE.md lists stale image versions, `CLAUDE.md:75` references `scripts/pre-push-check.sh` which doesn't exist. Fix: sweep docs.
+- [x] **P3: Docs outdated** — CI.md says 7 jobs (actual: 6), INFRASTRUCTURE.md lists stale image versions, `CLAUDE.md:75` references `scripts/pre-push-check.sh` which doesn't exist. Fix: sweep docs.
 
-- [ ] **P3: Registration timing side-channel** — Rate limit (instant 429) fires before validation (~50ms 422). Attacker can distinguish rate-limited from invalid-input. Document as inherent tradeoff.
+- [x] **P3: Registration timing side-channel** — Rate limit (instant 429) fires before validation (~50ms 422). Attacker can distinguish rate-limited from invalid-input. Document as inherent tradeoff.

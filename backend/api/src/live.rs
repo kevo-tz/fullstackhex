@@ -98,7 +98,7 @@ pub async fn broadcast_event(state: &AppState, event: &LiveEvent) {
 pub async fn ws_handler(
     ws: WebSocketUpgrade,
     headers: HeaderMap,
-    uri: Uri,
+    _uri: Uri,
     State(state): State<Arc<AppState>>,
 ) -> impl IntoResponse {
     // Auth check: when auth is configured, require valid session cookie
@@ -140,7 +140,7 @@ pub async fn ws_handler(
                 .unwrap_or("");
             let origin_host = origin_host.split(':').next().unwrap_or("");
             // Case-insensitive hostname comparison per HTTP semantics
-            if origin_host.to_ascii_lowercase() != allowed_host.to_ascii_lowercase() {
+            if !origin_host.eq_ignore_ascii_case(allowed_host) {
                 tracing::warn!(%origin, "WS connection rejected — Origin not allowed");
                 return (StatusCode::FORBIDDEN, "{\"error\":\"Origin not allowed\"}")
                     .into_response();
@@ -263,10 +263,11 @@ struct WsUserGuard {
 
 impl Drop for WsUserGuard {
     fn drop(&mut self) {
-        // Best-effort: spawn a blocking task since Drop runs in any context
+        // Best-effort: spawn a blocking task since Drop runs in any context.
+        // The JoinHandle is dropped immediately (cannot await in Drop).
         let uid = self.user_id.clone();
         let conns = self.connections.clone();
-        match tokio::spawn(async move {
+        drop(tokio::spawn(async move {
             let mut map = conns.lock().await;
             if let Some(count) = map.get_mut(&uid) {
                 *count = count.saturating_sub(1);
@@ -274,16 +275,7 @@ impl Drop for WsUserGuard {
                     map.remove(&uid);
                 }
             }
-        }) {
-            Ok(_) => {}
-            Err(e) => {
-                tracing::warn!(
-                    error = %e,
-                    user_id = %uid,
-                    "WsUserGuard spawn failed — per-user counter may leak"
-                );
-            }
-        }
+        }));
     }
 }
 
@@ -385,7 +377,6 @@ mod tests {
     use super::*;
     use crate::metrics;
     use axum::routing::get;
-    use cache::CacheError;
     use tower::ServiceExt;
 
     #[test]

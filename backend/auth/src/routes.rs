@@ -786,11 +786,11 @@ mod route_tests {
 
     #[test]
     fn client_ip_trusts_forwarded_when_configured() {
-        std::env::set_var("TRUST_PROXY", "true");
+        unsafe { std::env::set_var("TRUST_PROXY", "true") };
         let mut headers = HeaderMap::new();
         headers.insert("x-forwarded-for", "192.168.1.1, 10.0.0.1".parse().unwrap());
         assert_eq!(client_ip(&headers), "192.168.1.1");
-        std::env::remove_var("TRUST_PROXY");
+        unsafe { std::env::remove_var("TRUST_PROXY") };
     }
 
     #[test]

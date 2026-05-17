@@ -139,7 +139,8 @@ pub async fn ws_handler(
                 .next()
                 .unwrap_or("");
             let origin_host = origin_host.split(':').next().unwrap_or("");
-            if origin_host != allowed_host {
+            // Case-insensitive hostname comparison per HTTP semantics
+            if origin_host.to_ascii_lowercase() != allowed_host.to_ascii_lowercase() {
                 tracing::warn!(%origin, "WS connection rejected — Origin not allowed");
                 return (StatusCode::FORBIDDEN, "{\"error\":\"Origin not allowed\"}")
                     .into_response();

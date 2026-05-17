@@ -177,7 +177,10 @@ pub(crate) fn extract_bearer(
 ) -> Option<AuthUser> {
     let header = req.headers().get("authorization")?;
     let value = header.to_str().ok()?;
-    let token = value.strip_prefix("Bearer ")?;
+    // Case-insensitive Bearer prefix per RFC 9110 Section 11.6.2
+    let token = value
+        .strip_prefix("bearer ")
+        .or_else(|| value.strip_prefix("Bearer "))?;
 
     let claims = auth_service.jwt.validate_token(token).ok()?;
     Some(AuthUser {

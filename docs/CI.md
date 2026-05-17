@@ -169,22 +169,21 @@ bun outdated               # Check for outdated packages
 
 ## Workflow File Structure
 
-The CI workflow (`.github/workflows/ci.yml`) runs seven jobs: `rust`, `python`, `frontend`, `smoke` (cross-layer), `e2e` (full-stack end-to-end with real services), `infra`, and `security`.
+The CI workflow (`.github/workflows/ci.yml`) runs six jobs: `rust`, `python`, `frontend`, `e2e` (full-stack end-to-end with real services), `infra`, and `security`.
 
 All source files, configs, and tests ship in the repo. CI jobs check out the repo and run directly — no scaffolding step required.
 
-The `smoke` job also runs `cargo sqlx prepare --check` to verify offline metadata is up to date.
+The `rust` job also runs `cargo sqlx prepare --check` to verify offline metadata is up to date.
 
 The `e2e` job starts a full backend (Rust with PostgreSQL + Redis) and frontend, then runs Playwright-based e2e tests in \`frontend/tests/e2e/playwright/\`. It uses a dedicated `JWT_SECRET` and runs with `AUTH_MODE=cookie` for full auth flow testing.
 
 ```yaml
 jobs:
-  rust:    # fmt + clippy + cargo test (including socket integration)
+  rust:    # fmt + clippy + sqlx check + cargo test
   python:  # ruff + pytest
   frontend: # lint + typecheck + vitest + build
-  smoke:   # cross-layer test run + sqlx offline check
   e2e:     # full-stack e2e with backend + frontend + real services
-  infra:   # compose validation, Docker builds, performance check
+  infra:   # compose validation, Docker builds, Docker config checks
   security: # detect-secrets + gitleaks
 ```
 

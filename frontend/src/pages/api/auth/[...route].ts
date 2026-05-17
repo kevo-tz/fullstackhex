@@ -34,16 +34,10 @@ export const ALL: APIRoute = async ({ request, params }) => {
   try {
     const backendRes = await fetch(url, init);
 
-    const responseHeaders = new Headers();
-    responseHeaders.set(
-      "content-type",
-      backendRes.headers.get("content-type") || "application/json",
-    );
-    // Forward Set-Cookie headers so login form auth session works
-    const setCookieHeaders = backendRes.headers.getSetCookie();
-    for (const cookie of setCookieHeaders) {
-      responseHeaders.append("set-cookie", cookie);
-    }
+    // Forward all backend response headers (security headers, content-type,
+    // set-cookie, caching, etc.) so the auth proxy is fully transparent.
+    // Using Headers() constructor which normalizes header names.
+    const responseHeaders = new Headers(backendRes.headers);
 
     return new Response(backendRes.body, {
       status: backendRes.status,

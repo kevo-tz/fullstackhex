@@ -209,8 +209,9 @@ pub async fn ws_handler(
 
 /// Authenticate a WebSocket connection via session cookie.
 ///
-/// Extracts the `session=` cookie from the `Cookie` header, looks up the
-/// session in Redis, and returns the user_id on success.
+/// Extracts the `session=` cookie from the `Cookie` header, deserializes the
+/// `Session` struct from Redis, and returns the user_id on success.
+/// Returns `None` if the cookie is missing or the session is not found.
 async fn cookie_authenticated(headers: &HeaderMap, state: &AppState) -> Option<String> {
     let session_id = match headers
         .get("cookie")

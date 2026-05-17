@@ -18,6 +18,6 @@
 
 ## [DONE] Remove JWT fallback after v0.13.7 deploy window
 
-**Commit:** _(pending)_ — `backend/api/src/live.rs`
+**Commit:** `33da867` — `backend/api/src/live.rs`
 
 The fallback block in `cookie_authenticated()` that read old-format JWT sessions has been removed. All sessions are now stored as `Session` structs.

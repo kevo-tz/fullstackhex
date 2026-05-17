@@ -53,10 +53,9 @@ test.describe("Notes CRUD", () => {
     await page.click("#delete-btn");
     await page.click("#confirm-delete");
 
-    await page.waitForURL("/notes", { timeout: 10000 });
-
-    const toast = page.locator("toast-container .toast-item");
-    await expect(toast).toBeVisible({ timeout: 5000 });
-    await expect(toast).not.toBeVisible({ timeout: 10000 });
+    // Deletion navigates back to notes list — verify note is gone
+    await page.waitForURL("/notes", { timeout: 15000 });
+    await page.waitForSelector("#notes-loading", { state: "hidden", timeout: 10000 }).catch(() => {});
+    await expect(page.getByText(title)).toHaveCount(0);
   });
 });

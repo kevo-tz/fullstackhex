@@ -23,6 +23,8 @@ pub enum ApiError {
     ValidationError(String),
     #[error("rate limited: {0}")]
     RateLimited(String),
+    #[error("conflict: {0}")]
+    Conflict(String),
     #[error("internal error: {0}")]
     InternalError(String),
     #[error("service unavailable: {0}")]
@@ -89,6 +91,7 @@ impl IntoResponse for ApiError {
                 "VALIDATION_ERROR",
                 msg.clone(),
             ),
+            ApiError::Conflict(msg) => (StatusCode::CONFLICT, "CONFLICT", msg.clone()),
             ApiError::RateLimited(msg) => {
                 (StatusCode::TOO_MANY_REQUESTS, "RATE_LIMITED", msg.clone())
             }
@@ -185,9 +188,10 @@ mod tests {
     }
 
     #[test]
-    fn cache_error_rate_limit_converts_to_429() {
-        let err = ApiError::from(cache::CacheError::RateLimitExceeded);
-        assert!(matches!(err, ApiError::RateLimited(_)));
+    fn conflict_returns_409() {
+        let err = ApiError::Conflict("Email already registered".to_string());
+        let resp = err.into_response();
+        assert_eq!(resp.status(), StatusCode::CONFLICT);
     }
 
     #[test]

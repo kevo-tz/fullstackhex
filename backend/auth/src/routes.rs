@@ -83,6 +83,7 @@ pub struct TokenResponse {
     pub token_type: String,
     pub expires_in: u64,
     pub refresh_token: String,
+    pub csrf_token: String,
     pub user: UserInfo,
 }
 
@@ -147,7 +148,7 @@ pub async fn register(
         })?;
 
     if existing.is_some() {
-        return Err(ApiError::ValidationError("Invalid credentials".to_string()));
+        return Err(ApiError::Conflict("Email already registered".to_string()));
     }
 
     // Hash password
@@ -207,10 +208,11 @@ pub async fn register(
     super::cookies::set_cookie(&mut headers, "csrf_token", &csrf_token, jwt_expiry, false)?;
 
     let response = TokenResponse {
-        access_token,
+        access_token: access_token.clone(),
         refresh_token,
         token_type: "Bearer".to_string(),
         expires_in: state.auth.config.jwt_expiry,
+        csrf_token: csrf_token.clone(),
         user: UserInfo {
             id: user_id.0,
             email: body.email,
@@ -349,11 +351,16 @@ pub async fn login(
         )
         .await?;
 
+    let jwt_expiry = state.auth.config.jwt_expiry;
+    let refresh_expiry = state.auth.config.refresh_expiry;
+    let csrf_token = super::csrf::generate_csrf_token();
+
     let response = TokenResponse {
-        access_token,
+        access_token: access_token.clone(),
         refresh_token,
         token_type: "Bearer".to_string(),
-        expires_in: state.auth.config.jwt_expiry,
+        expires_in: jwt_expiry,
+        csrf_token: csrf_token.clone(),
         user: UserInfo {
             id: user_id,
             email,
@@ -362,8 +369,6 @@ pub async fn login(
         },
     };
 
-    let jwt_expiry = state.auth.config.jwt_expiry;
-    let refresh_expiry = state.auth.config.refresh_expiry;
     let mut headers = HeaderMap::new();
     super::cookies::set_cookie(
         &mut headers,
@@ -379,7 +384,6 @@ pub async fn login(
         refresh_expiry,
         true,
     )?;
-    let csrf_token = super::csrf::generate_csrf_token();
     super::cookies::set_cookie(&mut headers, "csrf_token", &csrf_token, jwt_expiry, false)?;
 
     let now = std::time::SystemTime::now()
@@ -439,15 +443,21 @@ pub async fn logout(
     tracing::info!(user_id = %auth_user.user_id, jti = %auth_user.jti, "user logged out");
 
     let mut headers = HeaderMap::new();
-    // Clear session cookie if one was set
-    if auth_user.session_id.is_some() {
-        headers.insert(
+    let mut clear = |name: &str, http_only: bool| {
+        let cookie = if http_only {
+            format!("{name}=; HttpOnly; Path=/; Max-Age=0; SameSite=Lax")
+        } else {
+            format!("{name}=; Path=/; Max-Age=0; SameSite=Lax")
+        };
+        headers.append(
             header::SET_COOKIE,
-            "session=; HttpOnly; Path=/; Max-Age=0; SameSite=Lax"
-                .parse()
-                .unwrap(),
+            cookie.parse().expect("valid Set-Cookie header"),
         );
-    }
+    };
+    clear("session", true);
+    clear("access_token", true);
+    clear("refresh_token", true);
+    clear("csrf_token", false);
 
     Ok((StatusCode::NO_CONTENT, headers))
 }
@@ -564,6 +574,7 @@ pub async fn refresh(
             refresh_token: new_refresh_token,
             token_type: "Bearer".to_string(),
             expires_in: state.auth.config.jwt_expiry,
+            csrf_token,
             user: UserInfo {
                 id: user_id,
                 email,
@@ -684,8 +695,7 @@ pub async fn oauth_callback(
         "INSERT INTO users (id, email, name, provider, password_hash)
          VALUES ($1, $2, $3, $4, NULL)
          ON CONFLICT (email) DO UPDATE SET
-           name = EXCLUDED.name,
-           provider = EXCLUDED.provider
+           name = EXCLUDED.name
          RETURNING id::text",
     )
     .bind(&id)
@@ -720,11 +730,13 @@ pub async fn oauth_callback(
 
     metrics::counter!("oauth_callbacks_total", "provider" => provider.to_string()).increment(1);
 
+    let csrf_token = super::csrf::generate_csrf_token();
     let response = TokenResponse {
         access_token,
         refresh_token,
         token_type: "Bearer".to_string(),
         expires_in: state.auth.config.jwt_expiry,
+        csrf_token,
         user: UserInfo {
             id: user_id,
             email: user_info.email,
@@ -962,5 +974,26 @@ mod route_tests {
         };
         let list = list_providers(&config);
         assert_eq!(list, vec!["google", "github"]);
+    }
+
+    #[test]
+    fn token_response_includes_csrf_token() {
+        let resp = TokenResponse {
+            access_token: "at".to_string(),
+            refresh_token: "rt".to_string(),
+            token_type: "Bearer".to_string(),
+            expires_in: 900,
+            csrf_token: "test-csrf-token".to_string(),
+            user: UserInfo {
+                id: "u1".to_string(),
+                email: "a@b.com".to_string(),
+                name: None,
+                provider: "local".to_string(),
+            },
+        };
+        let json = serde_json::to_value(&resp).unwrap();
+        assert_eq!(json["csrf_token"], "test-csrf-token");
+        assert_eq!(json["access_token"], "at");
+        assert_eq!(json["user"]["email"], "a@b.com");
     }
 }

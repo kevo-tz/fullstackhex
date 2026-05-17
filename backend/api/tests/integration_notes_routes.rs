@@ -204,7 +204,7 @@ async fn notes_create_list_get_delete() {
         .await
         .unwrap();
 
-    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(response.status(), StatusCode::NO_CONTENT);
 
     // GET deleted note → 404
     let response = app

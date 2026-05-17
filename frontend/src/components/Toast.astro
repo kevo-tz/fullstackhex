@@ -6,7 +6,7 @@ export interface Props {
 const { duration = 5000 } = Astro.props;
 ---
 
-<div id="toast-container" class="toast-container" data-duration={duration}></div>
+<toast-container class="toast-container" data-duration={duration}></toast-container>
 
 <script>
   class ToastContainer extends HTMLElement {

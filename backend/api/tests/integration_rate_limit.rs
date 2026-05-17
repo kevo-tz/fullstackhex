@@ -69,7 +69,7 @@ async fn full_state() -> Option<AppState> {
         ws_connection_permits: std::sync::Arc::new(tokio::sync::Semaphore::new(100)),
         ws_idle_timeout: Duration::from_secs(300),
         ws_shutdown: std::sync::Arc::new(tokio::sync::Notify::new()),
-        ws_user_connections: std::sync::Arc::new(tokio::sync::Mutex::new(
+        ws_user_connections: std::sync::Arc::new(std::sync::Mutex::new(
             std::collections::HashMap::new(),
         )),
         ws_per_user_max: 10,

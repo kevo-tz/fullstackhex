@@ -30,7 +30,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
-use tokio::sync::Mutex;
+use std::sync::Mutex;
 use tokio::sync::Notify;
 
 /// Redis pub/sub channel for live events.
@@ -178,7 +178,7 @@ pub async fn ws_handler(
     // TOCTOU race where concurrent connections from the same user both pass
     let user_id = maybe_user_id.clone();
     if let Some(ref uid) = maybe_user_id {
-        let mut conns = state.ws_user_connections.lock().await;
+        let mut conns = state.ws_user_connections.lock().unwrap();
         let current = *conns.get(uid).unwrap_or(&0);
         if current >= state.ws_per_user_max {
             tracing::warn!(user_id = %uid, "WS connection rejected — per-user limit reached");
@@ -262,9 +262,8 @@ struct WsUserGuard {
 impl Drop for WsUserGuard {
     fn drop(&mut self) {
         let uid = &self.user_id;
-        if let Ok(mut map) = self.connections.try_lock()
-            && let Some(count) = map.get_mut(uid)
-        {
+        let mut map = self.connections.lock().unwrap();
+        if let Some(count) = map.get_mut(uid) {
             *count = count.saturating_sub(1);
             if *count == 0 {
                 map.remove(uid);
@@ -453,7 +452,7 @@ mod tests {
                 ws_connection_permits: std::sync::Arc::new(tokio::sync::Semaphore::new(100)),
                 ws_idle_timeout: std::time::Duration::from_secs(300),
                 ws_shutdown: std::sync::Arc::new(tokio::sync::Notify::new()),
-                ws_user_connections: std::sync::Arc::new(tokio::sync::Mutex::new(
+                ws_user_connections: std::sync::Arc::new(std::sync::Mutex::new(
                     std::collections::HashMap::new(),
                 )),
                 ws_per_user_max: 10,
@@ -493,7 +492,7 @@ mod tests {
             ws_connection_permits: std::sync::Arc::new(tokio::sync::Semaphore::new(100)),
             ws_idle_timeout: std::time::Duration::from_secs(300),
             ws_shutdown: std::sync::Arc::new(tokio::sync::Notify::new()),
-            ws_user_connections: std::sync::Arc::new(tokio::sync::Mutex::new(
+            ws_user_connections: std::sync::Arc::new(std::sync::Mutex::new(
                 std::collections::HashMap::new(),
             )),
             ws_per_user_max: 10,

@@ -238,7 +238,18 @@ async fn cookie_authenticated(headers: &HeaderMap, state: &AppState) -> Option<S
                 None
             }
         };
-    session.map(|s| s.user_id)
+
+    if let Some(s) = session {
+        return Some(s.user_id);
+    }
+
+    // Fallback: old-format sessions stored as raw JWT strings (pre-v0.13.7).
+    // TODO: remove after v0.13.7 deploy window
+    let auth_service = state.auth.as_ref()?;
+    let old_session: Option<String> = redis.cache_get("session", &session_id).await.ok()?;
+    let token = old_session.as_ref()?;
+    let claims = auth_service.jwt.validate_token(token).ok()?;
+    Some(claims.sub)
 }
 
 /// Drop guard that decrements the active connection counter,

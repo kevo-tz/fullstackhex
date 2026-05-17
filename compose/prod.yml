@@ -111,6 +111,7 @@ services:
     environment:
       PYTHON_LOG_LEVEL: ${PYTHON_LOG_LEVEL:-info}
       PYTHON_SIDECAR_SOCKET: /tmp/sidecar/py-api.sock
+      SIDECAR_SHARED_SECRET: ${SIDECAR_SHARED_SECRET}
     volumes:
       - sidecar_socket:/tmp/sidecar
     depends_on:
@@ -215,7 +216,9 @@ services:
       --maxmemory ${REDIS_MAX_MEMORY:-512mb}
       --maxmemory-policy ${REDIS_MAXMEMORY_POLICY:-allkeys-lru}
       --appendonly ${REDIS_APPENDONLY:-yes}
-      --save ${REDIS_SAVE:-900 1 300 10 60 10000}
+      --save 900 1
+      --save 300 10
+      --save 60 10000
       --requirepass ${REDIS_PASSWORD:?REDIS_PASSWORD must be set in .env}
     volumes:
       - redis_data:/data

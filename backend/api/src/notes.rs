@@ -255,7 +255,7 @@ pub async fn delete_note(
 
     if res.rows_affected() > 0 {
         ::metrics::counter!("notes_deleted_total").increment(1);
-        Ok((StatusCode::OK, "{\"status\":\"deleted\"}"))
+        Ok((StatusCode::NO_CONTENT, ""))
     } else {
         Err(ApiError::NotFound("note not found".into()))
     }

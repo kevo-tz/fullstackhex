@@ -47,6 +47,7 @@ const { id = "modal", title = "" } = Astro.props;
 
 <style>
   .modal { display: contents; }
+  .modal:not([open]) .modal-backdrop { display: none; }
   .modal::backdrop { background: rgba(0,0,0,0.6); }
   .modal-backdrop {
     position: fixed;

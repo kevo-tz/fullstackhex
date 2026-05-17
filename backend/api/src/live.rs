@@ -93,33 +93,17 @@ pub async fn broadcast_event(state: &AppState, event: &LiveEvent) {
 ///
 /// Returns 404 Not Found when Redis is disabled — the frontend falls back
 /// to HTTP polling automatically. When auth is configured (`state.auth` is
-/// `Some`), the endpoint requires either a valid `?token=<jwt>` query param
-/// or a valid session cookie. Returns 401 Unauthorized when auth is
-/// configured but no valid credentials are provided.
+/// `Some`), the endpoint requires a valid session cookie. Returns 401
+/// Unauthorized when auth is configured but no valid credentials are provided.
 pub async fn ws_handler(
     ws: WebSocketUpgrade,
     headers: HeaderMap,
     uri: Uri,
     State(state): State<Arc<AppState>>,
 ) -> impl IntoResponse {
-    // Auth check: when auth is configured, require valid credentials
-    let maybe_user_id = if let Some(ref auth_service) = state.auth {
-        match (&state.redis, token_from_query(&uri)) {
-            // Token from query param: validate + blacklist check + extract user_id
-            (Some(redis), Some(token)) => match auth_service.jwt.validate_token(&token) {
-                Ok(claims) => {
-                    if is_jti_blacklisted(redis, &claims.jti).await {
-                        tracing::info!(jti = %claims.jti, "WS connection rejected — blacklisted JWT");
-                        None
-                    } else {
-                        Some(claims.sub)
-                    }
-                }
-                Err(_) => None,
-            },
-            // Try cookie auth
-            _ => cookie_authenticated(&headers, &state).await,
-        }
+    // Auth check: when auth is configured, require valid session cookie
+    let maybe_user_id = if let Some(ref _auth_service) = state.auth {
+        cookie_authenticated(&headers, &state).await
     } else {
         None
     };
@@ -222,22 +206,6 @@ pub async fn ws_handler(
     })
 }
 
-/// Extract JWT token from WebSocket upgrade URI query parameter.
-///
-/// Browser WebSocket API does not support custom headers, so the token
-/// is passed as a query parameter: `wss://host/api/live?token=<jwt>`.
-/// JWT tokens are base64url-encoded (alphanumeric + `.` + `-` + `_`) —
-/// no percent-decoding is needed for standard tokens.
-fn token_from_query(uri: &Uri) -> Option<String> {
-    let query = uri.query()?;
-    for pair in query.split('&') {
-        if let Some(value) = pair.strip_prefix("token=") {
-            return Some(value.to_string());
-        }
-    }
-    None
-}
-
 /// Authenticate a WebSocket connection via session cookie.
 ///
 /// Extracts the `session=` cookie from the `Cookie` header, looks up the
@@ -272,19 +240,6 @@ async fn cookie_authenticated(
         }
     };
     session.map(|s| s.user_id)
-}
-
-/// Check Redis blacklist for a JWT identifier.
-/// Returns `false` (allow) on cache-miss. On Redis error, rejects (fail-closed).
-async fn is_jti_blacklisted(redis: &cache::RedisClient, jti: &str) -> bool {
-    match redis.cache_get::<bool>("blacklist", jti).await {
-        Ok(Some(true)) => true,
-        Ok(_) => false,
-        Err(e) => {
-            tracing::warn!(error = %e, "Redis blacklist check failed — rejecting JWT (fail-closed)");
-            true
-        }
-    }
 }
 
 /// Drop guard that decrements the active connection counter,

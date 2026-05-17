@@ -138,7 +138,7 @@ Open-source S3-compatible object storage server.
 
 | Property | Value |
 |----------|-------|
-| Image | `rustfs/rustfs:0.8.1` |
+| Image | `rustfs/rustfs:1.0.0-beta.3` |
 | Container | `fullstackhex_rustfs` |
 | API Port | `9000` (configurable: **RUSTFS_API_PORT**) |
 | Console Port | `9001` (configurable: **RUSTFS_CONSOLE_PORT**) |
@@ -239,11 +239,11 @@ The canonical dev configuration is at [`compose/dev.yml`](../compose/dev.yml). K
 |---------|-------|------|-------|
 | postgres | postgres:18-alpine | 5432 | `POSTGRES_PASSWORD` required |
 | redis | redis:8-alpine | 6379 | `REDIS_PASSWORD` required, AOF enabled |
-| rustfs | rustfs/rustfs:0.8.1 | 9000, 9001 | S3-compatible, browser UI |
+| rustfs | rustfs/rustfs:1.0.0-beta.3 | 9000, 9001 | S3-compatible, browser UI |
 | adminer | adminer:5.1.0 | 8080 (tools profile) | DB admin UI |
 | redis-commander | rediscommander/redis-commander:0.8.0 | 8081 (tools profile) | Redis admin UI |
-| redis-exporter | oliver006/redis_exporter:v1.67.0 | 9121 | Prometheus Redis metrics |
-| postgres-exporter | prometheuscommunity/postgres-exporter:v0.16.0 | 9187 | Prometheus PG metrics |
+| redis-exporter | oliver006/redis_exporter:v1.83.0 | 9121 | Prometheus Redis metrics |
+| postgres-exporter | prometheuscommunity/postgres-exporter:v0.19.1 | 9187 | Prometheus PG metrics |
 
 All management ports are bound to `127.0.0.1` to prevent external access. See `compose/dev.yml` for the full configuration including health checks, resource limits, and environment variables.
 
@@ -255,7 +255,7 @@ All management ports are bound to `127.0.0.1` to prevent external access. See `c
 # Services:
 #   - postgres:18-alpine  (port 5432) - Primary database
 #   - redis:8-alpine      (port 6379) - Cache layer
-#   - rustfs/rustfs:0.8.1 (ports 9000, 9001) - S3-compatible object storage
+#   - rustfs/rustfs:1.0.0-beta.3 (ports 9000, 9001) - S3-compatible object storage
 #
 # Networks: fullstackhex-network (bridge)
 # Volumes: postgres_data, redis_data, rustfs_data (persistent)
@@ -332,7 +332,7 @@ services:
         max-file: "3"
 
   rustfs:
-    image: rustfs/rustfs:0.8.1
+    image: rustfs/rustfs:1.0.0-beta.3
     container_name: fullstackhex_rustfs
     restart: unless-stopped
     ports:
@@ -634,7 +634,7 @@ Use `compose/prod.yml` to run all services as Docker containers with no external
 | frontend | `Dockerfile.frontend` | 4321 | Astro SSR node adapter |
 | postgres | `postgres:18-alpine` | 5432 | Internal only (no host binding) |
 | redis | `redis:8-alpine` | 6379 | Internal only |
-| rustfs | `rustfs/rustfs:0.8.1` | 9000 / 9001 | Internal only |
+| rustfs | `rustfs/rustfs:1.0.0-beta.3` | 9000 / 9001 | Internal only |
 
 ### Unix Socket in Production
 
@@ -738,8 +738,8 @@ docker compose -f compose/monitor.yml up -d
 
 | Service | Image | Port | Purpose |
 |---------|-------|------|---------|
-| prometheus | `prom/prometheus:v3.3.1` | `9090` | Metrics scraping + storage |
-| grafana | `grafana/grafana:11.2.0` | `3000` | Dashboards |
+| prometheus | `prom/prometheus:v3.11.3` | `9090` | Metrics scraping + storage |
+| grafana | `grafana/grafana:13.0.1` | `3000` | Dashboards |
 
 ### Configuration Files
 

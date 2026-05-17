@@ -118,7 +118,7 @@ pub async fn ws_handler(
                 Err(_) => None,
             },
             // Try cookie auth
-            _ => cookie_authenticated(&headers, auth_service, &state).await,
+            _ => cookie_authenticated(&headers, &state).await,
         }
     } else {
         None
@@ -241,11 +241,9 @@ fn token_from_query(uri: &Uri) -> Option<String> {
 /// Authenticate a WebSocket connection via session cookie.
 ///
 /// Extracts the `session=` cookie from the `Cookie` header, looks up the
-/// session token in Redis, and validates it with the JWT service.
-/// Returns the user_id on success.
+/// session in Redis, and returns the user_id on success.
 async fn cookie_authenticated(
     headers: &HeaderMap,
-    auth_service: &auth::AuthService,
     state: &AppState,
 ) -> Option<String> {
     let session_id = match headers
@@ -266,26 +264,14 @@ async fn cookie_authenticated(
         None => return None,
     };
 
-    let token: Option<String> = match redis.cache_get("session", &session_id).await {
-        Ok(t) => t,
+    let session: Option<cache::session::Session> = match redis.cache_get("session", &session_id).await {
+        Ok(s) => s,
         Err(e) => {
             tracing::warn!(error = %e, "Redis session lookup failed in cookie_authenticated");
             None
         }
     };
-    match token {
-        Some(t) => match auth_service.jwt.validate_token(&t) {
-            Ok(claims) => {
-                if is_jti_blacklisted(&redis, &claims.jti).await {
-                    None
-                } else {
-                    Some(claims.sub)
-                }
-            }
-            Err(_) => None,
-        },
-        None => None,
-    }
+    session.map(|s| s.user_id)
 }
 
 /// Check Redis blacklist for a JWT identifier.
@@ -434,6 +420,7 @@ mod tests {
     use super::*;
     use crate::metrics;
     use axum::routing::get;
+    use cache::CacheError;
     use tower::ServiceExt;
 
     #[test]

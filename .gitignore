@@ -60,6 +60,10 @@ leankg.yaml
 # Script outputs
 .backup/
 .performance/
+
+# Playwright
+playwright-report/
+test-results/
 .gstack/
 py-api/.coverage
 frontend/coverage/

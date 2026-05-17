@@ -81,7 +81,7 @@ jobs:
         env:
           DATABASE_URL: postgres://postgres:postgres@localhost:5432/testdb
           REDIS_URL: redis://localhost:6379
-        run: cargo test --locked --workspace
+        run: cargo test --locked --workspace -- --test-threads=1
 
   python:
     name: python
@@ -227,9 +227,11 @@ jobs:
           DATABASE_URL: postgres://postgres:postgres@localhost:5432/testdb
           REDIS_URL: redis://localhost:6379
           JWT_SECRET: dummy_jwt_secret_for_e2e_tests
-          AUTH_MODE: bearer
+          AUTH_MODE: both
           RUSTFS_ENDPOINT: ""
           PYTHON_SIDECAR_SOCKET: ""
+          RATE_LIMIT_REGISTER_MAX: 20
+          RATE_LIMIT_LOGIN_IP_MAX: 50
         working-directory: backend
         run: |
           cargo run --locked -p api &
@@ -238,6 +240,32 @@ jobs:
             sleep 1
           done
           echo "Backend ready"
+
+      - name: Validate WebSocket upgrade
+        run: |
+          # Register a test user to get a valid JWT (auth is required for WS)
+          resp=$(curl -s -X POST http://localhost:8001/auth/register \
+            -H "Content-Type: application/json" \
+            -d '{"email":"ws-ci@test.local","password":"test-pw-12345","name":"WSCi"}')
+          token=$(echo "$resp" | python3 -c "import sys,json; print(json.load(sys.stdin)['access_token'])" 2>/dev/null || \
+                  echo "$resp" | grep -o '"access_token":"[^"]*"' | cut -d'"' -f4)
+          if [ -z "$token" ]; then
+            echo "Failed to get JWT token, got: $resp"
+            exit 1
+          fi
+          # Validate WS upgrade with the token
+          status=$(curl -s -o /dev/null -w '%{http_code}' \
+            -H "Upgrade: websocket" \
+            -H "Connection: Upgrade" \
+            -H "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==" \
+            -H "Sec-WebSocket-Version: 13" \
+            "http://localhost:8001/live?token=${token}")
+          if [ "$status" = "101" ]; then
+            echo "✓ WebSocket upgrade successful (101)"
+          else
+            echo "✗ Expected 101, got $status"
+            exit 1
+          fi
 
       - name: Install frontend deps
         working-directory: frontend
@@ -248,21 +276,40 @@ jobs:
         env:
           VITE_RUST_BACKEND_URL: http://localhost:8001
         run: |
-          bun run build
-          bun run preview &
+          bun run dev &
           for i in $(seq 1 30); do
             curl -s http://localhost:4321 && break
             sleep 1
           done
           echo "Frontend ready"
 
-      - name: Run e2e tests
+      - name: Run e2e tests (vitest)
         working-directory: frontend
         env:
           VITE_RUST_BACKEND_URL: http://localhost:8001
           FRONTEND_URL: http://localhost:4321
         run: |
           bun run test:e2e
+
+      - name: Install Playwright browsers
+        working-directory: frontend
+        run: |
+          npx playwright install --with-deps chromium
+
+      - name: Run e2e tests (Playwright)
+        working-directory: frontend
+        env:
+          FRONTEND_URL: http://localhost:4321
+        run: |
+          bun run test:e2e:playwright
+
+      - name: Upload Playwright report on failure
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 7
 
   infra:
     name: infra

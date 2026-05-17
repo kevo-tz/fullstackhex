@@ -154,6 +154,12 @@ impl RedisClient {
 
         let (_ttl, label) = backoff_params(count);
 
+        // Counts below 5 are tracking-only — never block, just let failures
+        // accumulate until the threshold is reached.
+        if count < 5 {
+            return Ok(());
+        }
+
         let remaining_ttl: i64 = self
             .client
             .ttl(&key)
@@ -205,7 +211,7 @@ impl RedisClient {
 }
 
 /// Returns (ttl_seconds, label) for the given failure count.
-fn backoff_params(count: u64) -> (u64, &'static str) {
+pub(crate) fn backoff_params(count: u64) -> (u64, &'static str) {
     if count >= 20 {
         (1800, "30min") // 30 minutes
     } else if count >= 10 {

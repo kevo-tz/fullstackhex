@@ -3,6 +3,7 @@
 //! Provides JWT + sessions + OAuth authentication.
 //! Auth validates in Rust only — Python sidecar gets auth via HMAC-signed headers.
 
+pub mod cookies;
 pub mod csrf;
 pub mod jwt;
 pub mod metrics;
@@ -10,6 +11,58 @@ pub mod middleware;
 pub mod oauth;
 pub mod password;
 pub mod routes;
+
+/// Rate limit thresholds for auth endpoints.
+///
+/// All values can be overridden by environment variables.
+#[derive(Debug, Clone)]
+pub struct RateLimitConfig {
+    /// Max registrations per IP per window (default: 5).
+    pub register_max: u64,
+    /// Registration window in seconds (default: 900 = 15 min).
+    pub register_window_secs: u64,
+    /// Max login attempts per email per window (default: 5).
+    pub login_email_max: u64,
+    /// Login email window in seconds (default: 300 = 5 min).
+    pub login_email_window_secs: u64,
+    /// Max login attempts per IP per window (default: 10).
+    pub login_ip_max: u64,
+    /// Login IP window in seconds (default: 300 = 5 min).
+    pub login_ip_window_secs: u64,
+}
+
+impl Default for RateLimitConfig {
+    fn default() -> Self {
+        Self {
+            register_max: 5,
+            register_window_secs: 900,
+            login_email_max: 5,
+            login_email_window_secs: 300,
+            login_ip_max: 10,
+            login_ip_window_secs: 300,
+        }
+    }
+}
+
+impl RateLimitConfig {
+    fn from_env() -> Self {
+        Self {
+            register_max: Self::env_or("RATE_LIMIT_REGISTER_MAX", 5),
+            register_window_secs: Self::env_or("RATE_LIMIT_REGISTER_WINDOW", 900),
+            login_email_max: Self::env_or("RATE_LIMIT_LOGIN_EMAIL_MAX", 5),
+            login_email_window_secs: Self::env_or("RATE_LIMIT_LOGIN_EMAIL_WINDOW", 300),
+            login_ip_max: Self::env_or("RATE_LIMIT_LOGIN_IP_MAX", 10),
+            login_ip_window_secs: Self::env_or("RATE_LIMIT_LOGIN_IP_WINDOW", 300),
+        }
+    }
+
+    fn env_or(key: &str, default: u64) -> u64 {
+        std::env::var(key)
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(default)
+    }
+}
 
 /// Authentication configuration.
 #[derive(Debug, Clone)]
@@ -39,6 +92,8 @@ pub struct AuthConfig {
     /// When true (default), allow requests through when blacklist check fails (Redis unavailable).
     /// When false, reject the request if the blacklist check cannot complete.
     pub fail_open_on_redis_error: bool,
+    /// Rate limit configuration for auth endpoints.
+    pub rate_limits: RateLimitConfig,
 }
 
 /// Auth mode determines how authentication is extracted from requests.
@@ -103,6 +158,7 @@ impl AuthConfig {
                 .ok()
                 .and_then(|v| v.parse::<bool>().ok())
                 .unwrap_or(true),
+            rate_limits: RateLimitConfig::from_env(),
         })
     }
 }
@@ -164,6 +220,9 @@ mod tests {
         assert_eq!(c.jwt_issuer, "fullstackhex");
         assert_eq!(c.jwt_expiry, 900);
         assert_eq!(c.refresh_expiry, 604800);
+        assert_eq!(c.rate_limits.register_max, 5);
+        assert_eq!(c.rate_limits.login_email_max, 5);
+        assert_eq!(c.rate_limits.login_ip_window_secs, 300);
 
         if let Some(v) = secret_old {
             unsafe { std::env::set_var("JWT_SECRET", v) };
@@ -192,6 +251,7 @@ mod tests {
             oauth_redirect_url: None,
             sidecar_shared_secret: None,
             fail_open_on_redis_error: true,
+            rate_limits: Default::default(),
         };
         let svc = AuthService::new(config);
         let token = svc

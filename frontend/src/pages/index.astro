@@ -3,138 +3,6 @@ import Layout from "../components/Layout.astro";
 ---
 
 <Layout title="FullStackHex">
-  <style>
-    .grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-      gap: 1rem;
-      margin-bottom: 2rem;
-    }
-
-    .card {
-      border: 1px solid #1e293b;
-      border-radius: 8px;
-      padding: 1.25rem;
-      background: #111827;
-      transition: border-color 0.2s;
-    }
-
-    .card-label {
-      font-size: 0.7rem;
-      letter-spacing: 0.1em;
-      text-transform: uppercase;
-      color: #475569;
-      margin-bottom: 0.75rem;
-    }
-
-    .status-row {
-      display: flex;
-      align-items: center;
-      gap: 0.5rem;
-    }
-
-    .dot {
-      width: 8px;
-      height: 8px;
-      border-radius: 50%;
-      flex-shrink: 0;
-      background: #334155;
-    }
-    .dot.ok       { background: var(--accent); box-shadow: 0 0 6px var(--accent-dot-shadow); }
-    .dot.degraded { background: var(--dot-amber); box-shadow: 0 0 6px #f59e0b88; }
-    .dot.error    { background: #ef4444; box-shadow: 0 0 6px #ef444488; }
-    .dot.loading  { background: #334155; animation: pulse 1.2s ease-in-out infinite; }
-
-    @keyframes pulse { 0%,100% { opacity: 1 } 50% { opacity: 0.3 } }
-
-    .status-text { font-size: 0.9rem; color: #94a3b8; }
-
-    .detail {
-      margin-top: 0.75rem;
-      font-size: 0.7rem;
-      color: var(--text-muted);
-      white-space: pre-wrap;
-      word-break: break-word;
-      max-height: 80px;
-      overflow: auto;
-    }
-
-    .diagnostic {
-      margin-top: 0.5rem;
-      padding: 0.5rem;
-      border: 1px solid var(--diag-border);
-      border-radius: 4px;
-      background: var(--diag-bg);
-      font-size: 0.7rem;
-      color: var(--error-text);
-      display: none;
-    }
-    .diagnostic.visible { display: block; }
-
-    .outage-block {
-      margin-top: 1.5rem;
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      background: var(--card-bg-alt);
-      padding: 1rem;
-      display: none;
-    }
-    .outage-block.visible { display: block; }
-    .outage-block summary {
-      cursor: pointer;
-      font-size: 0.75rem;
-      color: var(--text-muted);
-      user-select: none;
-    }
-    .outage-block pre {
-      margin-top: 0.75rem;
-      font-size: 0.72rem;
-      color: var(--text-muted);
-      overflow: auto;
-    }
-
-    .raw-block {
-      margin-top: 1.5rem;
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      background: var(--card-bg-alt);
-      padding: 1rem;
-    }
-    .raw-block summary {
-      cursor: pointer;
-      font-size: 0.75rem;
-      color: var(--text-muted);
-      user-select: none;
-    }
-    .raw-block pre {
-      margin-top: 0.75rem;
-      font-size: 0.72rem;
-      color: var(--text-muted);
-      overflow: auto;
-      max-height: 300px;
-    }
-
-    .dash-header { margin-bottom: 2.5rem; text-align: center; }
-    .dash-header h1 { font-size: 2rem; font-weight: 700; letter-spacing: -0.02em; color: var(--text); }
-    .dash-header p  { margin-top: 0.5rem; color: var(--text-muted); font-size: 0.875rem; }
-
-    .refresh-btn {
-      display: inline-flex;
-      align-items: center;
-      gap: 0.4rem;
-      margin-top: 1rem;
-      padding: 0.4rem 0.9rem;
-      border: 1px solid var(--border);
-      border-radius: 6px;
-      background: transparent;
-      color: var(--text-muted);
-      font-family: inherit;
-      font-size: 0.75rem;
-      cursor: pointer;
-      transition: border-color 0.15s, color 0.15s;
-    }
-    .refresh-btn:hover { border-color: #334155; color: #94a3b8; }
-  </style>
 
   <div class="dash-header">
     <h1>FullStackHex</h1>
@@ -147,6 +15,7 @@ import Layout from "../components/Layout.astro";
           <div class="status-row">
             <div class="dot loading" id="dot-rust"></div>
             <span class="status-text" id="text-rust">checking…</span>
+          <span class="sr-only" id="sr-rust">rust: checking…</span>
           </div>
           <div class="detail" id="detail-rust"></div>
           <div class="diagnostic" id="diag-rust"></div>
@@ -157,6 +26,7 @@ import Layout from "../components/Layout.astro";
           <div class="status-row">
             <div class="dot loading" id="dot-db"></div>
             <span class="status-text" id="text-db">checking…</span>
+          <span class="sr-only" id="sr-db">db: checking…</span>
           </div>
           <div class="detail" id="detail-db"></div>
           <div class="diagnostic" id="diag-db"></div>
@@ -167,6 +37,7 @@ import Layout from "../components/Layout.astro";
           <div class="status-row">
             <div class="dot loading" id="dot-redis"></div>
             <span class="status-text" id="text-redis">checking…</span>
+          <span class="sr-only" id="sr-redis">redis: checking…</span>
           </div>
           <div class="detail" id="detail-redis"></div>
           <div class="diagnostic" id="diag-redis"></div>
@@ -177,6 +48,7 @@ import Layout from "../components/Layout.astro";
           <div class="status-row">
             <div class="dot loading" id="dot-storage"></div>
             <span class="status-text" id="text-storage">checking…</span>
+          <span class="sr-only" id="sr-storage">storage: checking…</span>
           </div>
           <div class="detail" id="detail-storage"></div>
           <div class="diagnostic" id="diag-storage"></div>
@@ -187,6 +59,7 @@ import Layout from "../components/Layout.astro";
           <div class="status-row">
             <div class="dot loading" id="dot-python"></div>
             <span class="status-text" id="text-python">checking…</span>
+          <span class="sr-only" id="sr-python">python: checking…</span>
           </div>
           <div class="detail" id="detail-python"></div>
           <div class="diagnostic" id="diag-python"></div>
@@ -197,11 +70,14 @@ import Layout from "../components/Layout.astro";
           <div class="status-row">
             <div class="dot loading" id="dot-auth"></div>
             <span class="status-text" id="text-auth">checking…</span>
+          <span class="sr-only" id="sr-auth">auth: checking…</span>
           </div>
           <div class="detail" id="detail-auth"></div>
           <div class="diagnostic" id="diag-auth"></div>
         </div>
       </div>
+
+      <div id="sr-status" aria-live="polite" class="sr-only"></div>
 
       <div class="outage-block" id="outage-block">
         <details>
@@ -224,17 +100,22 @@ make status</pre>
       </div>
 
     <script>
-      import { SERVICE_IDS, isFullOutage as checkFullOutage } from "../lib/health";
+      import { SERVICE_IDS, isFullOutage, type HealthEntry } from "../lib/health";
       import { connectLiveStream } from "../lib/live";
 
       let wsFallbackTimer: ReturnType<typeof setTimeout> | null = null;
       let wsDisconnected = true;
+      let wsEverConnected = false;
 
       function setStatus(id: string, status: string, label: string) {
         const dot  = document.getElementById("dot-"  + id);
         const text = document.getElementById("text-" + id);
         if (dot)  dot.className    = "dot " + (status || "loading");
-        if (text) text.textContent = label || status || "…";
+        if (text) {
+          text.textContent = label || status || "…";
+          const sr = document.getElementById("sr-" + id);
+          if (sr) sr.textContent = id + ": " + (label || status || "…");
+        }
       }
 
       function setDetail(id: string, text: string) {
@@ -258,8 +139,6 @@ make status</pre>
         const el = document.getElementById("outage-block");
         if (el) el.classList.toggle("visible", visible);
       }
-
-      const isFullOutage = checkFullOutage;
 
       let retryTimer: ReturnType<typeof setTimeout> | null = null;
       let retryDelay = 1000;
@@ -298,7 +177,7 @@ make status</pre>
           if (rawJson) rawJson.textContent = JSON.stringify(data, null, 2);
 
           for (const svc of SERVICE_IDS) {
-            const entry = data[svc] as Record<string, unknown> | undefined;
+            const entry = data[svc] as HealthEntry | undefined;
             if (!entry) {
               setStatus(svc, "error", "unknown");
               continue;
@@ -403,6 +282,7 @@ make status</pre>
           if (event.type === "connection_status") {
             if (event.data.status === "connected") {
               wsDisconnected = false;
+              wsEverConnected = true;
               cancelRetry();
               if (wsFallbackTimer !== null) {
                 clearTimeout(wsFallbackTimer);
@@ -410,14 +290,18 @@ make status</pre>
               }
             } else if (event.data.status === "offline") {
               wsDisconnected = true;
-              if (wsFallbackTimer === null) {
-                wsFallbackTimer = setTimeout(() => {
-                  wsFallbackTimer = null;
+              if (wsEverConnected && wsFallbackTimer === null) {
+                // WS was connected but dropped — start periodic polling
+                console.log("[dashboard] WS disconnected — polling every 5s");
+                fetchHealth();
+                wsFallbackTimer = setInterval(() => {
                   if (wsDisconnected) {
-                    console.log("[dashboard] WS unavailable — falling back to polling");
                     fetchHealth();
+                  } else {
+                    clearInterval(wsFallbackTimer!);
+                    wsFallbackTimer = null;
                   }
-                }, 3000);
+                }, 5000);
               }
             }
             return;
@@ -442,14 +326,24 @@ make status</pre>
         fetchHealth();
       });
 
-      // Try WS first, fall back to polling if no connect within 2s
+      // Try WS first, fall back to polling if no connect within 3s
       initLiveStream();
       wsFallbackTimer = setTimeout(() => {
-        wsFallbackTimer = null;
         if (wsDisconnected) {
           console.log("[dashboard] WS connect timeout — using polling");
           fetchHealth();
+          // Continue periodic polling if WS never connected
+          if (!wsEverConnected) {
+            wsFallbackTimer = setInterval(() => {
+              if (wsDisconnected && !wsEverConnected) {
+                fetchHealth();
+              } else {
+                clearInterval(wsFallbackTimer!);
+                wsFallbackTimer = null;
+              }
+            }, 5000);
+          }
         }
-      }, 2000);
+      }, 3000);
     </script>
 </Layout>

@@ -62,11 +62,14 @@ impl PythonSidecar {
     }
 
     /// Create from environment variables.
-    /// Reads `PYTHON_SIDECAR_SOCKET`, `PYTHON_SIDECAR_TIMEOUT_MS`, `PYTHON_SIDECAR_MAX_RETRIES`.
+    /// Reads `PY_API_SOCKET` (preferred) or `PYTHON_SIDECAR_SOCKET` (deprecated),
+    /// `PYTHON_SIDECAR_TIMEOUT_MS`, `PYTHON_SIDECAR_MAX_RETRIES`.
     pub fn from_env() -> Self {
-        let socket_path = std::env::var("PYTHON_SIDECAR_SOCKET")
+        let socket_path = std::env::var("PY_API_SOCKET")
+            .ok()
+            .or_else(|| std::env::var("PYTHON_SIDECAR_SOCKET").ok())
             .map(PathBuf::from)
-            .unwrap_or_else(|_| PathBuf::from("/tmp/fullstackhex-python.sock"));
+            .unwrap_or_else(|| PathBuf::from("/tmp/fullstackhex-python.sock"));
 
         let timeout_ms: u64 = std::env::var("PYTHON_SIDECAR_TIMEOUT_MS")
             .ok()

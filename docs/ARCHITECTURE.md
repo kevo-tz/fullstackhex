@@ -17,21 +17,39 @@
 ┌────────────────────────────────────────────────────────┐
 │          Frontend (Astro + Bun)                       │
 │              Port 4321                                 │
-└─────────────────┬──────────────────────────────────────┘
-                  │ HTTP API only
-                  ▼
+├────────────────────────────────────────────────────────┤
+│  Two data paths:                                       │
+│  ┌─────────────────────────┐  ┌───────────────────┐   │
+│  │ HTTP polling (fallback) │  │ WebSocket (live)  │   │
+│  │ GET /api/health every 3s│  │ ws://host/api/live│   │
+│  └───────────┬─────────────┘  └─────────┬─────────┘   │
+└──────────────┼──────────────────────────┼──────────────┘
+               │ HTTP                     │ WS Upgrade
+               ▼                          ▼
 ┌────────────────────────────────────────────────────────┐
 │         Rust Backend (Axum + Tokio)                   │
 │              Port 8001 (only external API)            │
 │                                                        │
 │  Workspace Crates:                                    │
-│  ├── api/          HTTP routes, middleware            │
+│  ├── api/          HTTP routes, middleware, WS bridge │
 │  ├── auth/         JWT + OAuth + CSRF authentication │
 │  ├── cache/        Redis caching, rate limiting      │
 │  ├── db/           sqlx + PostgreSQL                 │
-│  ├── domain/       Business logic and shared types   │
+│  ├── domain/       Business logic, shared types, FF  │
 │  ├── py-sidecar/   Unix socket client for Python IPC │
 │  └── storage/      S3-compatible object storage      │
+│                                                        │
+│  ┌─────────────────────────────────────────┐         │
+│  │    WebSocket handler (live.rs)          │         │
+│  │    ┌─────────────────────────────────┐  │         │
+│  │    │  /live → ws_handler()          │  │         │
+│  │    │  Subscribes to Redis pub/sub    │  │         │
+│  │    │  channel "live:events"          │  │         │
+│  │    │  Forwards JSON events via mpsc  │  │         │
+│  │    │  Max 100 concurrent connections │  │         │
+│  │    │  300s idle timeout              │  │         │
+│  │    └─────────────────────────────────┘  │         │
+│  └─────────────────────────────────────────┘         │
 │                        │                              │
 │                        │ Unix domain socket            │
 │                        ▼                              │
@@ -78,6 +96,8 @@
 | Auth in Rust crate | JWT, OAuth, session logic lives in the backend, not scattered |
 | Redis for sessions | Session store outside PostgreSQL reduces load on the primary db |
 | S3-compatible storage | Portable across RustFS, MinIO, AWS S3, Cloudflare R2 |
+| WebSocket live events | Redis pub/sub → WS bridge replaces HTTP polling as primary path; polling is fallback only |
+| Feature flags via env | Startup-only flags in `domain::FeatureFlags`, exposed through `/health` and as Axum `Extension` for middleware |
 
 ## Data Flow
 
@@ -87,6 +107,46 @@
 4. **py-api** → Rust communicates via Unix domain socket when Python logic needed
 5. **Data Layer** → Postgres (sqlx) + Redis + RustFS
 6. **Nginx** → Production only, terminates TLS and proxies external traffic. Monitoring stack (`compose/monitor.yml`) can run in dev or prod.
+
+### WebSocket Live Events
+
+The health dashboard uses a WebSocket bridge for real-time updates:
+
+```
+Browser                    Rust Backend                  Redis
+  │                            │                          │
+  │── HTTP Upgrade /api/live ──▶                          │
+  │                            │── SUBSCRIBE live:events ─▶│
+  │◀── 101 Switching ──────────│                          │
+  │                            │                          │
+  │◀── WS Message (JSON) ─────│◀── PUBLISH event ────────│
+  │    {type:"health_update",  │                          │
+  │     data:{service,status}} │                          │
+```
+
+- Backend: `live.rs` subscribes to Redis channel `live:events`, forwards via `tokio::sync::mpsc`
+- Frontend: `live.ts` — native `WebSocket` with exponential backoff reconnect (max 10 retries)
+- Fallback: When Redis is unavailable or `/live` returns 404/503, dashboard falls back to HTTP polling via `setInterval`
+- Limits: 100 concurrent connections (semaphore), 300s idle timeout, Origin header validation
+- Auth on `/live` — requires valid JWT token (query param) or session cookie when `AUTH_MODE` is configured; falls back to public when auth is disabled
+
+### Feature Flags
+
+Feature flags are loaded once at startup from environment variables and are NOT hot-reloadable:
+
+```rust
+pub struct FeatureFlags {
+    pub chat_enabled: bool,       // FEATURE_CHAT
+    pub storage_readonly: bool,   // FEATURE_STORAGE_READONLY
+    pub maintenance_mode: bool,   // FEATURE_MAINTENANCE
+}
+```
+
+- Stored as `Option<FeatureFlags>` in `AppState` (absent when env vars not configured)
+- Exposed in `/health` response as `feature_flags` object
+- Used by `maintenance_middleware`: returns 503 for all `/api/*` routes except `/health`, `/metrics`, `/live`
+- Frontend `lib/flags.ts` provides typed helpers: `fetchFeatureFlags()`, `isFeatureEnabled()`
+- See `.env.example` for flag configuration
 
 ## Technology Stack (Latest Versions)
 
@@ -191,6 +251,22 @@ fn get_socket_path() -> PathBuf {
 | Prometheus | 9090 | Metrics collection (production) |
 | Grafana | 3000 | Monitoring dashboards (production) |
 | Nginx | 80/443 | Reverse proxy (production) |
+
+### Nginx WebSocket Configuration
+
+The production nginx config (`compose/nginx/nginx.conf`) enables WS upgrade in the `/api/` location:
+
+```nginx
+location /api/ {
+    proxy_pass http://backend/;
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection "upgrade";
+    ...
+}
+```
+
+Without these headers, nginx cannot upgrade HTTP to WebSocket. The dev proxy (`astro.config.mjs`) also enables WS via `ws: true`.
 
 
 ## Related Docs

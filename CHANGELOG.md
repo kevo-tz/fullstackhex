@@ -7,34 +7,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [0.13.5] - 2026-05-15
+## [0.13.6] - 2026-05-16
 
 ### Added
-- **Notes CRUD**: full lifecycle — create, list, detail, delete with user-scoped auth
-- **Live WebSocket module**: Redis pub/sub bridge with HTTP polling fallback
-- **UI component library**: Modal, EmptyState, Skeleton, Table components
-- **Feature flags**: env-var-driven controls (FEATURE_CHAT, FEATURE_STORAGE_READONLY, FEATURE_MAINTENANCE)
-- **Maintenance mode middleware**: returns 503 on non-whitelisted routes
-- **Proptest suites**: property-based tests added across backend (api, auth, py-sidecar, domain)
-- **nginx WebSocket proxy**: Upgrade/Connection headers for WS passthrough
-
-### Changed
-- **Health endpoint**: includes `feature_flags` in response
-- **Image versions**: bumped Docker images across compose files (nginx 1.27→1.31, rustfs 0.8.1→v1.0.0, certbot v3.4.0→v5.6.0, grafana 11.2.0→13.0.1, Prometheus 3.3.1→3.11.3, etc.)
-- **Auth middleware**: exempts /live, /health, /metrics from auth for WS/hc access
-- **Compose files**: cleaned up boilerplate comments, standardized env var patterns
-- **Base images**: bookworm → trixie across Dockerfiles
-- **Scripts**: dev health check now verifies `rust.status: ok` in JSON; down.sh skips monitor teardown when not running
+- **Integration tests**: notes CRUD, token refresh lifecycle, rate limiting by email/IP — 7 new test files across backend
+- **Profile page**: client-side auth-gated `/profile` with user info display and logout
+- **Playwright e2e suites**: auth, dashboard, and notes spec files with cookie + bearer auth modes
+- **Proptest regression seeds**: committed `proptest-regressions/` files under auth, cache, domain, api
 
 ### Fixed
-- **WS PII leak**: AuthEvent email field made Option<String> with skip_serializing — never broadcast to public WS channel
-- **Missing down migration**: added 002_create_notes.down.sql
-- **UUID validation**: get/delete note handlers return 400 on invalid UUID (not 500)
-- **Content-Type consistency**: all error responses in notes CRUD use application/json
-- **Accessibility**: focus-visible outlines added to all interactive elements; note body font bumped to 1rem
+- **Home page redirect loop**: `fetchUser()` in Layout.astro uses `origFetch` directly — stops 401 interceptor from redirecting unauthenticated users to `/login` on every page load
+- **Storage Docker image**: pinned rustfs version in dev compose
+- **Redis password leak**: masked password in `ps aux` output
+- **Fetch interceptor scope**: redirect-to-login only triggers for `/api/*` paths — non-API fetches pass through unchanged
+- **OAuth race condition**: `ON CONFLICT` upsert prevents concurrent registration crashes
+- **WebSocket hardening**: Origin matching, client blacklist, guard order — closes WS-level attack surface
+- **Cookie parsing**: `.expect()` replaced with fallible helper — no more panics on malformed cookies
+- **`HttpOnly` removed from `csrf_token`**: lets JS read CSRF token for programmatic form submission
+- **WS PII guard**: error details sanitized in health broadcast messages
+- **Toast component**: `innerHTML` replaced with `textContent` and DOM API — prevents XSS
+- **Alertmanager config**: fixed sub-route YAML nesting
+- **scripts/config.sh**: `exit` → `return` when sourced; removed `set -o allexport`
+- **Playwright selector**: updated auth spec selector for profile page routing
 
-### Removed
-- **Dead code**: orphaned Card.astro, Pagination.astro, Toast.astro components; unused parseFlags helper; unused AppConfig and CreateNoteInput domain types; no-op reset_ws_semaphore; unused debug_assert
+### Changed
+- **Rate limit thresholds**: extracted to configuration via env vars — no hardcoded limits
+- **Notes error handling**: unified all error paths through `ApiError` — consistent JSON error shapes
+- **Cookie parsing**: `fallible` helper pattern replaces bare `.expect()` across auth crate
+- **ApiError IntoResponse**: feature-gated behind `domain/api` — crate-boundary clean
+- **ESLint config**: `playwright.config.ts` included in tsconfig for lint coverage
+
+### Performance
+- **COUNT + pagination query**: combined into single window function — one round-trip instead of two
+- **WS broadcasts parallelized**: per-user WS quota check and increment in one critical section; fire-and-forget fan-out
+- **Composite index**: `(user_id, created_at)` on notes for paginated queries
+- **Proptest string strategies**: bounded to avoid wasteful multi-KB generation
 
 ## [0.13.4] - 2026-05-14
 

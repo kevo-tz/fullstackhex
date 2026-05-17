@@ -113,13 +113,7 @@ pub async fn auth_middleware(
                 (Some(s), Some(r)) => (s, r),
                 _ => return next.run(req).await,
             };
-            match Box::pin(resolve_cookie_user(
-                auth_service.jwt.clone(),
-                rd.clone(),
-                sess,
-            ))
-            .await
-            {
+            match Box::pin(resolve_cookie_user(rd.clone(), sess)).await {
                 Some(user) => Some(user),
                 None => return next.run(req).await,
             }
@@ -166,7 +160,7 @@ pub async fn auth_middleware(
 }
 
 /// Extract and validate a Bearer token from the Authorization header.
-fn extract_bearer(
+pub(crate) fn extract_bearer(
     req: &axum::http::Request<axum::body::Body>,
     auth_service: &AuthService,
 ) -> Option<AuthUser> {
@@ -238,24 +232,22 @@ fn cookie_auth_prepare(req: &axum::http::Request<axum::body::Body>) -> Option<St
 
 /// Async: Resolve a cookie session via Redis lookup + JWT validation.
 async fn resolve_cookie_user(
-    jwt: super::jwt::JwtService,
     redis: Arc<cache::RedisClient>,
     session_id: String,
 ) -> Option<AuthUser> {
-    let session_data: Option<String> = redis
+    let session: Option<cache::session::Session> = redis
         .cache_get("session", &session_id)
         .await
         .unwrap_or(None);
 
-    let token = session_data?;
-    let claims = jwt.validate_token(&token).ok()?;
+    let session = session?;
 
     Some(AuthUser {
-        user_id: claims.sub,
-        email: claims.email,
-        name: claims.name,
-        provider: claims.provider,
-        jti: claims.jti,
+        user_id: session.user_id,
+        email: session.email,
+        name: session.name,
+        provider: session.provider,
+        jti: String::new(),
         session_id: Some(session_id),
     })
 }
@@ -328,6 +320,7 @@ mod tests {
             oauth_redirect_url: None,
             sidecar_shared_secret: None,
             fail_open_on_redis_error: true,
+            rate_limits: Default::default(),
         };
         AuthService::new(config)
     }

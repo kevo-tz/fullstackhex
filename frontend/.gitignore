@@ -28,3 +28,6 @@ pnpm-debug.log*
 
 # test coverage
 coverage/
+
+# Playwright global setup temp file
+e2e-test-user.json

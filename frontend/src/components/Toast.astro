@@ -1,0 +1,87 @@
+---
+export interface Props {
+  duration?: number;
+}
+
+const { duration = 5000 } = Astro.props;
+---
+
+<div id="toast-container" class="toast-container" data-duration={duration}></div>
+
+<script>
+  class ToastContainer extends HTMLElement {
+    show(message: string, type: "info" | "success" | "error" | "warning" = "info") {
+      const duration = parseInt(this.dataset.duration || "5000", 10);
+      const toast = document.createElement("div");
+      toast.className = `toast-item toast-${type}`;
+      const msgSpan = document.createElement("span");
+      msgSpan.textContent = message;
+      const closeBtn = document.createElement("button");
+      closeBtn.className = "toast-close";
+      closeBtn.setAttribute("aria-label", "Close");
+      closeBtn.textContent = "\u00D7";
+      closeBtn.addEventListener("click", () => toast.remove());
+      toast.appendChild(msgSpan);
+      toast.appendChild(closeBtn);
+      this.appendChild(toast);
+      if (duration > 0) {
+        setTimeout(() => {
+          if (toast.parentNode) toast.remove();
+        }, duration);
+      }
+    }
+
+    dismissAll() {
+      this.innerHTML = "";
+    }
+  }
+
+  if (!customElements.get("toast-container")) {
+    customElements.define("toast-container", ToastContainer);
+  }
+</script>
+
+<style>
+  .toast-container {
+    position: fixed;
+    top: 1rem;
+    right: 1rem;
+    z-index: 9999;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    pointer-events: none;
+  }
+  .toast-item {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.75rem 1rem;
+    border-radius: 8px;
+    font-size: 0.85rem;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    pointer-events: auto;
+    animation: toast-in 0.2s ease-out;
+  }
+  .toast-info  { background: #1e293b; color: #94a3b8; border: 1px solid #334155; }
+  .toast-success { background: #14532d; color: #4ade80; border: 1px solid #166534; }
+  .toast-error { background: #450a0a; color: #ef4444; border: 1px solid #7f1d1d; }
+  .toast-warning { background: #451a03; color: #fbbf24; border: 1px solid #78350f; }
+  .toast-close {
+    background: none;
+    border: none;
+    color: inherit;
+    opacity: 0.6;
+    cursor: pointer;
+    font-size: 1.1rem;
+    line-height: 1;
+    padding: 0;
+    margin-left: auto;
+  }
+  .toast-close:hover { opacity: 1; }
+  .toast-close:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
+  @keyframes toast-in {
+    from { opacity: 0; transform: translateY(-0.5rem); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+</style>

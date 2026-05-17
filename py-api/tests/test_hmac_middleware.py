@@ -32,15 +32,6 @@ def _make_request(
     return Request(scope)
 
 
-def _valid_signature(secret: str, user_id: str, email: str, name: str) -> str:
-    payload = f"{user_id}|{email}|{name}"
-    return hmac.new(
-        secret.encode("utf-8"),
-        payload.encode("utf-8"),
-        hashlib.sha256,
-    ).hexdigest()
-
-
 async def _call_next_ok(request: Request) -> Response:
     return Response(content=b"ok", status_code=200)
 

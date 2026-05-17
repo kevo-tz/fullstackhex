@@ -96,7 +96,7 @@ pub struct UserInfo {
 }
 
 /// Validate registration request fields.
-fn validate_registration(body: &RegisterRequest) -> Result<(), ApiError> {
+pub(crate) fn validate_registration(body: &RegisterRequest) -> Result<(), ApiError> {
     if body.email.is_empty() || !body.email.contains('@') {
         return Err(ApiError::ValidationError("Invalid email".to_string()));
     }
@@ -114,18 +114,23 @@ fn validate_registration(body: &RegisterRequest) -> Result<(), ApiError> {
 }
 
 /// POST /auth/register — create user with email/password, return JWT.
+///
+/// # Errors
+///
+/// Returns `ValidationError` if email is invalid, password is weak, or user already exists.
+/// Returns `InternalError` on database or token generation failure.
 pub async fn register(
     State(state): State<AuthState>,
     headers: HeaderMap,
     Json(body): Json<RegisterRequest>,
 ) -> Result<impl IntoResponse, ApiError> {
-    // Rate limit by IP (5 registrations per 15 minutes)
+    // Rate limit by IP (configurable, default: 5 per 15 minutes)
     let ip = client_ip(&headers);
     check_rate_limit(
         &state.redis,
         &format!("register:{ip}"),
-        Duration::from_secs(900),
-        5,
+        Duration::from_secs(state.auth.config.rate_limits.register_window_secs),
+        state.auth.config.rate_limits.register_max,
     )
     .await?;
 
@@ -184,20 +189,22 @@ pub async fn register(
     let jwt_expiry = state.auth.config.jwt_expiry;
     let refresh_expiry = state.auth.config.refresh_expiry;
     let mut headers = HeaderMap::new();
-    headers.insert(
-        header::SET_COOKIE,
-        format!(
-            "access_token={access_token}; HttpOnly; Path=/; Max-Age={jwt_expiry}; SameSite=Lax"
-        )
-        .parse()
-        .expect("cookie header format is always valid"),
-    );
-    headers.insert(
-        header::SET_COOKIE,
-        format!("refresh_token={refresh_token}; HttpOnly; Path=/; Max-Age={refresh_expiry}; SameSite=Lax")
-            .parse()
-            .expect("cookie header format is always valid"),
-    );
+    super::cookies::set_cookie(
+        &mut headers,
+        "access_token",
+        &access_token,
+        jwt_expiry,
+        true,
+    )?;
+    super::cookies::set_cookie(
+        &mut headers,
+        "refresh_token",
+        &refresh_token,
+        refresh_expiry,
+        true,
+    )?;
+    let csrf_token = super::csrf::generate_csrf_token();
+    super::cookies::set_cookie(&mut headers, "csrf_token", &csrf_token, jwt_expiry, false)?;
 
     let response = TokenResponse {
         access_token,
@@ -212,10 +219,32 @@ pub async fn register(
         },
     };
 
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_err(|_| ApiError::InternalError("Time went backwards".to_string()))?
+        .as_secs();
+    let session = cache::session::Session {
+        user_id: response.user.id.clone(),
+        email: response.user.email.clone(),
+        name: response.user.name.clone(),
+        provider: response.user.provider.clone(),
+        created_at: now,
+    };
+    let session_id = state
+        .redis
+        .session_create(&session, std::time::Duration::from_secs(jwt_expiry))
+        .await?;
+    super::cookies::set_cookie(&mut headers, "session", &session_id, jwt_expiry, true)?;
+
     Ok((StatusCode::CREATED, headers, Json(response)))
 }
 
 /// POST /auth/login — authenticate with email/password, return JWT.
+///
+/// # Errors
+///
+/// Returns `Unauthorized` for invalid credentials or rate-limited requests.
+/// Returns `InternalError` on database or token generation failure.
 pub async fn login(
     State(state): State<AuthState>,
     headers: HeaderMap,
@@ -243,21 +272,21 @@ pub async fn login(
         }
     }
 
-    // Rate limit by email (5 attempts per 5 minutes)
+    // Rate limit by email (configurable, default: 5 per 5 minutes)
     check_rate_limit(
         &state.redis,
         &format!("login:email:{}", body.email),
-        Duration::from_secs(300),
-        5,
+        Duration::from_secs(state.auth.config.rate_limits.login_email_window_secs),
+        state.auth.config.rate_limits.login_email_max,
     )
     .await?;
 
-    // Rate limit by IP (10 attempts per 5 minutes)
+    // Rate limit by IP (configurable, default: 10 per 5 minutes)
     check_rate_limit(
         &state.redis,
         &format!("login:ip:{ip}"),
-        Duration::from_secs(300),
-        10,
+        Duration::from_secs(state.auth.config.rate_limits.login_ip_window_secs),
+        state.auth.config.rate_limits.login_ip_max,
     )
     .await?;
 
@@ -336,33 +365,62 @@ pub async fn login(
     let jwt_expiry = state.auth.config.jwt_expiry;
     let refresh_expiry = state.auth.config.refresh_expiry;
     let mut headers = HeaderMap::new();
-    headers.insert(
-        header::SET_COOKIE,
-        format!(
-            "access_token={}; HttpOnly; Path=/; Max-Age={jwt_expiry}; SameSite=Lax",
-            response.access_token
-        )
-        .parse()
-        .expect("cookie header format is always valid"),
-    );
-    headers.insert(
-        header::SET_COOKIE,
-        format!(
-            "refresh_token={}; HttpOnly; Path=/; Max-Age={refresh_expiry}; SameSite=Lax",
-            response.refresh_token
-        )
-        .parse()
-        .expect("cookie header format is always valid"),
-    );
+    super::cookies::set_cookie(
+        &mut headers,
+        "access_token",
+        &response.access_token,
+        jwt_expiry,
+        true,
+    )?;
+    super::cookies::set_cookie(
+        &mut headers,
+        "refresh_token",
+        &response.refresh_token,
+        refresh_expiry,
+        true,
+    )?;
+    let csrf_token = super::csrf::generate_csrf_token();
+    super::cookies::set_cookie(&mut headers, "csrf_token", &csrf_token, jwt_expiry, false)?;
+
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_err(|_| ApiError::InternalError("Time went backwards".to_string()))?
+        .as_secs();
+    let session = cache::session::Session {
+        user_id: response.user.id.clone(),
+        email: response.user.email.clone(),
+        name: response.user.name.clone(),
+        provider: response.user.provider.clone(),
+        created_at: now,
+    };
+    let session_id = state
+        .redis
+        .session_create(&session, std::time::Duration::from_secs(jwt_expiry))
+        .await?;
+    super::cookies::set_cookie(&mut headers, "session", &session_id, jwt_expiry, true)?;
 
     Ok((headers, Json(response)))
 }
 
 /// POST /auth/logout — destroy session, blacklist token, delete refresh token.
+///
+/// # Errors
+///
+/// Returns `InternalError` if Redis operations fail.
 pub async fn logout(
     State(state): State<AuthState>,
     auth_user: AuthUser,
+    body: Option<Json<RefreshRequest>>,
 ) -> Result<impl IntoResponse, ApiError> {
+    // Delete the refresh token from Redis so it cannot be reused
+    if let Some(refresh_token) = body
+        .as_ref()
+        .map(|b| b.refresh_token.clone())
+        .filter(|t| !t.is_empty())
+    {
+        state.redis.cache_delete("refresh", &refresh_token).await?;
+    }
+
     // Blacklist the access token JTI so it cannot be reused
     let blacklist_ttl = std::time::Duration::from_secs(state.auth.config.jwt_expiry);
     state
@@ -402,6 +460,11 @@ pub struct RefreshRequest {
 }
 
 /// POST /auth/refresh — refresh access token using refresh token.
+///
+/// # Errors
+///
+/// Returns `Unauthorized` if refresh token is invalid, expired, or not found.
+/// Returns `InternalError` on database or token generation failure.
 pub async fn refresh(
     State(state): State<AuthState>,
     headers: HeaderMap,
@@ -471,24 +534,28 @@ pub async fn refresh(
     metrics::counter!("token_refresh_total", "status" => "success").increment(1);
 
     let mut resp_headers = HeaderMap::new();
-    resp_headers.insert(
-        header::SET_COOKIE,
-        format!(
-            "access_token={}; HttpOnly; Path=/; Max-Age={}; SameSite=Lax",
-            access_token, state.auth.config.jwt_expiry
-        )
-        .parse()
-        .expect("cookie header format is always valid"),
-    );
-    resp_headers.insert(
-        header::SET_COOKIE,
-        format!(
-            "refresh_token={}; HttpOnly; Path=/; Max-Age={}; SameSite=Lax",
-            new_refresh_token, state.auth.config.refresh_expiry
-        )
-        .parse()
-        .expect("cookie header format is always valid"),
-    );
+    super::cookies::set_cookie(
+        &mut resp_headers,
+        "access_token",
+        &access_token,
+        state.auth.config.jwt_expiry,
+        true,
+    )?;
+    super::cookies::set_cookie(
+        &mut resp_headers,
+        "refresh_token",
+        &new_refresh_token,
+        state.auth.config.refresh_expiry,
+        true,
+    )?;
+    let csrf_token = super::csrf::generate_csrf_token();
+    super::cookies::set_cookie(
+        &mut resp_headers,
+        "csrf_token",
+        &csrf_token,
+        state.auth.config.jwt_expiry,
+        false,
+    )?;
 
     Ok((
         resp_headers,
@@ -525,6 +592,10 @@ pub async fn providers(State(state): State<AuthState>) -> impl IntoResponse {
 }
 
 /// GET /auth/me — return current user info.
+///
+/// # Errors
+///
+/// Returns `Unauthorized` if auth token is missing, invalid, or expired.
 pub async fn me(auth_user: AuthUser) -> impl IntoResponse {
     Json(serde_json::json!({
         "user_id": auth_user.user_id,
@@ -607,38 +678,26 @@ pub async fn oauth_callback(
         .await
         .map_err(|_e| ApiError::Unauthorized("OAuth authentication failed".to_string()))?;
 
-    // Find or create user
-    let user_id = match sqlx::query_as::<_, (String,)>(
-        "SELECT id::text FROM users WHERE email = $1",
+    // Find or create user (UPSERT to handle concurrent OAuth callbacks)
+    let id = uuid::Uuid::new_v4().to_string();
+    let user_id = sqlx::query_scalar::<_, String>(
+        "INSERT INTO users (id, email, name, provider, password_hash)
+         VALUES ($1, $2, $3, $4, NULL)
+         ON CONFLICT (email) DO UPDATE SET
+           name = EXCLUDED.name,
+           provider = EXCLUDED.provider
+         RETURNING id::text",
     )
+    .bind(&id)
     .bind(&user_info.email)
-    .fetch_optional(&state.db)
+    .bind(&user_info.name)
+    .bind(provider.to_string())
+    .fetch_one(&state.db)
     .await
-    {
-        Ok(Some((id,))) => id,
-        Ok(None) => {
-            // Create new OAuth user
-            let id = uuid::Uuid::new_v4().to_string();
-            sqlx::query(
-                "INSERT INTO users (id, email, name, provider, password_hash) VALUES ($1, $2, $3, $4, NULL)",
-            )
-            .bind(&id)
-            .bind(&user_info.email)
-            .bind(&user_info.name)
-            .bind(provider.to_string())
-            .execute(&state.db)
-            .await
-            .map_err(|e| {
-            tracing::error!(error = %e, "database query failed");
-            ApiError::InternalError("Internal server error".to_string())
-        })?;
-            id
-        }
-        Err(e) => {
-            tracing::error!(error = %e, "database query failed during OAuth callback");
-            return Err(ApiError::InternalError("Internal server error".to_string()));
-        }
-    };
+    .map_err(|e| {
+        tracing::error!(error = %e, "database query failed during OAuth callback");
+        ApiError::InternalError("Internal server error".to_string())
+    })?;
 
     // Create JWT
     let access_token = state.auth.jwt.create_token(
@@ -836,6 +895,7 @@ mod route_tests {
             oauth_redirect_url: None,
             sidecar_shared_secret: None,
             fail_open_on_redis_error: true,
+            rate_limits: Default::default(),
         };
         let list = list_providers(&config);
         assert!(list.is_empty());
@@ -856,6 +916,7 @@ mod route_tests {
             oauth_redirect_url: None,
             sidecar_shared_secret: None,
             fail_open_on_redis_error: true,
+            rate_limits: Default::default(),
         };
         let list = list_providers(&config);
         assert_eq!(list, vec!["google"]);
@@ -876,6 +937,7 @@ mod route_tests {
             oauth_redirect_url: None,
             sidecar_shared_secret: None,
             fail_open_on_redis_error: true,
+            rate_limits: Default::default(),
         };
         let list = list_providers(&config);
         assert_eq!(list, vec!["github"]);
@@ -896,6 +958,7 @@ mod route_tests {
             oauth_redirect_url: None,
             sidecar_shared_secret: None,
             fail_open_on_redis_error: true,
+            rate_limits: Default::default(),
         };
         let list = list_providers(&config);
         assert_eq!(list, vec!["google", "github"]);

@@ -133,7 +133,7 @@ const altText = isLogin ? "Need an account? Register" : "Already have an account
       if (!data.access_token || !data.user) {
         throw new Error("Invalid auth response from server");
       }
-      window.location.href = "/dashboard";
+      window.location.href = "/profile";
     } catch (err) {
       showError(err instanceof Error ? err.message : "Something went wrong");
     } finally {

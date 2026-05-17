@@ -3,8 +3,11 @@
 //! All domain crates (auth, cache, storage) convert their errors to `ApiError`.
 //! The api crate converts `ApiError` to JSON response.
 
+#[cfg(feature = "api")]
 use axum::http::StatusCode;
+#[cfg(feature = "api")]
 use axum::response::{IntoResponse, Response};
+#[cfg(feature = "api")]
 use serde_json::json;
 
 /// Unified API error type.
@@ -74,15 +77,18 @@ impl From<db::DbError> for ApiError {
     }
 }
 
+#[cfg(feature = "api")]
 impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
         let (status, code, message) = match &self {
             ApiError::Unauthorized(msg) => (StatusCode::UNAUTHORIZED, "UNAUTHORIZED", msg.clone()),
             ApiError::Forbidden(msg) => (StatusCode::FORBIDDEN, "FORBIDDEN", msg.clone()),
             ApiError::NotFound(msg) => (StatusCode::NOT_FOUND, "NOT_FOUND", msg.clone()),
-            ApiError::ValidationError(msg) => {
-                (StatusCode::BAD_REQUEST, "VALIDATION_ERROR", msg.clone())
-            }
+            ApiError::ValidationError(msg) => (
+                StatusCode::UNPROCESSABLE_ENTITY,
+                "VALIDATION_ERROR",
+                msg.clone(),
+            ),
             ApiError::RateLimited(msg) => {
                 (StatusCode::TOO_MANY_REQUESTS, "RATE_LIMITED", msg.clone())
             }
@@ -109,7 +115,7 @@ impl IntoResponse for ApiError {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "api"))]
 mod tests {
     use super::*;
     use axum::body::to_bytes;
@@ -125,10 +131,10 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn validation_error_returns_400() {
+    async fn validation_error_returns_422() {
         let err = ApiError::ValidationError("bad input".to_string());
         let resp = err.into_response();
-        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+        assert_eq!(resp.status(), StatusCode::UNPROCESSABLE_ENTITY);
     }
 
     #[tokio::test]

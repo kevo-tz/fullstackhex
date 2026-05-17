@@ -2,6 +2,17 @@
 # FullStackHex Configuration
 # Centralized configuration for all scripts
 
+# Selective exports for subprocesses — only non-sensitive vars exported
+# Secrets (POSTGRES_PASSWORD, REDIS_PASSWORD, JWT_SECRET, etc.) passed via
+# --env-file .env to docker compose or read directly when needed.
+
+# Guard: .env must exist — all scripts depend on it
+if [[ ! -f .env ]]; then
+  echo "Error: .env not found. Copy .env.example to .env and fill in required values." >&2
+  echo "  cp .env.example .env" >&2
+  return 1
+fi
+
 # Source common functions
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/common.sh"
@@ -39,7 +50,8 @@ HTML_REPORT_DIR="${HTML_REPORT_DIR:-.performance}"
 
 # Process state
 PID_DIR="${PID_DIR:-/tmp/fullstackhex-dev}"
-PYTHON_SOCK="${PYTHON_SOCK:-/tmp/fullstackhex-python.sock}"
+# Fall back to PYTHON_SIDECAR_SOCKET from .env so dev.sh matches Rust's expectation
+PYTHON_SOCK="${PYTHON_SOCK:-${PYTHON_SIDECAR_SOCKET:-/tmp/py-api.sock}}"
 
 # Startup timing
 POSTGRES_RETRIES="${POSTGRES_RETRIES:-6}"

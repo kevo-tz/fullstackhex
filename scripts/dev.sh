@@ -5,9 +5,12 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/config.sh"
 
 REPO_ROOT="$(get_repo_root)"
+export REPO_ROOT
 cd "$REPO_ROOT"
 
 load_env
+# Re-evaluate PYTHON_SOCK now that .env loaded PYTHON_SIDECAR_SOCKET
+PYTHON_SOCK="${PYTHON_SOCK:-${PYTHON_SIDECAR_SOCKET:-/tmp/fullstackhex-python.sock}}"
 
 WATCH_MODE=false
 if [ "${1:-}" = "--watch" ]; then
@@ -61,6 +64,19 @@ log_success "Preflight passed"
 mkdir -p "$PID_DIR"
 rm -f "$PID_DIR"/*.pid "$PYTHON_SOCK"
 
+# Generate temporary Redis config to avoid exposing password in ps aux
+mkdir -p .tmp
+cat > .tmp/redis.conf <<REDIS_CONF
+requirepass ${REDIS_PASSWORD}
+appendonly yes
+appendfsync everysec
+save 900 1
+save 300 10
+save 60 10000
+maxmemory ${REDIS_MAX_MEMORY:-512mb}
+maxmemory-policy ${REDIS_MAXMEMORY_POLICY:-allkeys-lru}
+REDIS_CONF
+
 log_info "Starting infrastructure (PostgreSQL, Redis)..."
 $COMPOSE_DEV up -d
 
@@ -72,6 +88,13 @@ for _ in $(seq 1 "$POSTGRES_RETRIES"); do
     fi
     sleep "$POSTGRES_POLL_INTERVAL"
 done
+
+log_info "Ensuring PostgreSQL password matches .env (handles stale volumes)..."
+$COMPOSE_DEV exec -T postgres psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" \
+    -c "ALTER USER \"$POSTGRES_USER\" PASSWORD '$POSTGRES_PASSWORD'" 2>/dev/null || {
+    log_error "PostgreSQL password sync failed — auth will fail on API calls"
+    exit 1
+}
 
 log_info "Starting Python sidecar..."
 (cd py-api && uv run uvicorn app.main:app --uds "$PYTHON_SOCK") &

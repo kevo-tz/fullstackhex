@@ -12,12 +12,46 @@ use py_sidecar::PythonSidecar;
 use serde_json::json;
 use sqlx::PgPool;
 use sqlx::postgres::PgPoolOptions;
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
+use tokio::sync::Mutex;
+use tokio::sync::Notify;
+use tokio::sync::Semaphore;
 
 pub mod live;
 pub mod metrics;
+
+use live::{LiveEvent, broadcast_event};
 pub mod notes;
+
+/// Max length for health error details broadcast to WS clients.
+const MAX_DETAIL_LENGTH: usize = 500;
+
+/// Parse an env var, logging a warning on parse failure before returning default.
+fn parse_env_or<T: std::str::FromStr>(key: &str, default: T) -> T {
+    match std::env::var(key) {
+        Ok(val) => match val.parse::<T>() {
+            Ok(parsed) => parsed,
+            Err(_) => {
+                tracing::warn!(key = %key, value = %val, "failed to parse env var, using default");
+                default
+            }
+        },
+        Err(std::env::VarError::NotPresent) => default,
+        Err(e) => {
+            tracing::warn!(key = %key, error = %e, "error reading env var, using default");
+            default
+        }
+    }
+}
+
+/// Small helper wrapping sqlx errors into ApiError with logging + metrics.
+fn db_err(e: sqlx::Error, context: &'static str) -> domain::error::ApiError {
+    tracing::warn!(error = %e, "{context}");
+    ::metrics::counter!("notes_query_errors_total").increment(1);
+    domain::error::ApiError::InternalError(context.into())
+}
 
 /// Status of the database connection pool.
 pub enum DbStatus {
@@ -35,6 +69,24 @@ pub struct AppState {
     pub prometheus_handle: PrometheusHandle,
     pub gauge_task: Option<tokio::task::AbortHandle>,
     pub feature_flags: Option<domain::FeatureFlags>,
+    pub ws_connection_permits: Arc<Semaphore>,
+    pub ws_idle_timeout: Duration,
+    pub ws_shutdown: Arc<Notify>,
+    pub ws_user_connections: Arc<Mutex<HashMap<String, usize>>>,
+    pub ws_per_user_max: usize,
+}
+
+impl AppState {
+    /// Returns a reference to the PgPool, or an `ApiError::ServiceUnavailable`
+    /// if the database is not configured or not connected.
+    fn db_pool(&self) -> Result<&sqlx::PgPool, domain::error::ApiError> {
+        match &self.db {
+            DbStatus::Connected(pool) => Ok(pool),
+            _ => Err(domain::error::ApiError::ServiceUnavailable(
+                "database not configured".into(),
+            )),
+        }
+    }
 }
 
 pub async fn router(
@@ -97,6 +149,12 @@ pub async fn router(
         tracing::info!("RUSTFS_ENDPOINT not set — storage disabled");
     }
 
+    let ws_max_connections: usize = parse_env_or("WS_MAX_CONNECTIONS", 100);
+    let ws_idle_timeout_secs: u64 = parse_env_or("WS_IDLE_TIMEOUT_SECS", 300);
+
+    let ws_shutdown = Arc::new(Notify::new());
+    let ws_per_user_max: usize = parse_env_or("WS_PER_USER_MAX", 10);
+
     let state = Arc::new(AppState {
         db,
         redis,
@@ -106,6 +164,11 @@ pub async fn router(
         prometheus_handle,
         gauge_task,
         feature_flags: Some(domain::FeatureFlags::from_env()),
+        ws_connection_permits: Arc::new(Semaphore::new(ws_max_connections)),
+        ws_idle_timeout: Duration::from_secs(ws_idle_timeout_secs),
+        ws_shutdown,
+        ws_user_connections: Arc::new(Mutex::new(HashMap::new())),
+        ws_per_user_max,
     });
 
     Ok((build_router(state.clone()), state))
@@ -213,7 +276,9 @@ fn build_router(state: Arc<AppState>) -> Router {
             .route("/", axum::routing::get(notes::list_notes))
             .route("/", axum::routing::post(notes::create_note))
             .route("/{id}", axum::routing::get(notes::get_note))
+            .route("/{id}", axum::routing::put(notes::update_note))
             .route("/{id}", axum::routing::delete(notes::delete_note))
+            .layer(DefaultBodyLimit::max(128 * 1024))
             .with_state(state.clone());
         router = router.nest("/notes", notes_router);
     }
@@ -227,7 +292,12 @@ fn build_router(state: Arc<AppState>) -> Router {
     if state.auth.is_none() || !matches!(state.db, DbStatus::Connected(_)) {
         let fb = Router::new()
             .route("/", get(notes_fallback).post(notes_fallback))
-            .route("/{id}", get(notes_fallback).delete(notes_fallback));
+            .route(
+                "/{id}",
+                get(notes_fallback)
+                    .put(notes_fallback)
+                    .delete(notes_fallback),
+            );
         router = router.nest("/notes", fb);
     }
 
@@ -293,6 +363,87 @@ async fn health(State(state): State<Arc<AppState>>) -> impl IntoResponse {
     let storage = health_storage_value(&state);
     let python = health_python_value(&state).await;
     let auth = health_auth_value(&state);
+
+    // Truncate error details before broadcasting to WS clients (prevents
+    // unbounded message growth)
+    let truncate = |s: &str| -> String { s.chars().take(MAX_DETAIL_LENGTH).collect::<String>() };
+
+    // Fire-and-forget health broadcasts to WS subscribers (must not delay HTTP response)
+    // Clone values for the spawned task since they're also used in the HTTP response below
+    let (db_clone, redis_clone, storage_clone, python_clone, auth_clone) = (
+        db.clone(),
+        redis.clone(),
+        storage.clone(),
+        python.clone(),
+        auth.clone(),
+    );
+    let broadcast_state = state.clone();
+    tokio::spawn(async move {
+        futures_util::future::join_all([
+            broadcast_event(
+                &broadcast_state,
+                &LiveEvent::HealthUpdate {
+                    service: "rust".into(),
+                    status: "ok".into(),
+                    detail: None,
+                },
+            ),
+            broadcast_event(
+                &broadcast_state,
+                &LiveEvent::HealthUpdate {
+                    service: "db".into(),
+                    status: db_clone["status"].as_str().unwrap_or("unknown").into(),
+                    detail: db_clone
+                        .get("error")
+                        .and_then(|v| v.as_str())
+                        .map(&truncate),
+                },
+            ),
+            broadcast_event(
+                &broadcast_state,
+                &LiveEvent::HealthUpdate {
+                    service: "redis".into(),
+                    status: redis_clone["status"].as_str().unwrap_or("unknown").into(),
+                    detail: redis_clone
+                        .get("error")
+                        .and_then(|v| v.as_str())
+                        .map(&truncate),
+                },
+            ),
+            broadcast_event(
+                &broadcast_state,
+                &LiveEvent::HealthUpdate {
+                    service: "storage".into(),
+                    status: storage_clone["status"].as_str().unwrap_or("unknown").into(),
+                    detail: storage_clone
+                        .get("error")
+                        .and_then(|v| v.as_str())
+                        .map(&truncate),
+                },
+            ),
+            broadcast_event(
+                &broadcast_state,
+                &LiveEvent::HealthUpdate {
+                    service: "python".into(),
+                    status: python_clone["status"].as_str().unwrap_or("unknown").into(),
+                    detail: python_clone
+                        .get("error")
+                        .and_then(|v| v.as_str())
+                        .map(&truncate),
+                },
+            ),
+            broadcast_event(
+                &broadcast_state,
+                &LiveEvent::HealthUpdate {
+                    service: "auth".into(),
+                    status: auth_clone["status"].as_str().unwrap_or("unknown").into(),
+                    detail: None,
+                },
+            ),
+        ])
+        .await;
+    });
+
     let flags = state.feature_flags.map(|f| {
         json!({
             "chat_enabled": f.chat_enabled,
@@ -597,6 +748,11 @@ mod tests {
                 storage_readonly: false,
                 maintenance_mode: false,
             }),
+            ws_connection_permits: Arc::new(Semaphore::new(100)),
+            ws_idle_timeout: Duration::from_secs(300),
+            ws_shutdown: Arc::new(Notify::new()),
+            ws_user_connections: Arc::new(Mutex::new(HashMap::new())),
+            ws_per_user_max: 10,
         }
     }
 

@@ -36,7 +36,8 @@ async fn main() {
         });
 
     // Graceful shutdown on SIGTERM (Docker standard) + SIGINT (Ctrl-C)
-    let shutdown = async {
+    let graceful_state = state.clone();
+    let shutdown = async move {
         let mut sigterm = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
             .unwrap_or_else(|e| {
                 tracing::error!(error = %e, "failed to install SIGTERM handler");
@@ -47,6 +48,7 @@ async fn main() {
             _ = tokio::signal::ctrl_c() => {},
         }
         tracing::info!("received shutdown signal, draining connections");
+        graceful_state.ws_shutdown.notify_waiters();
     };
 
     axum::serve(listener, app)

@@ -164,6 +164,7 @@ async function handleRustHealth(
   }
 }
 
+// Dev fallback; production uses VITE_RUST_BACKEND_URL env var
 export const API_BASE = import.meta.env.VITE_RUST_BACKEND_URL || "http://localhost:8001";
 
 export async function aggregateHealth(

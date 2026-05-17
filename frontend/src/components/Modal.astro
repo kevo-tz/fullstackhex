@@ -6,19 +6,21 @@ export interface Props {
 
 const { id = "modal", title = "" } = Astro.props;
 ---
-<dialog id={id} class="modal">
-  <div class="modal-backdrop" data-close>
-    <div class="modal-content" role="dialog" aria-modal="true" aria-labelledby={`${id}-title`}>
-      <div class="modal-header">
-        <h2 id={`${id}-title`} class="modal-title">{title}</h2>
-        <button class="modal-close" data-close aria-label="Close">&times;</button>
-      </div>
-      <div class="modal-body">
-        <slot />
+<modal-element>
+  <dialog id={id} class="modal">
+    <div class="modal-backdrop" data-close>
+      <div class="modal-content" role="dialog" aria-modal="true" aria-labelledby={`${id}-title`}>
+        <div class="modal-header">
+          <h2 id={`${id}-title`} class="modal-title">{title}</h2>
+          <button class="modal-close" data-close aria-label="Close">&times;</button>
+        </div>
+        <div class="modal-body">
+          <slot />
+        </div>
       </div>
     </div>
-  </div>
-</dialog>
+  </dialog>
+</modal-element>
 
 <script>
   class ModalElement extends HTMLElement {
@@ -47,6 +49,7 @@ const { id = "modal", title = "" } = Astro.props;
 
 <style>
   .modal { display: contents; }
+  .modal:not([open]) .modal-backdrop { display: none; }
   .modal::backdrop { background: rgba(0,0,0,0.6); }
   .modal-backdrop {
     position: fixed;

@@ -1,0 +1,73 @@
+---
+import Layout from "../components/Layout.astro";
+import Card from "../components/Card.astro";
+import Skeleton from "../components/Skeleton.astro";
+---
+
+<Layout title="Profile — FullStackHex">
+
+  <!-- Loading state -->
+  <div id="profile-loading">
+    <div class="max-w-2xl mx-auto">
+      <h1 class="text-2xl font-bold text-[#e2e8f0] mb-6">Profile</h1>
+      <Skeleton lines={3} height="3rem" />
+    </div>
+  </div>
+
+  <div id="profile-content" style="display:none">
+    <div class="max-w-2xl mx-auto">
+      <h1 class="text-2xl font-bold text-[#e2e8f0] mb-6">Profile</h1>
+
+      <Card title="Account">
+        <div class="profile-field">
+          <span class="profile-label">Email</span>
+          <span id="user-email" class="profile-value">—</span>
+        </div>
+        <div class="profile-field">
+          <span class="profile-label">Name</span>
+          <span id="user-name" class="profile-value">—</span>
+        </div>
+        <div class="profile-field">
+          <span class="profile-label">Provider</span>
+          <span id="user-provider" class="profile-value">—</span>
+        </div>
+      </Card>
+    </div>
+  </div>
+
+  <div class="guard-msg" id="auth-guard" style="display:none">
+    <p>You need to be logged in to view this page.</p>
+    <a href="/login" class="btn" style="display:inline-block;width:auto;">Sign in</a>
+  </div>
+
+  <script>
+    async function initProfile() {
+      try {
+        const res = await fetch("/api/auth/me");
+        const loading = document.getElementById("profile-loading");
+        if (loading) loading.style.display = "none";
+        if (!res.ok) {
+          const guard = document.getElementById("auth-guard");
+          if (guard) guard.style.display = "block";
+          return;
+        }
+        const user = await res.json();
+        const content = document.getElementById("profile-content");
+        if (content) content.style.display = "block";
+        const userEmail = document.getElementById("user-email");
+        if (userEmail) userEmail.textContent = user.email || "—";
+        const userName = document.getElementById("user-name");
+        if (userName) userName.textContent = user.name || "—";
+        const userProvider = document.getElementById("user-provider");
+        if (userProvider) userProvider.textContent = user.provider || "email";
+      } catch {
+        const loading = document.getElementById("profile-loading");
+        if (loading) loading.style.display = "none";
+        const guard = document.getElementById("auth-guard");
+        if (guard) guard.style.display = "block";
+      }
+    }
+
+    initProfile();
+  </script>
+</Layout>

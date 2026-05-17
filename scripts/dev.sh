@@ -82,15 +82,17 @@ $COMPOSE_DEV up -d
 
 log_info "Waiting for PostgreSQL (up to $((POSTGRES_RETRIES * POSTGRES_POLL_INTERVAL))s)..."
 for _ in $(seq 1 "$POSTGRES_RETRIES"); do
-    if $COMPOSE_DEV exec -T postgres pg_isready -U app_user 2>/dev/null; then
+    if docker compose -f compose/dev.yml exec -T postgres pg_isready -U app_user 2>/dev/null; then
         log_success "PostgreSQL ready"
         break
     fi
     sleep "$POSTGRES_POLL_INTERVAL"
 done
 
-log_info "Ensuring PostgreSQL password matches .env (handles stale volumes)..."
-$COMPOSE_DEV exec -T postgres psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" \
+COMPOSE_NO_ENV="docker compose -f compose/dev.yml"
+
+log_info "Ensuring PostgreSQL password matches .env..."
+$COMPOSE_NO_ENV exec -T postgres psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" \
     -c "ALTER USER \"$POSTGRES_USER\" PASSWORD '$POSTGRES_PASSWORD'" 2>/dev/null || {
     log_error "PostgreSQL password sync failed — auth will fail on API calls"
     exit 1

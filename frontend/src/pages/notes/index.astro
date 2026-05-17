@@ -128,9 +128,7 @@ import Skeleton from "../../components/Skeleton.astro";
   }
 
   function escapeHtml(s: string): string {
-    const d = document.createElement("div");
-    d.textContent = s;
-    return d.innerHTML;
+    return s.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
   }
 
   function formatDate(iso: string): string {

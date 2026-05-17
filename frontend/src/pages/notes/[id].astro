@@ -85,12 +85,12 @@ const { id } = Astro.params;
 
   // Delete flow
   const deleteBtn = document.getElementById("delete-btn") as HTMLElement;
-  const modal = document.querySelector("modal-element") as any;
+  const modal = document.querySelector("modal-element") as HTMLElement & { open(): void; close(): void };
   const confirmBtn = document.getElementById("confirm-delete") as HTMLButtonElement;
   const cancelBtn = document.getElementById("cancel-delete") as HTMLElement;
 
   function showToast(msg: string, type: "info" | "error" = "info") {
-    const container = document.querySelector("toast-container") as any;
+    const container = document.querySelector("toast-container") as HTMLElement & { show(m: string, t: string): void };
     container?.show(msg, type);
   }
 

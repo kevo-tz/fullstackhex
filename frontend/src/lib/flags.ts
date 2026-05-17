@@ -1,20 +1,15 @@
 /// <reference types="astro/client" />
 
+import type { HealthResponse } from "./health";
+
 export interface FeatureFlags {
   chat_enabled: boolean;
   storage_readonly: boolean;
   maintenance_mode: boolean;
 }
 
-export interface HealthResponse {
-  rust: Record<string, unknown>;
-  db: Record<string, unknown>;
-  redis: Record<string, unknown>;
-  storage: Record<string, unknown>;
-  python: Record<string, unknown>;
-  auth: Record<string, unknown>;
-  feature_flags: FeatureFlags | null;
-}
+// Re-export for convenience
+export type { HealthResponse };
 
 /**
  * Fetch feature flags from the health endpoint.

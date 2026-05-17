@@ -22,8 +22,9 @@ $COMPOSE_DEV exec -T postgres \
 echo "  → redis"
 $COMPOSE_DEV exec -T redis \
   redis-cli SAVE
-$COMPOSE_DEV cp \
-  redis:/data/dump.rdb "$BACKUP_DIR/redis_dump-$TIMESTAMP.rdb" 2>/dev/null || echo "    (rdb copy skipped)"
+if ! $COMPOSE_DEV cp redis:/data/dump.rdb "$BACKUP_DIR/redis_dump-$TIMESTAMP.rdb"; then
+    echo "    (rdb copy skipped — redis-cli SAVE may not have completed)" >&2
+fi
 
 echo "Backup complete: $BACKUP_DIR"
 ls -lh "$BACKUP_DIR"/*-"$TIMESTAMP"*

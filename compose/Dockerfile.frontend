@@ -4,7 +4,8 @@ FROM oven/bun:1.3-slim AS builder
 WORKDIR /app
 
 # Copy package files first (leverage Docker cache)
-COPY frontend/package.json frontend/bun.lock ./frontend/
+# Supports bun.lock (JSON) or bun.lockb (binary) — the RUN copies whichever exists
+COPY frontend/package.json frontend/bun.lock* ./frontend/
 
 # Install dependencies
 RUN cd frontend && bun install --frozen-lockfile

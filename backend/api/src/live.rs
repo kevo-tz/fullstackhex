@@ -266,7 +266,7 @@ impl Drop for WsUserGuard {
         // Best-effort: spawn a blocking task since Drop runs in any context
         let uid = self.user_id.clone();
         let conns = self.connections.clone();
-        tokio::spawn(async move {
+        match tokio::spawn(async move {
             let mut map = conns.lock().await;
             if let Some(count) = map.get_mut(&uid) {
                 *count = count.saturating_sub(1);
@@ -274,7 +274,16 @@ impl Drop for WsUserGuard {
                     map.remove(&uid);
                 }
             }
-        });
+        }) {
+            Ok(_) => {}
+            Err(e) => {
+                tracing::warn!(
+                    error = %e,
+                    user_id = %uid,
+                    "WsUserGuard spawn failed — per-user counter may leak"
+                );
+            }
+        }
     }
 }
 

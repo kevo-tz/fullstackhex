@@ -106,32 +106,6 @@ logger = logging.getLogger("py-api")
 
 
 @app.middleware("http")
-async def trace_id_middleware(
-    request: Request, call_next: Callable[[Request], Awaitable[Response]]
-) -> Response:
-    """FastAPI middleware that logs request duration and increments Prometheus counters."""
-    trace_id = request.headers.get("x-trace-id", "")
-    start = time.monotonic()
-    response = await call_next(request)
-    duration = time.monotonic() - start
-    duration_ms = int(duration * 1000)
-    logger.info(
-        f"{request.method} {request.url.path} → {response.status_code}",
-        extra={
-            "trace_id": trace_id,
-            "duration_ms": duration_ms,
-            "status_code": response.status_code,
-        },
-    )
-    # Record Prometheus metrics
-    endpoint = request.url.path
-    status = str(response.status_code)
-    PYTHON_REQUESTS_TOTAL.labels(method=request.method, endpoint=endpoint, status=status).inc()
-    PYTHON_REQUEST_DURATION.labels(method=request.method, endpoint=endpoint).observe(duration)
-    return response
-
-
-@app.middleware("http")
 async def hmac_auth_middleware(
     request: Request, call_next: Callable[[Request], Awaitable[Response]]
 ) -> Response:
@@ -179,6 +153,32 @@ async def hmac_auth_middleware(
         )
 
     return await call_next(request)
+
+
+@app.middleware("http")
+async def trace_id_middleware(
+    request: Request, call_next: Callable[[Request], Awaitable[Response]]
+) -> Response:
+    """FastAPI middleware that logs request duration and increments Prometheus counters."""
+    trace_id = request.headers.get("x-trace-id", "")
+    start = time.monotonic()
+    response = await call_next(request)
+    duration = time.monotonic() - start
+    duration_ms = int(duration * 1000)
+    logger.info(
+        f"{request.method} {request.url.path} → {response.status_code}",
+        extra={
+            "trace_id": trace_id,
+            "duration_ms": duration_ms,
+            "status_code": response.status_code,
+        },
+    )
+    # Record Prometheus metrics
+    endpoint = request.url.path
+    status = str(response.status_code)
+    PYTHON_REQUESTS_TOTAL.labels(method=request.method, endpoint=endpoint, status=status).inc()
+    PYTHON_REQUEST_DURATION.labels(method=request.method, endpoint=endpoint).observe(duration)
+    return response
 
 
 @app.get("/health")

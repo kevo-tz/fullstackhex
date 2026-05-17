@@ -112,14 +112,9 @@ The `/live` WebSocket endpoint supports two authentication methods, matching the
 
 Browser `WebSocket` API sends cookies automatically during the upgrade handshake. The `session=` cookie is extracted from the `Cookie` header, the `Session` struct is looked up in Redis, and the `user_id` is returned directly (JWT re-validation is skipped — the session is authoritative once established). This works transparently for logged-in dashboard users.
 
-### Non-Browser Clients (Bearer Token)
+### Non-Browser Clients
 
-Pass a JWT as a query parameter:
-```
-wss://host/api/live?token=<jwt>
-```
-
-The token is validated directly via the JWT service (no Redis lookup needed). This is intended for programmatic clients (mobile, CLI).
+The `/live` endpoint authenticates via session cookie only. Programmatic clients (mobile, CLI) must authenticate through the HTTP API first to establish a session, then pass the session cookie during the WebSocket upgrade handshake.
 
 ### Auth Failure
 

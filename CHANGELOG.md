@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.13.7] - 2026-05-17
+
+### Fixed
+- **WsUserGuard mutex**: switched from `tokio::sync::Mutex::try_lock()` to `std::sync::Mutex::lock().unwrap()` — the connection counter is now guaranteed to decrement on drop, preventing slow connection-count inflation under contention
+- **Session deserialization**: added old-format JWT fallback in `cookie_authenticated()` — users with pre-v0.13.7 sessions don't need to re-authenticate after deploy
+- **JWT fallback removed**: cleared the v0.13.7 migration fallback — all sessions are now `Session` structs in Redis
+
+### Docs
+- **AUTH.md**: updated WS auth section — Bearer token query param was removed; WS is cookie-only now
+- **TODOS.md**: all three items marked `[DONE]`
+
 ## [0.13.6] - 2026-05-16
 
 ### Added

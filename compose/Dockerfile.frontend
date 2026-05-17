@@ -27,6 +27,9 @@ WORKDIR /app
 COPY --from=builder /app/frontend/dist ./dist
 COPY --from=builder /app/frontend/package.json ./
 
+# Install production deps — dist/server/entry.mjs has bare imports
+RUN npm install --production
+
 ENV HOST=0.0.0.0
 ENV PORT=4321
 ENV NODE_ENV=production

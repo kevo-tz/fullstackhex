@@ -22,7 +22,7 @@ test.describe("Notes CRUD", () => {
     await authenticate(page);
     await page.goto("/notes");
 
-    await page.waitForSelector("#notes-loading", { state: "hidden", timeout: 10000 }).catch(() => {});
+    await page.waitForSelector("#notes-loading", { state: "hidden", timeout: 10000 }).catch(e => console.error("notes-loading not hidden (create test):", e.message));
     await page.waitForTimeout(500);
 
     await page.click('a[href="/notes/create"]');
@@ -40,7 +40,7 @@ test.describe("Notes CRUD", () => {
     await authenticate(page);
     await page.goto("/notes");
 
-    await page.waitForSelector("#notes-loading", { state: "hidden", timeout: 10000 }).catch(() => {});
+    await page.waitForSelector("#notes-loading", { state: "hidden", timeout: 10000 }).catch(e => console.error("notes-loading not hidden (delete test):", e.message));
 
     // + New Note button also matches a[href^="/notes/"] — exclude it
     const firstNote = page.locator('#notes-table a[href^="/notes/"]').first();
@@ -55,7 +55,7 @@ test.describe("Notes CRUD", () => {
 
     // Deletion navigates back to notes list — verify note is gone
     await page.waitForURL("/notes", { timeout: 15000 });
-    await page.waitForSelector("#notes-loading", { state: "hidden", timeout: 10000 }).catch(() => {});
+    await page.waitForSelector("#notes-loading", { state: "hidden", timeout: 10000 }).catch(e => console.error("notes-loading not hidden (verify deleted):", e.message));
     await expect(page.getByText(title)).toHaveCount(0);
   });
 });

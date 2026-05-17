@@ -519,4 +519,147 @@ mod tests {
             broadcast_event(&state, &event).await;
         });
     }
+
+    #[test]
+    fn ws_user_guard_decrements_on_drop() {
+        let map: Arc<Mutex<HashMap<String, usize>>> = Arc::new(Mutex::new(HashMap::new()));
+        {
+            let mut m = map.lock().unwrap();
+            m.insert("user1".into(), 3usize);
+        }
+        {
+            let _user_guard = WsUserGuard {
+                user_id: "user1".into(),
+                connections: map.clone(),
+            };
+        }
+        assert_eq!(map.lock().unwrap().get("user1"), Some(&2usize));
+    }
+
+    #[test]
+    fn ws_user_guard_removes_key_when_zero() {
+        let map: Arc<Mutex<HashMap<String, usize>>> = Arc::new(Mutex::new(HashMap::new()));
+        {
+            let mut m = map.lock().unwrap();
+            m.insert("user1".into(), 1usize);
+        }
+        {
+            let _user_guard = WsUserGuard {
+                user_id: "user1".into(),
+                connections: map.clone(),
+            };
+        }
+        assert!(map.lock().unwrap().get("user1").is_none());
+    }
+
+    #[test]
+    fn ws_user_guard_is_noop_for_unknown_user() {
+        let map: Arc<Mutex<HashMap<String, usize>>> = Arc::new(Mutex::new(HashMap::new()));
+        {
+            let mut m = map.lock().unwrap();
+            m.insert("user1".into(), 3usize);
+        }
+        {
+            let _user_guard = WsUserGuard {
+                user_id: "unknown_user".into(),
+                connections: map.clone(),
+            };
+        }
+        assert_eq!(map.lock().unwrap().get("user1"), Some(&3usize));
+    }
+
+    #[test]
+    fn ws_user_guard_is_noop_on_empty_map() {
+        let map: Arc<Mutex<HashMap<String, usize>>> = Arc::new(Mutex::new(HashMap::new()));
+        {
+            let _user_guard = WsUserGuard {
+                user_id: "user1".into(),
+                connections: map.clone(),
+            };
+        }
+        assert!(map.lock().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn cookie_authenticated_returns_none_without_cookie() {
+        let headers = HeaderMap::new();
+        let state = crate::AppState {
+            db: crate::DbStatus::NotConfigured,
+            redis: None,
+            auth: None,
+            storage: None,
+            sidecar: crate::PythonSidecar::new(
+                std::path::PathBuf::from("/tmp/nonexistent.sock"),
+                std::time::Duration::from_secs(1),
+                0,
+            ),
+            prometheus_handle: metrics::init_metrics_recorder(),
+            gauge_task: None,
+            feature_flags: None,
+            ws_connection_permits: std::sync::Arc::new(tokio::sync::Semaphore::new(100)),
+            ws_idle_timeout: std::time::Duration::from_secs(300),
+            ws_shutdown: std::sync::Arc::new(tokio::sync::Notify::new()),
+            ws_user_connections: std::sync::Arc::new(std::sync::Mutex::new(
+                std::collections::HashMap::new(),
+            )),
+            ws_per_user_max: 10,
+        };
+        assert!(cookie_authenticated(&headers, &state).await.is_none());
+    }
+
+    #[tokio::test]
+    async fn cookie_authenticated_returns_none_when_redis_none() {
+        let mut headers = HeaderMap::new();
+        headers.insert("cookie", "session=abc123".parse().unwrap());
+        let state = crate::AppState {
+            db: crate::DbStatus::NotConfigured,
+            redis: None,
+            auth: None,
+            storage: None,
+            sidecar: crate::PythonSidecar::new(
+                std::path::PathBuf::from("/tmp/nonexistent.sock"),
+                std::time::Duration::from_secs(1),
+                0,
+            ),
+            prometheus_handle: metrics::init_metrics_recorder(),
+            gauge_task: None,
+            feature_flags: None,
+            ws_connection_permits: std::sync::Arc::new(tokio::sync::Semaphore::new(100)),
+            ws_idle_timeout: std::time::Duration::from_secs(300),
+            ws_shutdown: std::sync::Arc::new(tokio::sync::Notify::new()),
+            ws_user_connections: std::sync::Arc::new(std::sync::Mutex::new(
+                std::collections::HashMap::new(),
+            )),
+            ws_per_user_max: 10,
+        };
+        assert!(cookie_authenticated(&headers, &state).await.is_none());
+    }
+
+    #[tokio::test]
+    async fn cookie_authenticated_returns_none_for_empty_session() {
+        let mut headers = HeaderMap::new();
+        headers.insert("cookie", "session=".parse().unwrap());
+        let state = crate::AppState {
+            db: crate::DbStatus::NotConfigured,
+            redis: None,
+            auth: None,
+            storage: None,
+            sidecar: crate::PythonSidecar::new(
+                std::path::PathBuf::from("/tmp/nonexistent.sock"),
+                std::time::Duration::from_secs(1),
+                0,
+            ),
+            prometheus_handle: metrics::init_metrics_recorder(),
+            gauge_task: None,
+            feature_flags: None,
+            ws_connection_permits: std::sync::Arc::new(tokio::sync::Semaphore::new(100)),
+            ws_idle_timeout: std::time::Duration::from_secs(300),
+            ws_shutdown: std::sync::Arc::new(tokio::sync::Notify::new()),
+            ws_user_connections: std::sync::Arc::new(std::sync::Mutex::new(
+                std::collections::HashMap::new(),
+            )),
+            ws_per_user_max: 10,
+        };
+        assert!(cookie_authenticated(&headers, &state).await.is_none());
+    }
 }

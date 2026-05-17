@@ -16,10 +16,8 @@
 
 ---
 
-## [P3] Remove JWT fallback after v0.13.7 deploy window
+## [DONE] Remove JWT fallback after v0.13.7 deploy window
 
-**File:** `backend/api/src/live.rs` — `cookie_authenticated()`
+**Commit:** _(pending)_ — `backend/api/src/live.rs`
 
-Once the deploy window closes (all sessions stored as `Session` structs), remove the fallback block. Marked in code with `// TODO: remove after v0.13.7 deploy window`.
-
-**Target:** v0.13.9
+The fallback block in `cookie_authenticated()` that read old-format JWT sessions has been removed. All sessions are now stored as `Session` structs.

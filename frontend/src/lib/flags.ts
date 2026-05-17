@@ -22,7 +22,7 @@ export async function fetchFeatureFlags(
     const res = await fetchImpl("/api/health");
     if (!res.ok) return null;
     const data: HealthResponse = await res.json();
-    return data.feature_flags ?? null;
+    return (data.feature_flags ?? null) as FeatureFlags | null;
   } catch {
     return null;
   }

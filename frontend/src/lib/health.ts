@@ -161,7 +161,9 @@ export async function aggregateHealth(
           headers: { "x-trace-id": traceId },
         });
         const d = await res.json();
-        return { status: String((d as Record<string, unknown>)?.rust?.["status"] ?? "error") };
+        const healthData = d as Record<string, unknown>;
+        const rustHealth = healthData.rust as Record<string, unknown> | undefined;
+        return { status: String(rustHealth?.status ?? "error") };
       } catch {
         return { status: "error" };
       }

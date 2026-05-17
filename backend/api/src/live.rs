@@ -28,9 +28,9 @@ use serde::{Deserialize, Serialize};
 use futures_util::sink::SinkExt;
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::sync::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
-use std::sync::Mutex;
 use tokio::sync::Notify;
 
 /// Redis pub/sub channel for live events.

@@ -19,11 +19,12 @@ for pidfile in "$PID_DIR"/*.pid; do
     fi
 done
 
-pkill -x uvicorn 2>/dev/null || true
-pkill -x api 2>/dev/null || true
-pkill -x bun 2>/dev/null || true
+# Kill processes within this project (user-scoped to avoid system-wide matches)
+pkill -u "$(whoami)" -x uvicorn 2>/dev/null || true
+pkill -u "$(whoami)" -x api 2>/dev/null || true
+pkill -u "$(whoami)" -x bun 2>/dev/null || true
 # Catch orphaned Astro/node processes bun leaves behind on abnormal exit
-pkill -f "astro dev" 2>/dev/null || true
+pkill -u "$(whoami)" -f "astro dev" 2>/dev/null || true
 
 $COMPOSE_DEV down
 $COMPOSE_MON ps -q 2>/dev/null | grep -q . && $COMPOSE_MON down || true

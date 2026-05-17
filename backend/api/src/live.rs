@@ -102,7 +102,7 @@ pub async fn ws_handler(
     State(state): State<Arc<AppState>>,
 ) -> impl IntoResponse {
     // Auth check: when auth is configured, require valid session cookie
-    let maybe_user_id = if let Some(ref _auth_service) = state.auth {
+    let maybe_user_id = if state.auth.is_some() {
         cookie_authenticated(&headers, &state).await
     } else {
         None

@@ -201,7 +201,7 @@ wheels = [
 
 [[package]]
 name = "py-api"
-version = "0.13.0"
+version = "0.13.6"
 source = { editable = "." }
 dependencies = [
     { name = "fastapi" },

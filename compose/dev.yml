@@ -29,7 +29,7 @@ services:
       # Tune for development (not production)
       POSTGRES_INITDB_ARGS: "--encoding=UTF-8 --locale=C"
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - postgres_data:/var/lib/postgresql
       # Optional: mount init scripts
       # - ./scripts/db/init:/docker-entrypoint-initdb.d
     healthcheck:

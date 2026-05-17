@@ -107,38 +107,7 @@ make status</pre>
       let wsDisconnected = true;
       let wsEverConnected = false;
 
-      function setStatus(id: string, status: string, label: string) {
-        const dot  = document.getElementById("dot-"  + id);
-        const text = document.getElementById("text-" + id);
-        if (dot)  dot.className    = "dot " + (status || "loading");
-        if (text) {
-          text.textContent = label || status || "…";
-          const sr = document.getElementById("sr-" + id);
-          if (sr) sr.textContent = id + ": " + (label || status || "…");
-        }
-      }
-
-      function setDetail(id: string, text: string) {
-        const el = document.getElementById("detail-" + id);
-        if (el) el.textContent = text || "";
-      }
-
-      function setDiagnostic(id: string, text: string) {
-        const el = document.getElementById("diag-" + id);
-        if (!el) return;
-        if (text) {
-          el.textContent = text;
-          el.classList.add("visible");
-        } else {
-          el.textContent = "";
-          el.classList.remove("visible");
-        }
-      }
-
-      function showOutage(visible: boolean) {
-        const el = document.getElementById("outage-block");
-        if (el) el.classList.toggle("visible", visible);
-      }
+      import { setStatus, setDetail, setDiagnostic, showOutage } from "../lib/health-ui";
 
       let retryTimer: ReturnType<typeof setTimeout> | null = null;
       let retryDelay = 1000;

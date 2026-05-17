@@ -1,4 +1,5 @@
 import { describe, expect, test, beforeEach } from "vitest";
+import { setStatus, setDetail } from "../../src/lib/health-ui";
 
 function buildDashboardHTML(): string {
   return `<!DOCTYPE html>
@@ -28,22 +29,6 @@ function buildDashboardHTML(): string {
   </div>
 </div>
 </body></html>`;
-}
-
-/**
- * Mirrors the setStatus function from index.astro inline script.
- * KEEP IN SYNC with the inline script in src/pages/index.astro.
- */
-function setStatus(id: string, status: string, label: string): void {
-  const dot = document.getElementById("dot-" + id);
-  const text = document.getElementById("text-" + id);
-  if (dot) dot.className = "dot " + (status || "loading");
-  if (text) text.textContent = label || status || "…";
-}
-
-function setDetail(id: string, text: string): void {
-  const el = document.getElementById("detail-" + id);
-  if (el) el.textContent = text || "";
 }
 
 describe("Dashboard health status display", () => {

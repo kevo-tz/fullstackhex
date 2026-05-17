@@ -25,20 +25,28 @@ pub struct AuthState {
     pub oauth: Arc<super::oauth::OAuthService>,
 }
 
-/// Extract client IP from request headers (X-Forwarded-For, X-Real-IP fallback).
+/// Extract client IP from request headers.
+///
+/// Only trusts `X-Forwarded-For` and `X-Real-IP` when `TRUST_PROXY` is set
+/// (production behind nginx). Otherwise returns "unknown" to prevent IP
+/// spoofing in dev setups where the app is directly exposed.
 fn client_ip(headers: &HeaderMap) -> String {
-    headers
-        .get("x-forwarded-for")
-        .and_then(|v| v.to_str().ok())
-        .and_then(|v| v.split(',').next())
-        .map(|s| s.trim().to_string())
-        .or_else(|| {
-            headers
-                .get("x-real-ip")
-                .and_then(|v| v.to_str().ok())
-                .map(|s| s.trim().to_string())
-        })
-        .unwrap_or_else(|| "unknown".to_string())
+    if std::env::var("TRUST_PROXY").is_ok() {
+        headers
+            .get("x-forwarded-for")
+            .and_then(|v| v.to_str().ok())
+            .and_then(|v| v.split(',').next())
+            .map(|s| s.trim().to_string())
+            .or_else(|| {
+                headers
+                    .get("x-real-ip")
+                    .and_then(|v| v.to_str().ok())
+                    .map(|s| s.trim().to_string())
+            })
+            .unwrap_or_else(|| "unknown".to_string())
+    } else {
+        "unknown".to_string()
+    }
 }
 
 /// Check rate limit for auth endpoints.
@@ -772,14 +780,24 @@ mod route_tests {
     fn client_ip_from_x_forwarded_for() {
         let mut headers = HeaderMap::new();
         headers.insert("x-forwarded-for", "192.168.1.1, 10.0.0.1".parse().unwrap());
+        // Without TRUST_PROXY, forwarded headers are ignored
+        assert_eq!(client_ip(&headers), "unknown");
+    }
+
+    #[test]
+    fn client_ip_trusts_forwarded_when_configured() {
+        std::env::set_var("TRUST_PROXY", "true");
+        let mut headers = HeaderMap::new();
+        headers.insert("x-forwarded-for", "192.168.1.1, 10.0.0.1".parse().unwrap());
         assert_eq!(client_ip(&headers), "192.168.1.1");
+        std::env::remove_var("TRUST_PROXY");
     }
 
     #[test]
     fn client_ip_from_x_real_ip() {
         let mut headers = HeaderMap::new();
         headers.insert("x-real-ip", "10.0.0.2".parse().unwrap());
-        assert_eq!(client_ip(&headers), "10.0.0.2");
+        assert_eq!(client_ip(&headers), "unknown");
     }
 
     #[test]

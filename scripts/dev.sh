@@ -82,7 +82,7 @@ $COMPOSE_DEV up -d
 
 log_info "Waiting for PostgreSQL (up to $((POSTGRES_RETRIES * POSTGRES_POLL_INTERVAL))s)..."
 for _ in $(seq 1 "$POSTGRES_RETRIES"); do
-    if docker compose -f compose/dev.yml exec -T postgres pg_isready -U app_user 2>/dev/null; then
+    if $COMPOSE_DEV exec -T postgres pg_isready -U app_user 2>/dev/null; then
         log_success "PostgreSQL ready"
         break
     fi

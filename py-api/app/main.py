@@ -110,13 +110,17 @@ async def hmac_auth_middleware(
     request: Request, call_next: Callable[[Request], Awaitable[Response]]
 ) -> Response:
     """FastAPI middleware that validates HMAC-SHA256 signatures on auth headers forwarded from the Rust backend."""
+    trace_id = request.headers.get("x-trace-id", "")
     path = request.url.path
     # Skip HMAC for public routes
     if path in ("/health", "/metrics"):
         return await call_next(request)
 
     if not settings.shared_secret:
-        # Fail closed — never trust auth headers if shared secret is missing
+        logger.warning(
+            "HMAC rejection: SIDECAR_SHARED_SECRET not configured",
+            extra={"trace_id": trace_id},
+        )
         return Response(
             content=json.dumps(
                 {"error": "SIDECAR_SHARED_SECRET not configured — rejecting all requests"}
@@ -131,6 +135,10 @@ async def hmac_auth_middleware(
     signature = request.headers.get("X-Auth-Signature", "")
 
     if not all([user_id, email, signature]):
+        logger.warning(
+            "HMAC rejection: missing auth headers",
+            extra={"trace_id": trace_id, "has_user_id": bool(user_id), "has_email": bool(email)},
+        )
         return Response(
             content=json.dumps({"error": "Missing auth headers"}),
             status_code=401,
@@ -146,6 +154,14 @@ async def hmac_auth_middleware(
     ).hexdigest()
 
     if not hmac.compare_digest(expected, signature):
+        logger.warning(
+            "HMAC rejection: invalid signature",
+            extra={
+                "trace_id": trace_id,
+                "user_id": user_id,
+                "email": email,
+            },
+        )
         return Response(
             content=json.dumps({"error": "Invalid auth signature"}),
             status_code=401,

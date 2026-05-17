@@ -14,7 +14,7 @@ groups:
       - alert: HighLatency
         expr: |
           histogram_quantile(0.99,
-            sum(rate(http_request_duration_seconds_bucket[5m])) by (le)
+            sum(rate(http_request_duration_seconds_bucket[5m])) by (le, job, route)
           ) > 0.1
         for: 5m
         labels:

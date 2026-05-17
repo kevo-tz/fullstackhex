@@ -117,9 +117,12 @@ const altText = isLogin ? "Need an account? Register" : "Already have an account
 
     try {
       const endpoint = isLogin ? "/api/auth/login" : "/api/auth/register";
+      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      const csrfToken = sessionStorage.getItem("csrf_token");
+      if (csrfToken) headers["x-csrf-token"] = csrfToken;
       const res = await fetch(endpoint, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers,
         body: JSON.stringify(body),
       });
 

@@ -213,15 +213,10 @@ services:
     expose:
       - "6379"
     command: >
-      redis-server
-      --maxmemory ${REDIS_MAX_MEMORY:-512mb}
-      --maxmemory-policy ${REDIS_MAXMEMORY_POLICY:-allkeys-lru}
-      --appendonly ${REDIS_APPENDONLY:-yes}
-      --save 900 1
-      --save 300 10
-      --save 60 10000
+      redis-server /usr/local/etc/redis/redis.conf
       --requirepass ${REDIS_PASSWORD:?REDIS_PASSWORD must be set in .env}
     volumes:
+      - ./redis/redis.conf:/usr/local/etc/redis/redis.conf:ro
       - redis_data:/data
     environment:
       REDISCLI_AUTH: ${REDIS_PASSWORD}

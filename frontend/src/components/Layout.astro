@@ -141,6 +141,10 @@ const { title } = Astro.props;
             headers: { "Content-Type": "application/json" },
           });
           if (refreshRes.ok) {
+            const data = await refreshRes.json().catch(() => ({}));
+            if (data.csrf_token) {
+              sessionStorage.setItem("csrf_token", data.csrf_token);
+            }
             return true;
           }
           document.cookie = "access_token=; path=/; max-age=0";

@@ -21,7 +21,7 @@ receivers:
   # Replace the URL below with a reachable receiver endpoint in your environment.
   - name: 'dev'
     webhook_configs:
-      - url: 'http://localhost:5001/alerts'
+      - url: 'http://webhook:5001/alerts'
         send_resolved: true
 
   # ── Production receivers (uncomment and configure) ──

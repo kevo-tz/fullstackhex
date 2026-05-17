@@ -36,8 +36,7 @@ async def _call_next_ok(request: Request) -> Response:
     return Response(content=b"ok", status_code=200)
 
 
-def test_hmac_missing_signature_returns_401(monkeypatch):
-    monkeypatch.setenv("SIDECAR_SHARED_SECRET", "dummy_sidecar_secret")
+def test_hmac_missing_signature_returns_401():
     import app.main
 
     app.main.settings.shared_secret = "dummy_sidecar_secret"
@@ -53,8 +52,7 @@ def test_hmac_missing_signature_returns_401(monkeypatch):
     assert "Missing auth headers" in body["error"]
 
 
-def test_hmac_invalid_signature_returns_401(monkeypatch):
-    monkeypatch.setenv("SIDECAR_SHARED_SECRET", "dummy_sidecar_secret")
+def test_hmac_invalid_signature_returns_401():
     import app.main
 
     app.main.settings.shared_secret = "dummy_sidecar_secret"
@@ -72,9 +70,8 @@ def test_hmac_invalid_signature_returns_401(monkeypatch):
     assert "Invalid auth signature" in body["error"]
 
 
-def test_hmac_valid_signature_passes(monkeypatch):
+def test_hmac_valid_signature_passes():
     secret = "dummy_sidecar_secret"
-    monkeypatch.setenv("SIDECAR_SHARED_SECRET", secret)
     import app.main
 
     app.main.settings.shared_secret = secret
@@ -116,8 +113,7 @@ def test_hmac_missing_secret_rejects_all_requests():
     assert "SIDECAR_SHARED_SECRET not configured" in body["error"]
 
 
-def test_hmac_public_routes_skip_auth(monkeypatch):
-    monkeypatch.setenv("SIDECAR_SHARED_SECRET", "dummy_sidecar_secret")
+def test_hmac_public_routes_skip_auth():
     import app.main
 
     app.main.settings.shared_secret = "dummy_sidecar_secret"

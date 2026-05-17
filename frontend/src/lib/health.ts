@@ -35,7 +35,7 @@ function jsonLog(obj: Record<string, unknown>): void {
 export function isFullOutage(data: Record<string, unknown>): boolean {
   for (const svc of SERVICE_IDS) {
     const entry = data[svc] as Record<string, unknown> | undefined;
-    if (!entry || entry.status === "ok") return false;
+    if (entry?.status === "ok") return false;
   }
   return true;
 }

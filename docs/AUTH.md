@@ -69,6 +69,16 @@ Progressive backoff on login failures per IP:
 
 Backoff is checked before the rate limit. Rate limits: 5 attempts per email per 5min, 10 attempts per IP per 5min.
 
+## Registration Timing Side-Channel
+
+The `/auth/register` endpoint checks the rate limit before input validation. A rate-limited request returns 429 instantly (~50ms faster than the 422 returned by invalid input). An attacker who observes response timing can distinguish already-rate-limited emails from novel emails.
+
+This is a documented inherent tradeoff:
+- **Rate-limit-first** (current): Prevents attackers from probing email existence via timing, but leak rate-limit status via timing.
+- **Validate-first** (alternative): Leaks email existence via timing (422 for invalid vs 409 for existing), but hides rate-limit status.
+
+Either choice leaks information. Rate-limit-first is preferred because (a) rate-limit status changes over time (less useful to attackers) and (b) it protects backend resources by rejecting flood traffic before parsing request bodies.
+
 ## CSRF Protection
 
 When `AUTH_MODE=cookie`, state-changing endpoints (POST/PUT/DELETE/PATCH) require an `X-CSRF-Token` header matching the `csrf_token` cookie. Double-submit pattern with constant-time comparison.
@@ -100,7 +110,7 @@ The `/live` WebSocket endpoint supports two authentication methods, matching the
 
 ### Browser Clients (Cookie)
 
-Browser `WebSocket` API sends cookies automatically during the upgrade handshake. The `session=` cookie is extracted from the `Cookie` header, the session token is looked up in Redis, and the JWT is validated. This works transparently for logged-in dashboard users.
+Browser `WebSocket` API sends cookies automatically during the upgrade handshake. The `session=` cookie is extracted from the `Cookie` header, the `Session` struct is looked up in Redis, and the `user_id` is returned directly (JWT re-validation is skipped — the session is authoritative once established). This works transparently for logged-in dashboard users.
 
 ### Non-Browser Clients (Bearer Token)
 

@@ -24,12 +24,12 @@ FROM node:26-slim
 
 WORKDIR /app
 
-# Copy the built SSR output from the builder stage
+# Copy the built SSR output and node_modules from the builder stage
 COPY --from=builder /app/frontend/dist ./dist
+COPY --from=builder /app/frontend/node_modules ./node_modules
 COPY --from=builder /app/frontend/package.json ./
 
-# Install production deps — dist/server/entry.mjs has bare imports
-RUN npm install --production
+# No npm install needed — node_modules bundled from builder via bun
 
 ENV HOST=0.0.0.0
 ENV PORT=4321

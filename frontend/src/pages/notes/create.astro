@@ -16,7 +16,7 @@ import Layout from "../../components/Layout.astro";
 
       <div class="form-group">
         <label for="body" class="form-label">Body</label>
-        <textarea id="body" name="body" class="form-input" rows="6" placeholder="Write your note here…"></textarea>
+        <textarea id="body" name="body" class="form-input" rows="6" maxlength="10000" required placeholder="Write your note here…"></textarea>
         <span id="body-error" class="field-error hidden"></span>
       </div>
 
@@ -60,7 +60,7 @@ import Layout from "../../components/Layout.astro";
     submitBtn.textContent = "Creating…";
 
     try {
-      const csrf = sessionStorage.getItem("csrf_token") || document.cookie.split("; ").find(r => r.startsWith("csrf_token="))?.split("=")[1] || "";
+      const csrf = (await import("../../lib/csrf")).getCsrfToken();
       const res = await fetch("/api/notes", {
         method: "POST",
         headers: { "Content-Type": "application/json", ...(csrf ? { "X-CSRF-Token": csrf } : {}) },

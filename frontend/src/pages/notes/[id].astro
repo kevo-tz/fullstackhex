@@ -104,7 +104,7 @@ const { id } = Astro.params;
     confirmBtn.textContent = "Deleting…";
     modal?.close();
     try {
-      const csrf = sessionStorage.getItem("csrf_token") || document.cookie.split("; ").find(r => r.startsWith("csrf_token="))?.split("=")[1] || "";
+      const csrf = (await import("../../lib/csrf")).getCsrfToken();
       const res = await fetch(`/api/notes/${noteId}`, {
         method: "DELETE",
         headers: csrf ? { "X-CSRF-Token": csrf } : {},

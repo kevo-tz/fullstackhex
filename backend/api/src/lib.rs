@@ -315,6 +315,8 @@ fn auth_routes(state: &Arc<AppState>) -> Option<Router> {
             .route("/register", axum::routing::post(auth::routes::register))
             .route("/login", axum::routing::post(auth::routes::login))
             .route("/logout", axum::routing::post(auth::routes::logout))
+            .route("/forgot-password", axum::routing::post(auth::routes::forgot_password))
+            .route("/reset-password", axum::routing::post(auth::routes::reset_password))
             .route("/refresh", axum::routing::post(auth::routes::refresh))
             .route("/providers", axum::routing::get(auth::routes::providers))
             .route("/me", axum::routing::get(auth::routes::me))

@@ -495,6 +495,153 @@ pub struct RefreshRequest {
     pub refresh_token: String,
 }
 
+/// Forgot-password request body.
+#[derive(Debug, Deserialize)]
+pub struct ForgotPasswordRequest {
+    pub email: String,
+}
+
+/// Reset-password request body.
+#[derive(Debug, Deserialize)]
+pub struct ResetPasswordRequest {
+    pub token: String,
+    pub password: String,
+}
+
+const RESET_TOKEN_TTL_SECS: u64 = 3600; // 1 hour
+
+/// POST /auth/forgot-password — generate a password reset token.
+///
+/// Always returns 202 to prevent email enumeration. If the email exists,
+/// a reset token is stored in Redis with a 1-hour TTL and the reset URL
+/// is logged server-side.
+pub async fn forgot_password(
+    State(state): State<AuthState>,
+    headers: HeaderMap,
+    Json(body): Json<ForgotPasswordRequest>,
+) -> Result<impl IntoResponse, ApiError> {
+    // Rate limit by IP
+    let ip = client_ip(&headers);
+    check_rate_limit(
+        &state.redis,
+        &format!("forgot:{ip}"),
+        Duration::from_secs(state.auth.config.rate_limits.forgot_window_secs),
+        state.auth.config.rate_limits.forgot_max,
+    )
+    .await?;
+
+    // Basic email validation
+    if body.email.is_empty() || !body.email.contains('@') {
+        return Err(ApiError::ValidationError("Invalid email".to_string()));
+    }
+
+    // Look up user by email
+    let user: Option<(String,)> = sqlx::query_as("SELECT id::text FROM users WHERE email = $1")
+        .bind(&body.email)
+        .fetch_optional(&state.db)
+        .await
+        .map_err(|e| {
+            tracing::error!(error = %e, "forgot-password query failed");
+            ApiError::InternalError("Internal server error".to_string())
+        })?;
+
+    let mut dev_reset_url = None;
+    if let Some((user_id,)) = user {
+        // Generate reset token and store in Redis with TTL
+        let reset_token = uuid::Uuid::new_v4().to_string();
+        state
+            .redis
+            .cache_set(
+                "reset",
+                &reset_token,
+                &user_id,
+                std::time::Duration::from_secs(RESET_TOKEN_TTL_SECS),
+            )
+            .await?;
+
+        tracing::info!(
+            user_id = %user_id,
+            reset_token = %reset_token,
+            "password reset token generated"
+        );
+
+        // In development, include the reset URL in the response
+        if std::env::var("PRODUCTION").is_err() {
+            dev_reset_url = Some(format!("/reset-password?token={reset_token}"));
+        }
+    }
+
+    let mut resp = serde_json::json!({
+        "message": "If the email exists, a reset link has been generated",
+    });
+    if let Some(url) = dev_reset_url {
+        resp["dev_reset_url"] = serde_json::Value::String(url);
+    }
+
+    // Always return 202 to prevent email enumeration
+    Ok((StatusCode::ACCEPTED, Json(resp)))
+}
+
+/// POST /auth/reset-password — reset password using a reset token.
+///
+/// Validates the token, updates the password hash, and deletes the token.
+pub async fn reset_password(
+    State(state): State<AuthState>,
+    Json(body): Json<ResetPasswordRequest>,
+) -> Result<impl IntoResponse, ApiError> {
+    // Validate password
+    if body.password.len() < 8 {
+        return Err(ApiError::ValidationError(
+            "Password must be at least 8 characters".to_string(),
+        ));
+    }
+    if body.password.len() > 1024 {
+        return Err(ApiError::ValidationError(
+            "Password must be at most 1024 characters".to_string(),
+        ));
+    }
+
+    if body.token.is_empty() {
+        return Err(ApiError::ValidationError("Reset token is required".to_string()));
+    }
+
+    // Look up token in Redis
+    let user_id: Option<String> = state.redis.cache_get("reset", &body.token).await?;
+
+    let user_id = user_id.ok_or_else(|| {
+        ApiError::Unauthorized("Invalid or expired reset token".to_string())
+    })?;
+
+    // Hash the new password
+    let password_hash = password::hash_password(&body.password)?;
+
+    // Update password in DB (only local provider users — OAuth users don't have password_hash)
+    let result = sqlx::query(
+        "UPDATE users SET password_hash = $1, updated_at = NOW() WHERE id = $2::uuid AND provider = 'local'",
+    )
+    .bind(&password_hash)
+    .bind(&user_id)
+    .execute(&state.db)
+    .await
+    .map_err(|e| {
+        tracing::error!(error = %e, "reset-password update failed");
+        ApiError::InternalError("Internal server error".to_string())
+    })?;
+
+    // Delete the token regardless
+    state.redis.cache_delete("reset", &body.token).await?;
+
+    if result.rows_affected() == 0 {
+        return Err(ApiError::Unauthorized(
+            "Cannot reset password for OAuth-linked accounts".to_string(),
+        ));
+    }
+
+    tracing::info!(user_id = %user_id, "password reset completed");
+
+    Ok(Json(serde_json::json!({ "message": "Password updated successfully" })))
+}
+
 /// POST /auth/refresh — refresh access token using refresh token.
 ///
 /// # Errors

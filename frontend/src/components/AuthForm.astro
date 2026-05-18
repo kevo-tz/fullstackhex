@@ -33,6 +33,13 @@ const altText = isLogin ? "Need an account? Register" : "Already have an account
     <div class="form-group">
       <label for="password">Password</label>
       <input id="password" name="password" type="password" placeholder="Min 8 characters" required minlength="8" autocomplete={isLogin ? "current-password" : "new-password"} />
+      {
+        isLogin && (
+          <div style="text-align:right;margin-top:0.15rem">
+            <a href="/forgot-password" style="color:var(--accent,#22c55e);font-size:0.78rem;text-decoration:none">Forgot password?</a>
+          </div>
+        )
+      }
     </div>
     <button type="submit" class="btn" id="submit-btn">{action}</button>
   </form>

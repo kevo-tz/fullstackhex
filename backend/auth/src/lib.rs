@@ -29,6 +29,10 @@ pub struct RateLimitConfig {
     pub login_ip_max: u64,
     /// Login IP window in seconds (default: 300 = 5 min).
     pub login_ip_window_secs: u64,
+    /// Max forgot-password requests per IP per window (default: 3).
+    pub forgot_max: u64,
+    /// Forgot-password window in seconds (default: 900 = 15 min).
+    pub forgot_window_secs: u64,
 }
 
 impl Default for RateLimitConfig {
@@ -40,6 +44,8 @@ impl Default for RateLimitConfig {
             login_email_window_secs: 300,
             login_ip_max: 10,
             login_ip_window_secs: 300,
+            forgot_max: 3,
+            forgot_window_secs: 900,
         }
     }
 }
@@ -53,6 +59,8 @@ impl RateLimitConfig {
             login_email_window_secs: Self::env_or("RATE_LIMIT_LOGIN_EMAIL_WINDOW", 300),
             login_ip_max: Self::env_or("RATE_LIMIT_LOGIN_IP_MAX", 10),
             login_ip_window_secs: Self::env_or("RATE_LIMIT_LOGIN_IP_WINDOW", 300),
+            forgot_max: Self::env_or("RATE_LIMIT_FORGOT_MAX", 3),
+            forgot_window_secs: Self::env_or("RATE_LIMIT_FORGOT_WINDOW", 900),
         }
     }
 

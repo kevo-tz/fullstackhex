@@ -60,7 +60,7 @@ import Layout from "../../components/Layout.astro";
     submitBtn.textContent = "Creating…";
 
     try {
-      const csrf = document.cookie.split("; ").find(r => r.startsWith("csrf_token="))?.split("=")[1] || "";
+      const csrf = sessionStorage.getItem("csrf_token") || document.cookie.split("; ").find(r => r.startsWith("csrf_token="))?.split("=")[1] || "";
       const res = await fetch("/api/notes", {
         method: "POST",
         headers: { "Content-Type": "application/json", ...(csrf ? { "X-CSRF-Token": csrf } : {}) },

@@ -41,6 +41,18 @@ Nginx reads certificates from `/etc/nginx/certs/` which maps to `./nginx/certs/`
 
 ## Initial Setup
 
+Use the convenience script for first-time setup:
+
+```bash
+# Self-signed certificates for local development
+bash scripts/deploy-tls.sh --dev
+
+# Let's Encrypt certificates for production (requires DNS records pointing at the server)
+bash scripts/deploy-tls.sh --prod --domain your-domain.com
+```
+
+Or manually:
+
 ```bash
 # First-time certificate issuance (requires DNS records pointing at the server)
 docker compose -f compose/prod.yml run --rm certbot certonly --webroot -w /var/lib/certbot -d <domain>

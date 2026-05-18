@@ -136,6 +136,8 @@ export function connectLiveStream(): LiveStream {
     listeners.length = 0;
   }
 
+  connect();
+
   return {
     onEvent(cb: (event: LiveEvent) => void): void {
       listeners.push(cb);

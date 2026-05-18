@@ -14,8 +14,8 @@ use sqlx::PgPool;
 use sqlx::postgres::PgPoolOptions;
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::sync::Mutex;
 use std::time::Duration;
-use tokio::sync::Mutex;
 use tokio::sync::Notify;
 use tokio::sync::Semaphore;
 

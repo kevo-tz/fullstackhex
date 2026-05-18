@@ -25,20 +25,28 @@ pub struct AuthState {
     pub oauth: Arc<super::oauth::OAuthService>,
 }
 
-/// Extract client IP from request headers (X-Forwarded-For, X-Real-IP fallback).
+/// Extract client IP from request headers.
+///
+/// Only trusts `X-Forwarded-For` and `X-Real-IP` when `TRUST_PROXY` is set
+/// (production behind nginx). Otherwise returns "unknown" to prevent IP
+/// spoofing in dev setups where the app is directly exposed.
 fn client_ip(headers: &HeaderMap) -> String {
-    headers
-        .get("x-forwarded-for")
-        .and_then(|v| v.to_str().ok())
-        .and_then(|v| v.split(',').next())
-        .map(|s| s.trim().to_string())
-        .or_else(|| {
-            headers
-                .get("x-real-ip")
-                .and_then(|v| v.to_str().ok())
-                .map(|s| s.trim().to_string())
-        })
-        .unwrap_or_else(|| "unknown".to_string())
+    if std::env::var("TRUST_PROXY").is_ok() {
+        headers
+            .get("x-forwarded-for")
+            .and_then(|v| v.to_str().ok())
+            .and_then(|v| v.split(',').next())
+            .map(|s| s.trim().to_string())
+            .or_else(|| {
+                headers
+                    .get("x-real-ip")
+                    .and_then(|v| v.to_str().ok())
+                    .map(|s| s.trim().to_string())
+            })
+            .unwrap_or_else(|| "unknown".to_string())
+    } else {
+        "unknown".to_string()
+    }
 }
 
 /// Check rate limit for auth endpoints.
@@ -83,6 +91,7 @@ pub struct TokenResponse {
     pub token_type: String,
     pub expires_in: u64,
     pub refresh_token: String,
+    pub csrf_token: String,
     pub user: UserInfo,
 }
 
@@ -147,7 +156,7 @@ pub async fn register(
         })?;
 
     if existing.is_some() {
-        return Err(ApiError::ValidationError("Invalid credentials".to_string()));
+        return Err(ApiError::Conflict("Email already registered".to_string()));
     }
 
     // Hash password
@@ -195,6 +204,7 @@ pub async fn register(
         &access_token,
         jwt_expiry,
         true,
+        true,
     )?;
     super::cookies::set_cookie(
         &mut headers,
@@ -202,15 +212,24 @@ pub async fn register(
         &refresh_token,
         refresh_expiry,
         true,
+        true,
     )?;
     let csrf_token = super::csrf::generate_csrf_token();
-    super::cookies::set_cookie(&mut headers, "csrf_token", &csrf_token, jwt_expiry, false)?;
+    super::cookies::set_cookie(
+        &mut headers,
+        "csrf_token",
+        &csrf_token,
+        jwt_expiry,
+        false,
+        false,
+    )?;
 
     let response = TokenResponse {
-        access_token,
+        access_token: access_token.clone(),
         refresh_token,
         token_type: "Bearer".to_string(),
         expires_in: state.auth.config.jwt_expiry,
+        csrf_token: csrf_token.clone(),
         user: UserInfo {
             id: user_id.0,
             email: body.email,
@@ -234,7 +253,7 @@ pub async fn register(
         .redis
         .session_create(&session, std::time::Duration::from_secs(jwt_expiry))
         .await?;
-    super::cookies::set_cookie(&mut headers, "session", &session_id, jwt_expiry, true)?;
+    super::cookies::set_cookie(&mut headers, "session", &session_id, jwt_expiry, true, true)?;
 
     Ok((StatusCode::CREATED, headers, Json(response)))
 }
@@ -349,11 +368,16 @@ pub async fn login(
         )
         .await?;
 
+    let jwt_expiry = state.auth.config.jwt_expiry;
+    let refresh_expiry = state.auth.config.refresh_expiry;
+    let csrf_token = super::csrf::generate_csrf_token();
+
     let response = TokenResponse {
-        access_token,
+        access_token: access_token.clone(),
         refresh_token,
         token_type: "Bearer".to_string(),
-        expires_in: state.auth.config.jwt_expiry,
+        expires_in: jwt_expiry,
+        csrf_token: csrf_token.clone(),
         user: UserInfo {
             id: user_id,
             email,
@@ -362,14 +386,13 @@ pub async fn login(
         },
     };
 
-    let jwt_expiry = state.auth.config.jwt_expiry;
-    let refresh_expiry = state.auth.config.refresh_expiry;
     let mut headers = HeaderMap::new();
     super::cookies::set_cookie(
         &mut headers,
         "access_token",
         &response.access_token,
         jwt_expiry,
+        true,
         true,
     )?;
     super::cookies::set_cookie(
@@ -378,9 +401,16 @@ pub async fn login(
         &response.refresh_token,
         refresh_expiry,
         true,
+        true,
     )?;
-    let csrf_token = super::csrf::generate_csrf_token();
-    super::cookies::set_cookie(&mut headers, "csrf_token", &csrf_token, jwt_expiry, false)?;
+    super::cookies::set_cookie(
+        &mut headers,
+        "csrf_token",
+        &csrf_token,
+        jwt_expiry,
+        false,
+        false,
+    )?;
 
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -397,7 +427,7 @@ pub async fn login(
         .redis
         .session_create(&session, std::time::Duration::from_secs(jwt_expiry))
         .await?;
-    super::cookies::set_cookie(&mut headers, "session", &session_id, jwt_expiry, true)?;
+    super::cookies::set_cookie(&mut headers, "session", &session_id, jwt_expiry, true, true)?;
 
     Ok((headers, Json(response)))
 }
@@ -439,15 +469,21 @@ pub async fn logout(
     tracing::info!(user_id = %auth_user.user_id, jti = %auth_user.jti, "user logged out");
 
     let mut headers = HeaderMap::new();
-    // Clear session cookie if one was set
-    if auth_user.session_id.is_some() {
-        headers.insert(
+    let mut clear = |name: &str, http_only: bool| {
+        let cookie = if http_only {
+            format!("{name}=; HttpOnly; Path=/; Max-Age=0; SameSite=Lax")
+        } else {
+            format!("{name}=; Path=/; Max-Age=0; SameSite=Lax")
+        };
+        headers.append(
             header::SET_COOKIE,
-            "session=; HttpOnly; Path=/; Max-Age=0; SameSite=Lax"
-                .parse()
-                .unwrap(),
+            cookie.parse().expect("valid Set-Cookie header"),
         );
-    }
+    };
+    clear("session", true);
+    clear("access_token", true);
+    clear("refresh_token", true);
+    clear("csrf_token", false);
 
     Ok((StatusCode::NO_CONTENT, headers))
 }
@@ -540,12 +576,14 @@ pub async fn refresh(
         &access_token,
         state.auth.config.jwt_expiry,
         true,
+        true,
     )?;
     super::cookies::set_cookie(
         &mut resp_headers,
         "refresh_token",
         &new_refresh_token,
         state.auth.config.refresh_expiry,
+        true,
         true,
     )?;
     let csrf_token = super::csrf::generate_csrf_token();
@@ -554,6 +592,7 @@ pub async fn refresh(
         "csrf_token",
         &csrf_token,
         state.auth.config.jwt_expiry,
+        false,
         false,
     )?;
 
@@ -564,6 +603,7 @@ pub async fn refresh(
             refresh_token: new_refresh_token,
             token_type: "Bearer".to_string(),
             expires_in: state.auth.config.jwt_expiry,
+            csrf_token,
             user: UserInfo {
                 id: user_id,
                 email,
@@ -656,8 +696,10 @@ pub async fn oauth_callback(
 ) -> Result<impl IntoResponse, ApiError> {
     let provider = parse_provider(&provider)?;
 
-    // Validate CSRF state token
+    // Validate CSRF state token — delete immediately (one-time use)
+    // to prevent replay attacks even on provider mismatch
     let stored_provider: Option<String> = state.redis.cache_get("oauth_csrf", &query.state).await?;
+    state.redis.cache_delete("oauth_csrf", &query.state).await?;
 
     let stored_provider = stored_provider
         .ok_or_else(|| ApiError::Unauthorized("Invalid or expired OAuth state".to_string()))?;
@@ -667,9 +709,6 @@ pub async fn oauth_callback(
             "OAuth provider mismatch".to_string(),
         ));
     }
-
-    // Delete the CSRF token (one-time use)
-    state.redis.cache_delete("oauth_csrf", &query.state).await?;
 
     // Exchange code for access token
     let user_info = state
@@ -684,8 +723,7 @@ pub async fn oauth_callback(
         "INSERT INTO users (id, email, name, provider, password_hash)
          VALUES ($1, $2, $3, $4, NULL)
          ON CONFLICT (email) DO UPDATE SET
-           name = EXCLUDED.name,
-           provider = EXCLUDED.provider
+           name = EXCLUDED.name
          RETURNING id::text",
     )
     .bind(&id)
@@ -720,11 +758,13 @@ pub async fn oauth_callback(
 
     metrics::counter!("oauth_callbacks_total", "provider" => provider.to_string()).increment(1);
 
+    let csrf_token = super::csrf::generate_csrf_token();
     let response = TokenResponse {
         access_token,
         refresh_token,
         token_type: "Bearer".to_string(),
         expires_in: state.auth.config.jwt_expiry,
+        csrf_token,
         user: UserInfo {
             id: user_id,
             email: user_info.email,
@@ -754,14 +794,24 @@ mod route_tests {
     fn client_ip_from_x_forwarded_for() {
         let mut headers = HeaderMap::new();
         headers.insert("x-forwarded-for", "192.168.1.1, 10.0.0.1".parse().unwrap());
+        // Without TRUST_PROXY, forwarded headers are ignored
+        assert_eq!(client_ip(&headers), "unknown");
+    }
+
+    #[test]
+    fn client_ip_trusts_forwarded_when_configured() {
+        unsafe { std::env::set_var("TRUST_PROXY", "true") };
+        let mut headers = HeaderMap::new();
+        headers.insert("x-forwarded-for", "192.168.1.1, 10.0.0.1".parse().unwrap());
         assert_eq!(client_ip(&headers), "192.168.1.1");
+        unsafe { std::env::remove_var("TRUST_PROXY") };
     }
 
     #[test]
     fn client_ip_from_x_real_ip() {
         let mut headers = HeaderMap::new();
         headers.insert("x-real-ip", "10.0.0.2".parse().unwrap());
-        assert_eq!(client_ip(&headers), "10.0.0.2");
+        assert_eq!(client_ip(&headers), "unknown");
     }
 
     #[test]
@@ -962,5 +1012,26 @@ mod route_tests {
         };
         let list = list_providers(&config);
         assert_eq!(list, vec!["google", "github"]);
+    }
+
+    #[test]
+    fn token_response_includes_csrf_token() {
+        let resp = TokenResponse {
+            access_token: "at".to_string(),
+            refresh_token: "rt".to_string(),
+            token_type: "Bearer".to_string(),
+            expires_in: 900,
+            csrf_token: "test-csrf-token".to_string(),
+            user: UserInfo {
+                id: "u1".to_string(),
+                email: "a@b.com".to_string(),
+                name: None,
+                provider: "local".to_string(),
+            },
+        };
+        let json = serde_json::to_value(&resp).unwrap();
+        assert_eq!(json["csrf_token"], "test-csrf-token");
+        assert_eq!(json["access_token"], "at");
+        assert_eq!(json["user"]["email"], "a@b.com");
     }
 }

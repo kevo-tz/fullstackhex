@@ -156,7 +156,7 @@ impl AuthConfig {
                 .filter(|s| !s.is_empty()),
             fail_open_on_redis_error: std::env::var("AUTH_FAIL_OPEN_ON_REDIS_ERROR")
                 .ok()
-                .and_then(|v| v.parse::<bool>().ok())
+                .and_then(|v| v.to_lowercase().parse::<bool>().ok())
                 .unwrap_or(true),
             rate_limits: RateLimitConfig::from_env(),
         })

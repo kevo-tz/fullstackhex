@@ -67,7 +67,8 @@ import Skeleton from "../../components/Skeleton.astro";
       const res = await fetch(`/api/notes?page=${page}&per_page=${perPage}`);
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
-        throw new Error((body as { error?: string }).error || `HTTP ${res.status}`);
+        const errMsg = typeof body?.error === "string" ? body.error : body?.error?.message || `HTTP ${res.status}`;
+        throw new Error(errMsg);
       }
       const data = await res.json();
       const notes = data.items ?? [];
@@ -128,9 +129,7 @@ import Skeleton from "../../components/Skeleton.astro";
   }
 
   function escapeHtml(s: string): string {
-    const d = document.createElement("div");
-    d.textContent = s;
-    return d.innerHTML;
+    return s.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
   }
 
   function formatDate(iso: string): string {

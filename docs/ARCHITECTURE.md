@@ -162,7 +162,7 @@ pub struct FeatureFlags {
 | Database | PostgreSQL 18 | `docker compose ps` |
 | Cache | Redis 8 | `docker compose ps` |
 | Object Storage | RustFS (S3-compatible) | `docker compose ps` |
-| Monitoring | Prometheus v3.3.1 + Grafana 11.2.0 | `docker compose -f compose/monitor.yml ps` |
+| Monitoring | Prometheus v3.11.3 + Grafana 13.0.1 | `docker compose -f compose/monitor.yml ps` |
 | Reverse Proxy | Nginx (production) | `docker compose -f compose/prod.yml ps` |
 | IPC | Unix domain socket | `/tmp/fullstackhex-python.sock` (dev), `/tmp/sidecar/py-api.sock` (prod) |
 

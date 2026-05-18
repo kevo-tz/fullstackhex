@@ -122,10 +122,18 @@ pub async fn auth_middleware(
 
     // JWT blacklist check
     if let (Some(user), Some(redis)) = (&auth_user, &redis) {
-        let is_blacklisted: Option<bool> = redis
-            .cache_get("blacklist", &user.jti)
-            .await
-            .unwrap_or(None);
+        let is_blacklisted: Option<bool> = match redis.cache_get("blacklist", &user.jti).await {
+            Ok(Some(v)) => Some(v),
+            Ok(None) => Some(false),
+            Err(e) => {
+                tracing::warn!(
+                    jti = %user.jti,
+                    error = %e,
+                    "blacklist check failed — Redis error"
+                );
+                None
+            }
+        };
         match is_blacklisted {
             Some(true) => {
                 tracing::debug!(
@@ -166,7 +174,12 @@ pub(crate) fn extract_bearer(
 ) -> Option<AuthUser> {
     let header = req.headers().get("authorization")?;
     let value = header.to_str().ok()?;
-    let token = value.strip_prefix("Bearer ")?;
+    // Case-insensitive Bearer prefix per RFC 9110 Section 11.6.2
+    let (scheme, token_value) = value.split_once(' ')?;
+    if !scheme.eq_ignore_ascii_case("Bearer") {
+        return None;
+    }
+    let token = token_value.trim_start();
 
     let claims = auth_service.jwt.validate_token(token).ok()?;
     Some(AuthUser {
@@ -398,5 +411,24 @@ mod tests {
         assert_eq!(user.email, "a@b.com");
         assert!(!user.jti.is_empty(), "jti should be populated");
         assert!(user.session_id.is_none(), "bearer auth has no session");
+    }
+
+    #[test]
+    fn compute_auth_signature_sidecar_secret_roundtrip() {
+        let sig = compute_auth_signature("my-shared-secret", "user-1", "a@b.com", "Alice").unwrap();
+        assert!(verify_auth_signature(
+            "my-shared-secret",
+            "user-1",
+            "a@b.com",
+            "Alice",
+            &sig,
+        ));
+        assert!(!verify_auth_signature(
+            "my-shared-secret",
+            "user-1",
+            "a@b.com",
+            "Eve",
+            &sig,
+        ));
     }
 }

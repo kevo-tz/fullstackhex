@@ -24,6 +24,7 @@ export interface HealthResponse {
   storage: HealthEntry;
   python: HealthEntry;
   auth: HealthEntry;
+  feature_flags?: Record<string, boolean>;
 }
 
 function jsonLog(obj: Record<string, unknown>): void {
@@ -35,7 +36,7 @@ function jsonLog(obj: Record<string, unknown>): void {
 export function isFullOutage(data: Record<string, unknown>): boolean {
   for (const svc of SERVICE_IDS) {
     const entry = data[svc] as Record<string, unknown> | undefined;
-    if (!entry || entry.status === "ok") return false;
+    if (entry?.status === "ok") return false;
   }
   return true;
 }
@@ -128,42 +129,6 @@ async function handleService(
   }
 }
 
-async function handleRustHealth(
-  fetchImpl: typeof fetch,
-  apiBase: string,
-  traceId: string,
-): Promise<{ status: string }> {
-  try {
-    const res = await fetchImpl(`${apiBase}/health`, {
-      headers: { "x-trace-id": traceId },
-    });
-    const d = await res.json();
-    const rust = (d as Record<string, unknown>).rust as
-      | Record<string, unknown>
-      | undefined;
-    const status = rust?.status ?? "unknown";
-    jsonLog({
-      timestamp: new Date().toISOString(),
-      level: "info",
-      target: "frontend:health",
-      message: "rust health response",
-      trace_id: traceId,
-      target_service: "api",
-      response_status: status,
-    });
-    return { status: String(status) };
-  } catch {
-    jsonLog({
-      timestamp: new Date().toISOString(),
-      level: "warn",
-      target: "frontend:health",
-      message: "rust health fetch/parse failed",
-      trace_id: traceId,
-    });
-    return { status: "error" };
-  }
-}
-
 // Dev fallback; production uses VITE_RUST_BACKEND_URL env var
 export const API_BASE = import.meta.env.VITE_RUST_BACKEND_URL || "http://localhost:8001";
 
@@ -190,7 +155,20 @@ export async function aggregateHealth(
     pythonResult,
     authResult,
   ] = await Promise.all([
-    handleRustHealth(fetchImpl, apiBase, traceId),
+    (async (): Promise<{ status: string }> => {
+      try {
+        const res = await fetchImpl(`${apiBase}/health`, {
+          headers: { "x-trace-id": traceId },
+        });
+        const d = await res.json();
+        const healthData = d as Record<string, unknown>;
+        const rustHealth = healthData.rust as Record<string, unknown> | undefined;
+        return { status: String(rustHealth?.status ?? "error") };
+      } catch {
+        return { status: "error" };
+      }
+    })(),
+
     handleService(
       fetchImpl,
       `${apiBase}/health/db`,

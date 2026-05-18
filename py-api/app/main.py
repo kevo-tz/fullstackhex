@@ -56,14 +56,17 @@ def register_metrics() -> None:
             ["method", "endpoint"],
             buckets=[0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0],
         )
-    except ValueError:
-        pass
+    except ValueError as e:
+        logging.warning("register_metrics failed (may be duplicate import): %s", e)
 
 
 register_metrics()
 
 # Cache py-api version at module level — avoids importlib.metadata lookup per request
-PY_API_VERSION = version("py-api")
+try:
+    PY_API_VERSION = version("py-api")
+except Exception:
+    PY_API_VERSION = "0.0.0"
 
 
 class JsonFormatter(logging.Formatter):
@@ -95,10 +98,77 @@ def setup_logging() -> None:
     handler = logging.StreamHandler(sys.stderr)
     handler.setFormatter(JsonFormatter())
     root.addHandler(handler)
-    root.setLevel(logging.INFO)
+    level_name = os.environ.get("PYTHON_LOG_LEVEL", "INFO").upper()
+    root.setLevel(getattr(logging, level_name, logging.INFO))
 
 
 logger = logging.getLogger("py-api")
+
+
+@app.middleware("http")
+async def hmac_auth_middleware(
+    request: Request, call_next: Callable[[Request], Awaitable[Response]]
+) -> Response:
+    """FastAPI middleware that validates HMAC-SHA256 signatures on auth headers forwarded from the Rust backend."""
+    trace_id = request.headers.get("x-trace-id", "")
+    path = request.url.path
+    # Skip HMAC for public routes
+    if path in ("/health", "/metrics"):
+        return await call_next(request)
+
+    if not settings.shared_secret:
+        logger.warning(
+            "HMAC rejection: SIDECAR_SHARED_SECRET not configured",
+            extra={"trace_id": trace_id},
+        )
+        return Response(
+            content=json.dumps(
+                {"error": "SIDECAR_SHARED_SECRET not configured — rejecting all requests"}
+            ),
+            status_code=401,
+            media_type="application/json",
+        )
+
+    user_id = request.headers.get("X-User-Id", "")
+    email = request.headers.get("X-User-Email", "")
+    name = request.headers.get("X-User-Name", "")
+    signature = request.headers.get("X-Auth-Signature", "")
+
+    if not all([user_id, email, signature]):
+        logger.warning(
+            "HMAC rejection: missing auth headers",
+            extra={"trace_id": trace_id, "has_user_id": bool(user_id), "has_email": bool(email)},
+        )
+        return Response(
+            content=json.dumps({"error": "Missing auth headers"}),
+            status_code=401,
+            media_type="application/json",
+        )
+
+    # Compute expected signature: HMAC-SHA256(secret, JSON payload)
+    payload = json.dumps({"user_id": user_id, "email": email, "name": name}, sort_keys=True)
+    expected = hmac.new(
+        settings.shared_secret.encode("utf-8"),
+        payload.encode("utf-8"),
+        hashlib.sha256,
+    ).hexdigest()
+
+    if not hmac.compare_digest(expected, signature):
+        logger.warning(
+            "HMAC rejection: invalid signature",
+            extra={
+                "trace_id": trace_id,
+                "user_id": user_id,
+                "email": email,
+            },
+        )
+        return Response(
+            content=json.dumps({"error": "Invalid auth signature"}),
+            status_code=401,
+            media_type="application/json",
+        )
+
+    return await call_next(request)
 
 
 @app.middleware("http")
@@ -125,56 +195,6 @@ async def trace_id_middleware(
     PYTHON_REQUESTS_TOTAL.labels(method=request.method, endpoint=endpoint, status=status).inc()
     PYTHON_REQUEST_DURATION.labels(method=request.method, endpoint=endpoint).observe(duration)
     return response
-
-
-@app.middleware("http")
-async def hmac_auth_middleware(
-    request: Request, call_next: Callable[[Request], Awaitable[Response]]
-) -> Response:
-    """FastAPI middleware that validates HMAC-SHA256 signatures on auth headers forwarded from the Rust backend."""
-    path = request.url.path
-    # Skip HMAC for public routes
-    if path in ("/health", "/metrics"):
-        return await call_next(request)
-
-    if not settings.shared_secret:
-        # Fail closed — never trust auth headers if shared secret is missing
-        return Response(
-            content=json.dumps(
-                {"error": "SIDECAR_SHARED_SECRET not configured — rejecting all requests"}
-            ),
-            status_code=401,
-            media_type="application/json",
-        )
-
-    user_id = request.headers.get("X-User-Id", "")
-    email = request.headers.get("X-User-Email", "")
-    name = request.headers.get("X-User-Name", "")
-    signature = request.headers.get("X-Auth-Signature", "")
-
-    if not all([user_id, email, signature]):
-        return Response(
-            content=json.dumps({"error": "Missing auth headers"}),
-            status_code=401,
-            media_type="application/json",
-        )
-
-    # Compute expected signature: HMAC-SHA256(secret, JSON payload)
-    payload = json.dumps({"user_id": user_id, "email": email, "name": name}, sort_keys=True)
-    expected = hmac.new(
-        settings.shared_secret.encode("utf-8"),
-        payload.encode("utf-8"),
-        hashlib.sha256,
-    ).hexdigest()
-
-    if not hmac.compare_digest(expected, signature):
-        return Response(
-            content=json.dumps({"error": "Invalid auth signature"}),
-            status_code=401,
-            media_type="application/json",
-        )
-
-    return await call_next(request)
 
 
 @app.get("/health")

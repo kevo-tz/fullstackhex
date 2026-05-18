@@ -28,9 +28,9 @@ use serde::{Deserialize, Serialize};
 use futures_util::sink::SinkExt;
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::sync::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
-use tokio::sync::Mutex;
 use tokio::sync::Notify;
 
 /// Redis pub/sub channel for live events.
@@ -93,33 +93,17 @@ pub async fn broadcast_event(state: &AppState, event: &LiveEvent) {
 ///
 /// Returns 404 Not Found when Redis is disabled — the frontend falls back
 /// to HTTP polling automatically. When auth is configured (`state.auth` is
-/// `Some`), the endpoint requires either a valid `?token=<jwt>` query param
-/// or a valid session cookie. Returns 401 Unauthorized when auth is
-/// configured but no valid credentials are provided.
+/// `Some`), the endpoint requires a valid session cookie. Returns 401
+/// Unauthorized when auth is configured but no valid credentials are provided.
 pub async fn ws_handler(
     ws: WebSocketUpgrade,
     headers: HeaderMap,
-    uri: Uri,
+    _uri: Uri,
     State(state): State<Arc<AppState>>,
 ) -> impl IntoResponse {
-    // Auth check: when auth is configured, require valid credentials
-    let maybe_user_id = if let Some(ref auth_service) = state.auth {
-        match (&state.redis, token_from_query(&uri)) {
-            // Token from query param: validate + blacklist check + extract user_id
-            (Some(redis), Some(token)) => match auth_service.jwt.validate_token(&token) {
-                Ok(claims) => {
-                    if is_jti_blacklisted(redis, &claims.jti).await {
-                        tracing::info!(jti = %claims.jti, "WS connection rejected — blacklisted JWT");
-                        None
-                    } else {
-                        Some(claims.sub)
-                    }
-                }
-                Err(_) => None,
-            },
-            // Try cookie auth
-            _ => cookie_authenticated(&headers, auth_service, &state).await,
-        }
+    // Auth check: when auth is configured, require valid session cookie
+    let maybe_user_id = if state.auth.is_some() {
+        cookie_authenticated(&headers, &state).await
     } else {
         None
     };
@@ -155,7 +139,8 @@ pub async fn ws_handler(
                 .next()
                 .unwrap_or("");
             let origin_host = origin_host.split(':').next().unwrap_or("");
-            if origin_host != allowed_host {
+            // Case-insensitive hostname comparison per HTTP semantics
+            if !origin_host.eq_ignore_ascii_case(allowed_host) {
                 tracing::warn!(%origin, "WS connection rejected — Origin not allowed");
                 return (StatusCode::FORBIDDEN, "{\"error\":\"Origin not allowed\"}")
                     .into_response();
@@ -193,7 +178,7 @@ pub async fn ws_handler(
     // TOCTOU race where concurrent connections from the same user both pass
     let user_id = maybe_user_id.clone();
     if let Some(ref uid) = maybe_user_id {
-        let mut conns = state.ws_user_connections.lock().await;
+        let mut conns = state.ws_user_connections.lock().unwrap();
         let current = *conns.get(uid).unwrap_or(&0);
         if current >= state.ws_per_user_max {
             tracing::warn!(user_id = %uid, "WS connection rejected — per-user limit reached");
@@ -222,32 +207,12 @@ pub async fn ws_handler(
     })
 }
 
-/// Extract JWT token from WebSocket upgrade URI query parameter.
-///
-/// Browser WebSocket API does not support custom headers, so the token
-/// is passed as a query parameter: `wss://host/api/live?token=<jwt>`.
-/// JWT tokens are base64url-encoded (alphanumeric + `.` + `-` + `_`) —
-/// no percent-decoding is needed for standard tokens.
-fn token_from_query(uri: &Uri) -> Option<String> {
-    let query = uri.query()?;
-    for pair in query.split('&') {
-        if let Some(value) = pair.strip_prefix("token=") {
-            return Some(value.to_string());
-        }
-    }
-    None
-}
-
 /// Authenticate a WebSocket connection via session cookie.
 ///
-/// Extracts the `session=` cookie from the `Cookie` header, looks up the
-/// session token in Redis, and validates it with the JWT service.
-/// Returns the user_id on success.
-async fn cookie_authenticated(
-    headers: &HeaderMap,
-    auth_service: &auth::AuthService,
-    state: &AppState,
-) -> Option<String> {
+/// Extracts the `session=` cookie from the `Cookie` header, deserializes the
+/// `Session` struct from Redis, and returns the user_id on success.
+/// Returns `None` if the cookie is missing or the session is not found.
+async fn cookie_authenticated(headers: &HeaderMap, state: &AppState) -> Option<String> {
     let session_id = match headers
         .get("cookie")
         .and_then(|v| v.to_str().ok())
@@ -266,38 +231,19 @@ async fn cookie_authenticated(
         None => return None,
     };
 
-    let token: Option<String> = match redis.cache_get("session", &session_id).await {
-        Ok(t) => t,
-        Err(e) => {
-            tracing::warn!(error = %e, "Redis session lookup failed in cookie_authenticated");
-            None
-        }
-    };
-    match token {
-        Some(t) => match auth_service.jwt.validate_token(&t) {
-            Ok(claims) => {
-                if is_jti_blacklisted(&redis, &claims.jti).await {
-                    None
-                } else {
-                    Some(claims.sub)
-                }
+    let session: Option<cache::session::Session> =
+        match redis.cache_get("session", &session_id).await {
+            Ok(s) => s,
+            Err(e) => {
+                tracing::warn!(error = %e, "Redis session lookup failed in cookie_authenticated");
+                None
             }
-            Err(_) => None,
-        },
-        None => None,
-    }
-}
+        };
 
-/// Check Redis blacklist for a JWT identifier.
-/// Returns `false` (allow) on cache-miss. On Redis error, rejects (fail-closed).
-async fn is_jti_blacklisted(redis: &cache::RedisClient, jti: &str) -> bool {
-    match redis.cache_get::<bool>("blacklist", jti).await {
-        Ok(Some(true)) => true,
-        Ok(_) => false,
-        Err(e) => {
-            tracing::warn!(error = %e, "Redis blacklist check failed — rejecting JWT (fail-closed)");
-            true
-        }
+    if let Some(s) = session {
+        Some(s.user_id)
+    } else {
+        None
     }
 }
 
@@ -321,18 +267,14 @@ struct WsUserGuard {
 
 impl Drop for WsUserGuard {
     fn drop(&mut self) {
-        // Best-effort: spawn a blocking task since Drop runs in any context
-        let uid = self.user_id.clone();
-        let conns = self.connections.clone();
-        tokio::spawn(async move {
-            let mut map = conns.lock().await;
-            if let Some(count) = map.get_mut(&uid) {
-                *count = count.saturating_sub(1);
-                if *count == 0 {
-                    map.remove(&uid);
-                }
+        let uid = &self.user_id;
+        let mut map = self.connections.lock().unwrap();
+        if let Some(count) = map.get_mut(uid) {
+            *count = count.saturating_sub(1);
+            if *count == 0 {
+                map.remove(uid);
             }
-        });
+        }
     }
 }
 
@@ -516,7 +458,7 @@ mod tests {
                 ws_connection_permits: std::sync::Arc::new(tokio::sync::Semaphore::new(100)),
                 ws_idle_timeout: std::time::Duration::from_secs(300),
                 ws_shutdown: std::sync::Arc::new(tokio::sync::Notify::new()),
-                ws_user_connections: std::sync::Arc::new(tokio::sync::Mutex::new(
+                ws_user_connections: std::sync::Arc::new(std::sync::Mutex::new(
                     std::collections::HashMap::new(),
                 )),
                 ws_per_user_max: 10,
@@ -556,7 +498,7 @@ mod tests {
             ws_connection_permits: std::sync::Arc::new(tokio::sync::Semaphore::new(100)),
             ws_idle_timeout: std::time::Duration::from_secs(300),
             ws_shutdown: std::sync::Arc::new(tokio::sync::Notify::new()),
-            ws_user_connections: std::sync::Arc::new(tokio::sync::Mutex::new(
+            ws_user_connections: std::sync::Arc::new(std::sync::Mutex::new(
                 std::collections::HashMap::new(),
             )),
             ws_per_user_max: 10,
@@ -571,5 +513,148 @@ mod tests {
         rt.block_on(async {
             broadcast_event(&state, &event).await;
         });
+    }
+
+    #[test]
+    fn ws_user_guard_decrements_on_drop() {
+        let map: Arc<Mutex<HashMap<String, usize>>> = Arc::new(Mutex::new(HashMap::new()));
+        {
+            let mut m = map.lock().unwrap();
+            m.insert("user1".into(), 3usize);
+        }
+        {
+            let _user_guard = WsUserGuard {
+                user_id: "user1".into(),
+                connections: map.clone(),
+            };
+        }
+        assert_eq!(map.lock().unwrap().get("user1"), Some(&2usize));
+    }
+
+    #[test]
+    fn ws_user_guard_removes_key_when_zero() {
+        let map: Arc<Mutex<HashMap<String, usize>>> = Arc::new(Mutex::new(HashMap::new()));
+        {
+            let mut m = map.lock().unwrap();
+            m.insert("user1".into(), 1usize);
+        }
+        {
+            let _user_guard = WsUserGuard {
+                user_id: "user1".into(),
+                connections: map.clone(),
+            };
+        }
+        assert!(map.lock().unwrap().get("user1").is_none());
+    }
+
+    #[test]
+    fn ws_user_guard_is_noop_for_unknown_user() {
+        let map: Arc<Mutex<HashMap<String, usize>>> = Arc::new(Mutex::new(HashMap::new()));
+        {
+            let mut m = map.lock().unwrap();
+            m.insert("user1".into(), 3usize);
+        }
+        {
+            let _user_guard = WsUserGuard {
+                user_id: "unknown_user".into(),
+                connections: map.clone(),
+            };
+        }
+        assert_eq!(map.lock().unwrap().get("user1"), Some(&3usize));
+    }
+
+    #[test]
+    fn ws_user_guard_is_noop_on_empty_map() {
+        let map: Arc<Mutex<HashMap<String, usize>>> = Arc::new(Mutex::new(HashMap::new()));
+        {
+            let _user_guard = WsUserGuard {
+                user_id: "user1".into(),
+                connections: map.clone(),
+            };
+        }
+        assert!(map.lock().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn cookie_authenticated_returns_none_without_cookie() {
+        let headers = HeaderMap::new();
+        let state = crate::AppState {
+            db: crate::DbStatus::NotConfigured,
+            redis: None,
+            auth: None,
+            storage: None,
+            sidecar: crate::PythonSidecar::new(
+                std::path::PathBuf::from("/tmp/nonexistent.sock"),
+                std::time::Duration::from_secs(1),
+                0,
+            ),
+            prometheus_handle: metrics::init_metrics_recorder(),
+            gauge_task: None,
+            feature_flags: None,
+            ws_connection_permits: std::sync::Arc::new(tokio::sync::Semaphore::new(100)),
+            ws_idle_timeout: std::time::Duration::from_secs(300),
+            ws_shutdown: std::sync::Arc::new(tokio::sync::Notify::new()),
+            ws_user_connections: std::sync::Arc::new(std::sync::Mutex::new(
+                std::collections::HashMap::new(),
+            )),
+            ws_per_user_max: 10,
+        };
+        assert!(cookie_authenticated(&headers, &state).await.is_none());
+    }
+
+    #[tokio::test]
+    async fn cookie_authenticated_returns_none_when_redis_none() {
+        let mut headers = HeaderMap::new();
+        headers.insert("cookie", "session=abc123".parse().unwrap());
+        let state = crate::AppState {
+            db: crate::DbStatus::NotConfigured,
+            redis: None,
+            auth: None,
+            storage: None,
+            sidecar: crate::PythonSidecar::new(
+                std::path::PathBuf::from("/tmp/nonexistent.sock"),
+                std::time::Duration::from_secs(1),
+                0,
+            ),
+            prometheus_handle: metrics::init_metrics_recorder(),
+            gauge_task: None,
+            feature_flags: None,
+            ws_connection_permits: std::sync::Arc::new(tokio::sync::Semaphore::new(100)),
+            ws_idle_timeout: std::time::Duration::from_secs(300),
+            ws_shutdown: std::sync::Arc::new(tokio::sync::Notify::new()),
+            ws_user_connections: std::sync::Arc::new(std::sync::Mutex::new(
+                std::collections::HashMap::new(),
+            )),
+            ws_per_user_max: 10,
+        };
+        assert!(cookie_authenticated(&headers, &state).await.is_none());
+    }
+
+    #[tokio::test]
+    async fn cookie_authenticated_returns_none_for_empty_session() {
+        let mut headers = HeaderMap::new();
+        headers.insert("cookie", "session=".parse().unwrap());
+        let state = crate::AppState {
+            db: crate::DbStatus::NotConfigured,
+            redis: None,
+            auth: None,
+            storage: None,
+            sidecar: crate::PythonSidecar::new(
+                std::path::PathBuf::from("/tmp/nonexistent.sock"),
+                std::time::Duration::from_secs(1),
+                0,
+            ),
+            prometheus_handle: metrics::init_metrics_recorder(),
+            gauge_task: None,
+            feature_flags: None,
+            ws_connection_permits: std::sync::Arc::new(tokio::sync::Semaphore::new(100)),
+            ws_idle_timeout: std::time::Duration::from_secs(300),
+            ws_shutdown: std::sync::Arc::new(tokio::sync::Notify::new()),
+            ws_user_connections: std::sync::Arc::new(std::sync::Mutex::new(
+                std::collections::HashMap::new(),
+            )),
+            ws_per_user_max: 10,
+        };
+        assert!(cookie_authenticated(&headers, &state).await.is_none());
     }
 }

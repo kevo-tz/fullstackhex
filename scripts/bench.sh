@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-set -e
+set -euo pipefail
 
 # FullStackHex Performance Benchmark Script
 # Usage: ./scripts/bench.sh [--json]

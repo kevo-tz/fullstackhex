@@ -62,7 +62,8 @@ const { id } = Astro.params;
       const res = await fetch(`/api/notes/${noteId}`);
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
-        throw new Error((body as { error?: string }).error || `HTTP ${res.status}`);
+        const errMsg = typeof body?.error === "string" ? body.error : body?.error?.message || `HTTP ${res.status}`;
+        throw new Error(errMsg);
       }
       const note = await res.json();
 
@@ -85,12 +86,12 @@ const { id } = Astro.params;
 
   // Delete flow
   const deleteBtn = document.getElementById("delete-btn") as HTMLElement;
-  const modal = document.querySelector("modal-element") as any;
+  const modal = document.querySelector("modal-element") as HTMLElement & { open(): void; close(): void };
   const confirmBtn = document.getElementById("confirm-delete") as HTMLButtonElement;
   const cancelBtn = document.getElementById("cancel-delete") as HTMLElement;
 
   function showToast(msg: string, type: "info" | "error" = "info") {
-    const container = document.querySelector("toast-container") as any;
+    const container = document.querySelector("toast-container") as HTMLElement & { show(m: string, t: string): void };
     container?.show(msg, type);
   }
 
@@ -103,7 +104,7 @@ const { id } = Astro.params;
     confirmBtn.textContent = "Deleting…";
     modal?.close();
     try {
-      const csrf = document.cookie.split("; ").find(r => r.startsWith("csrf_token="))?.split("=")[1] || "";
+      const csrf = sessionStorage.getItem("csrf_token") || document.cookie.split("; ").find(r => r.startsWith("csrf_token="))?.split("=")[1] || "";
       const res = await fetch(`/api/notes/${noteId}`, {
         method: "DELETE",
         headers: csrf ? { "X-CSRF-Token": csrf } : {},

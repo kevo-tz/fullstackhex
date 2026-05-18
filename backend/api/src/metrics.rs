@@ -64,9 +64,16 @@ pub fn normalize_route(path: &str) -> &'static str {
         "/auth/me" => "/auth/me",
         "/auth/oauth/{provider}" => "/auth/oauth",
         "/auth/oauth/{provider}/callback" => "/auth/oauth/callback",
+        "/notes" => "/notes",
+        "/notes/{id}" => "/notes/id",
         "/storage/{key}" => "/storage/key",
         "/storage" => "/storage",
         "/storage/presign" => "/storage/presign",
+        "/storage/multipart/init" => "/storage/multipart/init",
+        "/storage/multipart/{key}/{upload_id}" => "/storage/multipart/id",
+        "/storage/multipart/{key}/{upload_id}/complete" => "/storage/multipart/id/complete",
+        "/storage/multipart/{key}/{upload_id}/part/{part_number}" => "/storage/multipart/id/part",
+        "/auth/providers" => "/auth/providers",
         _ => "unknown",
     }
 }

@@ -193,16 +193,29 @@ impl RedisClient {
     pub async fn backoff_increment(&self, ip: &str, endpoint: &str) -> Result<(), CacheError> {
         let key = self.make_key("backoff", &format!("{ip}:{endpoint}"));
 
-        let count: u64 = self
+        // Lua script: atomic INCR + EXPIRE to prevent key leak without TTL
+        // KEYS[1] = backoff key
+        // ARGV[1] = tracking TTL (60s for first attempt)
+        // ARGV[2] = threshold TTL (higher values for repeated failures)
+        let script = r#"
+            local count = redis.call('INCR', KEYS[1])
+            if count == 1 then
+                redis.call('EXPIRE', KEYS[1], ARGV[1])
+            else
+                redis.call('EXPIRE', KEYS[1], ARGV[2])
+            end
+            return count
+        "#;
+
+        let (tracking_ttl, _) = backoff_params(1);
+        let (ttl_secs, _) = backoff_params(2);
+
+        let keys = vec![key];
+        let args = vec![tracking_ttl.to_string(), ttl_secs.to_string()];
+
+        let _count: u64 = self
             .client
-            .incr::<u64, _>(&key)
-            .await
-            .map_err(CacheError::CommandFailed)?;
-
-        let (ttl_secs, _label) = backoff_params(count);
-
-        self.client
-            .expire::<(), _>(&key, ttl_secs as i64, None)
+            .eval(script, keys, args)
             .await
             .map_err(CacheError::CommandFailed)?;
 

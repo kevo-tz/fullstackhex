@@ -36,6 +36,7 @@ services:
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
       - ./nginx/certs:/etc/nginx/certs:ro
+      - ./nginx/certbot-data:/var/www/certbot:ro
     depends_on:
       backend:
         condition: service_healthy
@@ -111,6 +112,7 @@ services:
     environment:
       PYTHON_LOG_LEVEL: ${PYTHON_LOG_LEVEL:-info}
       PYTHON_SIDECAR_SOCKET: /tmp/sidecar/py-api.sock
+      SIDECAR_SHARED_SECRET: ${SIDECAR_SHARED_SECRET}
     volumes:
       - sidecar_socket:/tmp/sidecar
     depends_on:
@@ -184,7 +186,7 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:?POSTGRES_DB must be set in .env}
       POSTGRES_INITDB_ARGS: "--encoding=UTF-8 --locale=C"
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - postgres_data:/var/lib/postgresql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
       interval: 10s
@@ -211,15 +213,14 @@ services:
     expose:
       - "6379"
     command: >
-      redis-server
-      --maxmemory ${REDIS_MAX_MEMORY:-512mb}
-      --maxmemory-policy ${REDIS_MAXMEMORY_POLICY:-allkeys-lru}
-      --appendonly ${REDIS_APPENDONLY:-yes}
-      --save ${REDIS_SAVE:-900 1 300 10 60 10000}
-      --requirepass ${REDIS_PASSWORD:?REDIS_PASSWORD must be set in .env}
+      sh -c "
+        echo requirepass $${REDIS_PASSWORD} > /usr/local/etc/redis/redis.conf &&
+        redis-server /usr/local/etc/redis/redis.conf
+      "
     volumes:
       - redis_data:/data
     environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
       REDISCLI_AUTH: ${REDIS_PASSWORD}
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
@@ -348,8 +349,11 @@ services:
     restart: unless-stopped
     volumes:
       - ./nginx/certs:/etc/letsencrypt
-      - ./nginx/certbot-data:/var/lib/certbot
-    entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew; sleep 12h; done'"
+      - ./nginx/certbot-data:/var/www/certbot
+    entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew --webroot -w /var/www/certbot; sleep 12h; done'"
+    depends_on:
+      nginx:
+        condition: service_started
     deploy:
       resources:
         limits:

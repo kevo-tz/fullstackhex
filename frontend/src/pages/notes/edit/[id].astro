@@ -1,0 +1,174 @@
+---
+import Layout from "../../../components/Layout.astro";
+export const prerender = false;
+const { id } = Astro.params;
+---
+
+<Layout title="Edit Note — FullStackHex">
+  <span id="note-id" data-id={id} hidden></span>
+  <div class="max-w-lg mx-auto">
+    <a href="/notes" class="back-link">← Back to Notes</a>
+    <h1 class="text-2xl font-bold text-[#e2e8f0] mb-6">Edit Note</h1>
+
+    <!-- Loading state -->
+    <div id="edit-loading">
+      <p class="text-sm text-[#94a3b8]">Loading note…</p>
+    </div>
+
+    <!-- Error state -->
+    <div id="edit-error" class="error-state hidden">
+      <p id="edit-error-msg" class="text-[#ef4444] text-sm">Could not load this note.</p>
+      <a href="/notes" class="btn-cancel mt-4 inline-block">Back to Notes</a>
+    </div>
+
+    <form id="note-form" class="space-y-4 hidden" novalidate>
+      <div class="form-group">
+        <label for="title" class="form-label">Title</label>
+        <input type="text" id="title" name="title" class="form-input" required minlength="1" maxlength="255" placeholder="Note title" />
+        <span id="title-error" class="field-error hidden">Title is required</span>
+      </div>
+
+      <div class="form-group">
+        <label for="body" class="form-label">Body</label>
+        <textarea id="body" name="body" class="form-input" rows="6" maxlength="10000" required placeholder="Write your note here…"></textarea>
+        <span id="body-error" class="field-error hidden"></span>
+      </div>
+
+      <div class="flex gap-3">
+        <button type="submit" id="submit-btn" class="btn-primary">Save Changes</button>
+        <a href="/notes" class="btn-cancel">Cancel</a>
+      </div>
+
+      <div id="form-error" class="form-error-banner hidden"></div>
+    </form>
+  </div>
+</Layout>
+
+<script>
+  const noteId = document.getElementById("note-id")?.dataset.id || "";
+
+  async function loadNote() {
+    document.getElementById("edit-loading")!.classList.remove("hidden");
+    document.getElementById("edit-error")!.classList.add("hidden");
+    document.getElementById("note-form")!.classList.add("hidden");
+
+    try {
+      const res = await fetch(`/api/notes/${noteId}`);
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        const errMsg = typeof body?.error === "string" ? body.error : body?.error?.message || `HTTP ${res.status}`;
+        throw new Error(errMsg);
+      }
+      const note = await res.json();
+
+      document.getElementById("edit-loading")!.classList.add("hidden");
+      document.getElementById("note-form")!.classList.remove("hidden");
+
+      (document.getElementById("title") as HTMLInputElement).value = note.title || "";
+      (document.getElementById("body") as HTMLTextAreaElement).value = note.body || "";
+    } catch (err) {
+      document.getElementById("edit-loading")!.classList.add("hidden");
+      document.getElementById("edit-error")!.classList.remove("hidden");
+      const msg = err instanceof Error ? err.message : "";
+      (document.getElementById("edit-error-msg") as HTMLElement).textContent =
+        msg || "Could not load note";
+    }
+  }
+
+  const form = document.getElementById("note-form") as HTMLFormElement;
+  const titleInput = document.getElementById("title") as HTMLInputElement;
+  const titleError = document.getElementById("title-error") as HTMLElement;
+  const submitBtn = document.getElementById("submit-btn") as HTMLButtonElement;
+  const formError = document.getElementById("form-error") as HTMLElement;
+
+  function showFieldError(el: HTMLElement, show: boolean) {
+    el.classList.toggle("hidden", !show);
+  }
+
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    formError.classList.add("hidden");
+
+    let valid = true;
+    if (!titleInput.value.trim()) {
+      showFieldError(titleError, true);
+      valid = false;
+    } else {
+      showFieldError(titleError, false);
+    }
+
+    if (!valid) return;
+
+    submitBtn.disabled = true;
+    submitBtn.textContent = "Saving…";
+
+    try {
+      const csrf = (await import("../../../lib/csrf")).getCsrfToken();
+      const res = await fetch(`/api/notes/${noteId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", ...(csrf ? { "X-CSRF-Token": csrf } : {}) },
+        body: JSON.stringify({ title: titleInput.value.trim(), body: (document.getElementById("body") as HTMLTextAreaElement).value }),
+      });
+
+      if (res.ok) {
+        window.location.href = `/notes/${encodeURIComponent(noteId)}`;
+      } else {
+        const data = await res.json().catch(() => ({}));
+        formError.textContent = (data as { error?: string }).error || "Failed to update note";
+        formError.classList.remove("hidden");
+      }
+    } catch {
+      formError.textContent = "Network error — could not reach server";
+      formError.classList.remove("hidden");
+    } finally {
+      submitBtn.disabled = false;
+      submitBtn.textContent = "Save Changes";
+    }
+  });
+
+  titleInput.addEventListener("input", () => showFieldError(titleError, false));
+
+  loadNote();
+</script>
+
+<style>
+  .back-link { display: inline-block; color: var(--accent, #22c55e); font-size: 0.85rem; margin-bottom: 1rem; text-decoration: none; }
+  .back-link:hover { text-decoration: underline; }
+  .form-group { display: flex; flex-direction: column; gap: 0.35rem; }
+  .form-label { font-size: 0.8rem; color: var(--text-muted, #94a3b8); }
+  .form-input {
+    padding: 0.6rem 0.9rem;
+    border: 1px solid var(--border, #1e293b);
+    border-radius: 6px;
+    background: var(--card-bg, #111827);
+    color: var(--text, #e2e8f0);
+    font-size: 0.9rem;
+    font-family: inherit;
+    width: 100%;
+    box-sizing: border-box;
+  }
+  .form-input:focus { outline: none; border-color: var(--accent, #22c55e); }
+  .form-input:focus-visible { outline: 2px solid var(--accent, #22c55e); outline-offset: 2px; }
+  textarea.form-input { resize: vertical; }
+  .field-error { font-size: 0.78rem; color: #ef4444; }
+  .btn-primary {
+    padding: 0.5rem 1.25rem; border-radius: 6px; background: var(--accent, #22c55e);
+    color: var(--btn-text, #0d0d0d); border: none; font-size: 0.85rem; font-weight: 500; cursor: pointer;
+    font-family: inherit;
+  }
+  .btn-primary:hover { opacity: 0.9; }
+  .btn-primary:focus-visible { outline: 2px solid var(--accent, #22c55e); outline-offset: 2px; }
+  .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+  .btn-cancel {
+    padding: 0.5rem 1.25rem; border-radius: 6px; background: transparent;
+    color: var(--text-muted, #94a3b8); border: 1px solid var(--border, #1e293b); font-size: 0.85rem;
+    text-decoration: none; display: inline-flex; align-items: center;
+  }
+  .btn-cancel:hover { border-color: var(--text-muted, #94a3b8); }
+  .form-error-banner {
+    padding: 0.75rem; border-radius: 6px; background: #450a0a; border: 1px solid #7f1d1d;
+    color: #fca5a5; font-size: 0.85rem;
+  }
+  .error-state { text-align: center; padding: 3rem 1.5rem; }
+  .hidden { display: none; }
+</style>

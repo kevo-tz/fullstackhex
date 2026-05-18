@@ -18,6 +18,7 @@ pub enum SidecarError {
     HttpError { status: u16, body: String },
 }
 
+#[derive(Clone)]
 pub struct PythonSidecar {
     socket_path: PathBuf,
     timeout: Duration,

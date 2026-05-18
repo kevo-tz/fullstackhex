@@ -4,11 +4,12 @@
 /// actual HTTP requests via `tower::ServiceExt`.  Tests that mutate
 /// environment use `#[serial]` to prevent concurrent execution.
 use api::metrics::init_metrics_recorder;
-use api::router;
+use api::{AppState, DbStatus, HealthState, WebSocketState, router};
 use axum::body::to_bytes;
 use axum::http::{Request, StatusCode};
 use serde_json::Value;
 use serial_test::serial;
+use std::sync::Arc;
 use tower::ServiceExt;
 
 fn test_prometheus_handle() -> metrics_exporter_prometheus::PrometheusHandle {
@@ -323,6 +324,8 @@ async fn health_python_ok_when_socket_present() {
 async fn health_db_ok_with_real_pool() {
     use api::AppState;
     use api::DbStatus;
+    use api::HealthState;
+    use api::WebSocketState;
     use sqlx::postgres::PgPoolOptions;
     use std::time::Duration;
 
@@ -349,29 +352,33 @@ async fn health_db_ok_with_real_pool() {
     };
 
     let state = AppState {
-        db: DbStatus::Connected(pool),
-        sidecar: py_sidecar::PythonSidecar::new(
-            "/tmp/__nonexistent_test_socket__.sock",
-            Duration::from_secs(1),
-            0,
-        ),
-        prometheus_handle: test_prometheus_handle(),
-        gauge_task: None,
-        redis: None,
+        health: Arc::new(HealthState {
+            db: DbStatus::Connected(pool),
+            redis: None,
+            sidecar: py_sidecar::PythonSidecar::new(
+                "/tmp/__nonexistent_test_socket__.sock",
+                Duration::from_secs(1),
+                0,
+            ),
+            gauge_task: None,
+            feature_flags: Some(domain::FeatureFlags {
+                chat_enabled: false,
+                storage_readonly: false,
+                maintenance_mode: false,
+            }),
+        }),
+        ws: Arc::new(WebSocketState {
+            connection_permits: std::sync::Arc::new(tokio::sync::Semaphore::new(100)),
+            idle_timeout: std::time::Duration::from_secs(300),
+            shutdown: std::sync::Arc::new(tokio::sync::Notify::new()),
+            user_connections: std::sync::Arc::new(std::sync::RwLock::new(
+                std::collections::HashMap::new(),
+            )),
+            per_user_max: 10,
+        }),
         auth: None,
         storage: None,
-        feature_flags: Some(domain::FeatureFlags {
-            chat_enabled: false,
-            storage_readonly: false,
-            maintenance_mode: false,
-        }),
-        ws_connection_permits: std::sync::Arc::new(tokio::sync::Semaphore::new(100)),
-        ws_idle_timeout: std::time::Duration::from_secs(300),
-        ws_shutdown: std::sync::Arc::new(tokio::sync::Notify::new()),
-        ws_user_connections: std::sync::Arc::new(std::sync::Mutex::new(
-            std::collections::HashMap::new(),
-        )),
-        ws_per_user_max: 10,
+        prometheus_handle: test_prometheus_handle(),
     };
 
     let app = api::router_with_state(state);
@@ -401,6 +408,8 @@ async fn health_db_ok_with_real_pool() {
 async fn health_python_ok_with_mock_socket() {
     use api::AppState;
     use api::DbStatus;
+    use api::HealthState;
+    use api::WebSocketState;
     use api::router_with_state;
     use std::time::Duration;
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -427,25 +436,29 @@ async fn health_python_ok_with_mock_socket() {
     ready_rx.await.unwrap();
 
     let state = AppState {
-        db: DbStatus::NotConfigured,
-        sidecar: sc,
-        prometheus_handle: test_prometheus_handle(),
-        gauge_task: None,
-        redis: None,
+        health: Arc::new(HealthState {
+            db: DbStatus::NotConfigured,
+            redis: None,
+            sidecar: sc,
+            gauge_task: None,
+            feature_flags: Some(domain::FeatureFlags {
+                chat_enabled: false,
+                storage_readonly: false,
+                maintenance_mode: false,
+            }),
+        }),
+        ws: Arc::new(WebSocketState {
+            connection_permits: std::sync::Arc::new(tokio::sync::Semaphore::new(100)),
+            idle_timeout: std::time::Duration::from_secs(300),
+            shutdown: std::sync::Arc::new(tokio::sync::Notify::new()),
+            user_connections: std::sync::Arc::new(std::sync::RwLock::new(
+                std::collections::HashMap::new(),
+            )),
+            per_user_max: 10,
+        }),
         auth: None,
         storage: None,
-        feature_flags: Some(domain::FeatureFlags {
-            chat_enabled: false,
-            storage_readonly: false,
-            maintenance_mode: false,
-        }),
-        ws_connection_permits: std::sync::Arc::new(tokio::sync::Semaphore::new(100)),
-        ws_idle_timeout: std::time::Duration::from_secs(300),
-        ws_shutdown: std::sync::Arc::new(tokio::sync::Notify::new()),
-        ws_user_connections: std::sync::Arc::new(std::sync::Mutex::new(
-            std::collections::HashMap::new(),
-        )),
-        ws_per_user_max: 10,
+        prometheus_handle: test_prometheus_handle(),
     };
 
     let app = router_with_state(state);

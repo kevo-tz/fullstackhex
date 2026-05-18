@@ -17,12 +17,8 @@ route:
       continue: true
 
 receivers:
-  # Dev receiver: logs alerts to stdout via webhook.
-  # Replace the URL below with a reachable receiver endpoint in your environment.
+  # Dev receiver: alerts are logged by Alertmanager stdout — no external webhook needed.
   - name: 'dev'
-    webhook_configs:
-      - url: 'http://webhook:5001/alerts'
-        send_resolved: true
 
   # ── Production receivers (uncomment and configure) ──
   #

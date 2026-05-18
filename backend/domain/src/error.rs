@@ -31,6 +31,7 @@ pub enum ApiError {
     ServiceUnavailable(String),
 }
 
+#[cfg(feature = "cache-conv")]
 impl From<cache::CacheError> for ApiError {
     fn from(e: cache::CacheError) -> Self {
         match e {
@@ -62,6 +63,7 @@ impl From<cache::CacheError> for ApiError {
     }
 }
 
+#[cfg(feature = "db-conv")]
 impl From<db::DbError> for ApiError {
     fn from(e: db::DbError) -> Self {
         match e {
@@ -176,6 +178,18 @@ mod tests {
     }
 
     #[test]
+    fn conflict_returns_409() {
+        let err = ApiError::Conflict("Email already registered".to_string());
+        let resp = err.into_response();
+        assert_eq!(resp.status(), StatusCode::CONFLICT);
+    }
+}
+
+#[cfg(all(test, feature = "cache-conv"))]
+mod cache_conv_tests {
+    use super::ApiError;
+
+    #[test]
     fn cache_error_not_configured_converts_to_service_unavailable() {
         let err = ApiError::from(cache::CacheError::NotConfigured);
         assert!(matches!(err, ApiError::ServiceUnavailable(_)));
@@ -185,13 +199,6 @@ mod tests {
     fn cache_error_connection_failed_converts_to_service_unavailable() {
         let err = ApiError::from(cache::CacheError::ConnectionFailed("timeout".into()));
         assert!(matches!(err, ApiError::ServiceUnavailable(_)));
-    }
-
-    #[test]
-    fn conflict_returns_409() {
-        let err = ApiError::Conflict("Email already registered".to_string());
-        let resp = err.into_response();
-        assert_eq!(resp.status(), StatusCode::CONFLICT);
     }
 
     #[test]
@@ -209,6 +216,11 @@ mod tests {
         let err = ApiError::from(cache::CacheError::SessionNotFound);
         assert!(matches!(err, ApiError::Unauthorized(_)));
     }
+}
+
+#[cfg(all(test, feature = "db-conv"))]
+mod db_conv_tests {
+    use super::ApiError;
 
     #[test]
     fn db_error_not_configured_converts_to_service_unavailable() {

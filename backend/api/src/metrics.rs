@@ -12,27 +12,33 @@ static RECORDER_HANDLE: OnceLock<PrometheusHandle> = OnceLock::new();
 /// Returns the handle for rendering metrics on the `/metrics` endpoint.
 ///
 /// Safe to call from multiple threads — the recorder is only installed once.
+/// On bucket configuration failure, falls back to default Prometheus buckets.
 pub fn init_metrics_recorder() -> PrometheusHandle {
     RECORDER_HANDLE
         .get_or_init(|| {
-            let recorder = PrometheusBuilder::new()
-                .set_buckets_for_metric(
-                    Matcher::Full("http_request_duration_seconds".to_string()),
-                    &[
-                        0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0,
-                    ],
-                )
-                .expect("invalid http buckets")
-                .set_buckets_for_metric(
-                    Matcher::Full("auth_latency_seconds".to_string()),
-                    &[
-                        0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0,
-                    ],
-                )
-                .expect("invalid auth latency buckets")
-                .build_recorder();
+            let buckets = &[
+                0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0,
+            ];
+            let builder = PrometheusBuilder::new();
+            let builder = builder.set_buckets_for_metric(
+                Matcher::Full("http_request_duration_seconds".to_string()),
+                buckets,
+            ).unwrap_or_else(|e| {
+                tracing::error!("failed to set http buckets: {e}");
+                PrometheusBuilder::new()
+            });
+            let builder = builder.set_buckets_for_metric(
+                Matcher::Full("auth_latency_seconds".to_string()),
+                buckets,
+            ).unwrap_or_else(|e| {
+                tracing::error!("failed to set auth latency buckets: {e}");
+                PrometheusBuilder::new()
+            });
+            let recorder = builder.build_recorder();
             let handle = recorder.handle();
-            metrics::set_global_recorder(recorder).expect("failed to set global metrics recorder");
+            if metrics::set_global_recorder(recorder).is_err() {
+                tracing::warn!("metrics global recorder already set — using existing");
+            }
             handle
         })
         .clone()

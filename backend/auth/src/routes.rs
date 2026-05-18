@@ -214,14 +214,14 @@ pub async fn register(
         true,
         true,
     )?;
-    let csrf_token = super::csrf::generate_csrf_token();
+    let csrf_token = super::csrf::generate_csrf_token()?;
     super::cookies::set_cookie(
         &mut headers,
         "csrf_token",
         &csrf_token,
         jwt_expiry,
         false,
-        false,
+        state.auth.config.cookie_secure,
     )?;
 
     let response = TokenResponse {
@@ -370,7 +370,7 @@ pub async fn login(
 
     let jwt_expiry = state.auth.config.jwt_expiry;
     let refresh_expiry = state.auth.config.refresh_expiry;
-    let csrf_token = super::csrf::generate_csrf_token();
+    let csrf_token = super::csrf::generate_csrf_token()?;
 
     let response = TokenResponse {
         access_token: access_token.clone(),
@@ -409,7 +409,7 @@ pub async fn login(
         &csrf_token,
         jwt_expiry,
         false,
-        false,
+        state.auth.config.cookie_secure,
     )?;
 
     let now = std::time::SystemTime::now()
@@ -586,14 +586,14 @@ pub async fn refresh(
         true,
         true,
     )?;
-    let csrf_token = super::csrf::generate_csrf_token();
+    let csrf_token = super::csrf::generate_csrf_token()?;
     super::cookies::set_cookie(
         &mut resp_headers,
         "csrf_token",
         &csrf_token,
         state.auth.config.jwt_expiry,
         false,
-        false,
+        state.auth.config.cookie_secure,
     )?;
 
     Ok((
@@ -648,6 +648,7 @@ pub async fn me(auth_user: AuthUser) -> impl IntoResponse {
 /// GET /auth/oauth/{provider} — redirect to OAuth provider.
 pub async fn oauth_redirect(
     State(state): State<AuthState>,
+    headers: HeaderMap,
     Path(provider): Path<String>,
 ) -> Result<impl IntoResponse, ApiError> {
     let provider = parse_provider(&provider)?;
@@ -667,13 +668,26 @@ pub async fn oauth_redirect(
 
     let (url, csrf) = state.oauth.get_redirect_url(&provider, &redirect_url)?;
 
-    // Store CSRF token in Redis with 10-minute TTL for callback validation
+    // Bind CSRF to provider + session_id if available
+    let session_id = headers
+        .get("cookie")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|cookies| {
+            cookies.split(';').find_map(|c| {
+                let c = c.trim();
+                c.strip_prefix("session=").map(|s| s.to_string())
+            })
+        });
+    let csrf_value = serde_json::json!({
+        "provider": provider.to_string(),
+        "session_id": session_id,
+    });
     state
         .redis
         .cache_set(
             "oauth_csrf",
             csrf.secret(),
-            &provider.to_string(),
+            &csrf_value.to_string(),
             std::time::Duration::from_secs(600),
         )
         .await?;
@@ -691,6 +705,7 @@ pub struct OAuthCallbackQuery {
 /// GET /auth/oauth/{provider}/callback — handle OAuth callback.
 pub async fn oauth_callback(
     State(state): State<AuthState>,
+    headers: HeaderMap,
     Path(provider): Path<String>,
     Query(query): Query<OAuthCallbackQuery>,
 ) -> Result<impl IntoResponse, ApiError> {
@@ -698,16 +713,50 @@ pub async fn oauth_callback(
 
     // Validate CSRF state token — delete immediately (one-time use)
     // to prevent replay attacks even on provider mismatch
-    let stored_provider: Option<String> = state.redis.cache_get("oauth_csrf", &query.state).await?;
+    let stored: Option<String> = state.redis.cache_get("oauth_csrf", &query.state).await?;
     state.redis.cache_delete("oauth_csrf", &query.state).await?;
 
-    let stored_provider = stored_provider
+    let stored = stored
         .ok_or_else(|| ApiError::Unauthorized("Invalid or expired OAuth state".to_string()))?;
+
+    let stored_data: serde_json::Value = serde_json::from_str(&stored)
+        .map_err(|_| ApiError::Unauthorized("Invalid OAuth state format".to_string()))?;
+
+    let stored_provider = stored_data["provider"]
+        .as_str()
+        .ok_or_else(|| ApiError::Unauthorized("Invalid OAuth state: missing provider".to_string()))?;
 
     if stored_provider != provider.to_string() {
         return Err(ApiError::Unauthorized(
             "OAuth provider mismatch".to_string(),
         ));
+    }
+
+    // Validate session binding if one was stored
+    if let Some(bound_session_id) = stored_data["session_id"].as_str().filter(|s| !s.is_empty()) {
+        let current_session_id = headers
+            .get("cookie")
+            .and_then(|v| v.to_str().ok())
+            .and_then(|cookies| {
+                cookies.split(';').find_map(|c| {
+                    let c = c.trim();
+                    c.strip_prefix("session=").map(|s| s.to_string())
+                })
+            });
+        match current_session_id {
+            Some(ref sid) if sid == bound_session_id => {}
+            Some(_) => {
+                return Err(ApiError::Unauthorized(
+                    "OAuth session mismatch".to_string(),
+                ));
+            }
+            None => {
+                // No session cookie — attacker doesn't have one, reject
+                return Err(ApiError::Unauthorized(
+                    "OAuth requires an active session".to_string(),
+                ));
+            }
+        }
     }
 
     // Exchange code for access token
@@ -758,7 +807,7 @@ pub async fn oauth_callback(
 
     metrics::counter!("oauth_callbacks_total", "provider" => provider.to_string()).increment(1);
 
-    let csrf_token = super::csrf::generate_csrf_token();
+    let csrf_token = super::csrf::generate_csrf_token()?;
     let response = TokenResponse {
         access_token,
         refresh_token,
@@ -946,6 +995,7 @@ mod route_tests {
             sidecar_shared_secret: None,
             fail_open_on_redis_error: true,
             rate_limits: Default::default(),
+            cookie_secure: true,
         };
         let list = list_providers(&config);
         assert!(list.is_empty());
@@ -967,6 +1017,7 @@ mod route_tests {
             sidecar_shared_secret: None,
             fail_open_on_redis_error: true,
             rate_limits: Default::default(),
+            cookie_secure: true,
         };
         let list = list_providers(&config);
         assert_eq!(list, vec!["google"]);
@@ -988,6 +1039,7 @@ mod route_tests {
             sidecar_shared_secret: None,
             fail_open_on_redis_error: true,
             rate_limits: Default::default(),
+            cookie_secure: true,
         };
         let list = list_providers(&config);
         assert_eq!(list, vec!["github"]);
@@ -1009,6 +1061,7 @@ mod route_tests {
             sidecar_shared_secret: None,
             fail_open_on_redis_error: true,
             rate_limits: Default::default(),
+            cookie_secure: true,
         };
         let list = list_providers(&config);
         assert_eq!(list, vec!["google", "github"]);

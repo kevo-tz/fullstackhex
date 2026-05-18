@@ -173,6 +173,7 @@ proptest! {
             sidecar_shared_secret: None,
             fail_open_on_redis_error: true,
             rate_limits: Default::default(),
+            cookie_secure: true,
         };
         let svc = crate::AuthService::new(config);
         let _ = crate::middleware::extract_bearer(&req, &svc);

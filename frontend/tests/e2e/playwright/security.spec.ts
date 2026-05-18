@@ -1,0 +1,69 @@
+import { test, expect } from "@playwright/test";
+
+test.describe("Security Headers", () => {
+  test("CSP header includes frame-ancestors 'self' and no unsafe-inline in script-src", async ({ page }) => {
+    const response = await page.goto("/");
+    if (!response) throw new Error("No response");
+    const csp = response.headers()["content-security-policy"] || "";
+    expect(csp).toContain("frame-ancestors 'self'");
+    expect(csp).toContain("base-uri 'self'");
+    expect(csp).toContain("form-action 'self'");
+    // Astro-native CSP should not have unsafe-inline in script-src
+    const scriptSrc = csp.split(";").find((s) => s.trim().startsWith("script-src"));
+    if (scriptSrc) {
+      expect(scriptSrc).not.toContain("unsafe-inline");
+    }
+  });
+
+  test("X-Frame-Options is DENY", async ({ page }) => {
+    const response = await page.goto("/");
+    if (!response) throw new Error("No response");
+    expect(response.headers()["x-frame-options"]).toBe("DENY");
+  });
+
+  test("X-Content-Type-Options is nosniff", async ({ page }) => {
+    const response = await page.goto("/");
+    if (!response) throw new Error("No response");
+    expect(response.headers()["x-content-type-options"]).toBe("nosniff");
+  });
+});
+
+test.describe("Auth Cookie Security", () => {
+  test("Set-Cookie headers include Secure flag on login", async ({ request }) => {
+    const email = `sec-e2e-${Date.now()}@test.example.com`;
+    const password = "e2e-test-password-123";
+    await request.post("/api/auth/register", {
+      data: { email, password, name: "Security Test" },
+    });
+    const response = await request.post("/api/auth/login", {
+      data: { email, password },
+    });
+    const setCookie = response.headers()["set-cookie"] || "";
+    // In CI with production config, cookies should have Secure flag
+    if (process.env.COOKIE_SECURE !== "false") {
+      expect(setCookie).toContain("Secure");
+    }
+  });
+});
+
+test.describe("XSS Prevention", () => {
+  test("note created_at with invalid date renders safe text", async ({ page, request }) => {
+    const email = `xss-e2e-${Date.now()}@test.example.com`;
+    const password = "e2e-test-password-123";
+    await request.post("/api/auth/register", {
+      data: { email, password, name: "XSS Test" },
+    });
+    const loginRes = await request.post("/api/auth/login", {
+      data: { email, password },
+    });
+    const loginData = await loginRes.json();
+    const token = loginData.access_token;
+    await request.post("/api/notes", {
+      headers: { Authorization: `Bearer ${token}` },
+      data: { title: "Safe", body: "Test note", created_at: "<img src=x onerror=alert(1)>" },
+    });
+    await page.goto("/notes");
+    await expect(page.locator("text=Safe")).toBeVisible();
+    await expect(page.locator("text=<img")).toHaveCount(0);
+  });
+});

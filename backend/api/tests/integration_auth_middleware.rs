@@ -28,6 +28,7 @@ fn test_auth_service() -> Arc<AuthService> {
         sidecar_shared_secret: None,
         fail_open_on_redis_error: true,
         rate_limits: Default::default(),
+        cookie_secure: true,
     };
     Arc::new(AuthService::new(config))
 }

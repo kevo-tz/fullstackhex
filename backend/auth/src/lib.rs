@@ -94,6 +94,9 @@ pub struct AuthConfig {
     pub fail_open_on_redis_error: bool,
     /// Rate limit configuration for auth endpoints.
     pub rate_limits: RateLimitConfig,
+    /// Whether to set the `Secure` flag on cookies. Default true.
+    /// Set to false in dev without HTTPS.
+    pub cookie_secure: bool,
 }
 
 /// Auth mode determines how authentication is extracted from requests.
@@ -159,6 +162,10 @@ impl AuthConfig {
                 .and_then(|v| v.to_lowercase().parse::<bool>().ok())
                 .unwrap_or(true),
             rate_limits: RateLimitConfig::from_env(),
+            cookie_secure: std::env::var("COOKIE_SECURE")
+                .ok()
+                .and_then(|v| v.to_lowercase().parse::<bool>().ok())
+                .unwrap_or(true),
         })
     }
 }
@@ -252,6 +259,7 @@ mod tests {
             sidecar_shared_secret: None,
             fail_open_on_redis_error: true,
             rate_limits: Default::default(),
+            cookie_secure: true,
         };
         let svc = AuthService::new(config);
         let token = svc

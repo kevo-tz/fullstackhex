@@ -11,6 +11,8 @@ import sys
 import time
 from typing import Awaitable, Callable
 
+import redis.asyncio as aioredis
+
 from prometheus_client import (
     Counter,
     Histogram,
@@ -19,10 +21,24 @@ from prometheus_client import (
 )
 
 
+redis_client: aioredis.Redis | None = None
+
+
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
+    global redis_client
     setup_logging()
+    redis_url = os.environ.get("REDIS_URL", "redis://localhost:6379/0")
+    redis_client = aioredis.from_url(redis_url, decode_responses=True)
+    try:
+        await redis_client.ping()
+    except Exception as e:
+        logging.warning("Redis connection failed — HMAC nonce dedup disabled: %s", e)
+        redis_client = None
     yield
+    if redis_client is not None:
+        await redis_client.aclose()
+        redis_client = None
 
 
 app = FastAPI(lifespan=lifespan)
@@ -133,6 +149,8 @@ async def hmac_auth_middleware(
     email = request.headers.get("X-User-Email", "")
     name = request.headers.get("X-User-Name", "")
     signature = request.headers.get("X-Auth-Signature", "")
+    timestamp_str = request.headers.get("X-Timestamp", "")
+    nonce = request.headers.get("X-Nonce", "")
 
     if not all([user_id, email, signature]):
         logger.warning(
@@ -145,8 +163,57 @@ async def hmac_auth_middleware(
             media_type="application/json",
         )
 
+    # Validate timestamp (±30s window)
+    try:
+        ts = int(timestamp_str)
+        now = int(time.time())
+        if abs(now - ts) > 30:
+            logger.warning(
+                "HMAC rejection: timestamp outside window",
+                extra={"trace_id": trace_id, "timestamp": ts, "skew": now - ts},
+            )
+            return Response(
+                content=json.dumps({"error": "Request expired"}),
+                status_code=401,
+                media_type="application/json",
+            )
+    except ValueError, TypeError:
+        logger.warning(
+            "HMAC rejection: missing or invalid timestamp",
+            extra={"trace_id": trace_id},
+        )
+        return Response(
+            content=json.dumps({"error": "Missing or invalid timestamp"}),
+            status_code=401,
+            media_type="application/json",
+        )
+
+    # Replay protection: check nonce hasn't been seen
+    if nonce and redis_client is not None:
+        nonce_key = f"hmac:nonce:{nonce}"
+        existed = await redis_client.get(nonce_key)
+        if existed is not None:
+            logger.warning(
+                "HMAC rejection: duplicate nonce (replay)",
+                extra={"trace_id": trace_id, "nonce": nonce},
+            )
+            return Response(
+                content=json.dumps({"error": "Duplicate request"}),
+                status_code=401,
+                media_type="application/json",
+            )
+        await redis_client.setex(nonce_key, 60, "1")
+    elif nonce and redis_client is None:
+        logger.warning(
+            "HMAC nonce check skipped: Redis unavailable",
+            extra={"trace_id": trace_id},
+        )
+
     # Compute expected signature: HMAC-SHA256(secret, JSON payload)
-    payload = json.dumps({"user_id": user_id, "email": email, "name": name}, sort_keys=True)
+    payload = json.dumps(
+        {"user_id": user_id, "email": email, "name": name, "timestamp": ts},
+        sort_keys=True,
+    )
     expected = hmac.new(
         settings.shared_secret.encode("utf-8"),
         payload.encode("utf-8"),

@@ -52,6 +52,7 @@ pub async fn upload(
     Path(key): Path<String>,
     body: Body,
 ) -> Result<impl IntoResponse, ApiError> {
+    validate_storage_key(&key)?;
     let key = user_key(&auth_user.user_id, &key);
     let stream = body.into_data_stream();
     let reqwest_body = reqwest::Body::wrap_stream(stream);
@@ -73,6 +74,7 @@ pub async fn download(
     auth_user: AuthUser,
     Path(key): Path<String>,
 ) -> Result<impl IntoResponse, ApiError> {
+    validate_storage_key(&key)?;
     let key = user_key(&auth_user.user_id, &key);
     let resp = super::client::download_streaming(&state.client, &state.config, &key).await?;
 
@@ -101,6 +103,7 @@ pub async fn delete(
     auth_user: AuthUser,
     Path(key): Path<String>,
 ) -> Result<impl IntoResponse, ApiError> {
+    validate_storage_key(&key)?;
     let key = user_key(&auth_user.user_id, &key);
     super::client::delete(&state.client, &state.config, &key).await?;
     Ok(StatusCode::NO_CONTENT)
@@ -228,10 +231,22 @@ pub async fn abort_multipart(
     Ok(StatusCode::NO_CONTENT)
 }
 
-/// Validate a storage key — prevents path traversal via `..` sequences.
+/// Validate a storage key — prevents path traversal and injection attacks.
 fn validate_storage_key(key: &str) -> Result<(), ApiError> {
-    if key.is_empty() || key.contains("..") || key.starts_with('/') {
+    use std::path::{Component, Path};
+    if key.is_empty() {
         return Err(ApiError::ValidationError("Invalid storage key".to_string()));
+    }
+    let decoded = urlencoding::decode(key).map_err(|_| {
+        ApiError::ValidationError("Invalid storage key encoding".to_string())
+    })?;
+    if decoded.contains('\0') || decoded.contains('\\') {
+        return Err(ApiError::ValidationError("Invalid storage key".to_string()));
+    }
+    for component in Path::new(&*decoded).components() {
+        if matches!(component, Component::ParentDir) {
+            return Err(ApiError::ValidationError("Invalid storage key".to_string()));
+        }
     }
     Ok(())
 }

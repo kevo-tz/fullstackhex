@@ -334,6 +334,7 @@ mod tests {
             sidecar_shared_secret: None,
             fail_open_on_redis_error: true,
             rate_limits: Default::default(),
+            cookie_secure: true,
         };
         AuthService::new(config)
     }

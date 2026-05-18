@@ -4,10 +4,12 @@
 //! validated against X-CSRF-Token header.
 
 /// Generate a random CSRF token (32 bytes hex-encoded).
-pub fn generate_csrf_token() -> String {
+pub fn generate_csrf_token() -> Result<String, domain::error::ApiError> {
     let mut bytes = [0u8; 32];
-    getrandom::fill(&mut bytes).expect("failed to generate random bytes");
-    hex::encode(bytes)
+    getrandom::fill(&mut bytes).map_err(|e| {
+        domain::error::ApiError::InternalError(format!("failed to generate random bytes: {e}"))
+    })?;
+    Ok(hex::encode(bytes))
 }
 
 /// Validate a CSRF token by comparing the cookie value with the header value.
@@ -35,21 +37,21 @@ mod tests {
 
     #[test]
     fn generate_creates_64_char_hex() {
-        let token = generate_csrf_token();
+        let token = generate_csrf_token().unwrap();
         assert_eq!(token.len(), 64);
         assert!(token.chars().all(|c| c.is_ascii_hexdigit()));
     }
 
     #[test]
     fn matching_tokens_validate() {
-        let token = generate_csrf_token();
+        let token = generate_csrf_token().unwrap();
         assert!(validate_csrf_token(&token, &token));
     }
 
     #[test]
     fn mismatched_tokens_fail() {
-        let t1 = generate_csrf_token();
-        let t2 = generate_csrf_token();
+        let t1 = generate_csrf_token().unwrap();
+        let t2 = generate_csrf_token().unwrap();
         assert!(!validate_csrf_token(&t1, &t2));
     }
 

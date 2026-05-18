@@ -76,6 +76,7 @@ save 60 10000
 maxmemory ${REDIS_MAX_MEMORY:-512mb}
 maxmemory-policy ${REDIS_MAXMEMORY_POLICY:-allkeys-lru}
 REDIS_CONF
+chmod 600 .tmp/redis.conf
 
 log_info "Starting infrastructure (PostgreSQL, Redis)..."
 $COMPOSE_DEV up -d

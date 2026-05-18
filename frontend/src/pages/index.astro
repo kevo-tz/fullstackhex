@@ -297,6 +297,11 @@ make status</pre>
 
       // Try WS first, fall back to polling if no connect within 3s
       initLiveStream();
+
+      // Always fetch health on page load regardless of WS state.
+      // WS events only carry future updates, not the current state.
+      fetchHealth();
+
       wsFallbackTimer = setTimeout(() => {
         if (wsDisconnected) {
           console.log("[dashboard] WS connect timeout — using polling");

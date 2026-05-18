@@ -38,7 +38,7 @@ if [ -f "$REDIS_FILE" ]; then
   echo "  → restoring redis from $REDIS_FILE"
   $COMPOSE_DEV cp "$REDIS_FILE" redis:/data/dump.rdb
   $COMPOSE_DEV exec -T redis redis-cli CONFIG SET dir /data
-  $COMPOSE_DEV exec -T redis redis-cli DEBUG RELOAD
+  $COMPOSE_DEV restart redis
   echo "    redis restore complete"
 else
   echo "  → redis: no backup found at $REDIS_FILE (skipping)"

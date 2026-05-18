@@ -32,11 +32,13 @@ test.describe("Health Dashboard", () => {
     await page.goto("/");
 
     const rawJson = page.locator("#raw-json");
-    // Initial state shows "fetching…"
-    await expect(rawJson).toContainText("fetching");
-
-    // Wait for health data to arrive
-    await expect(rawJson).not.toContainText("fetching", { timeout: 15000 });
+    // Health may already be loaded (fetchHealth runs immediately on page load)
+    // or still in "fetching…" state — handle both
+    const text1 = await rawJson.textContent();
+    if (text1?.includes("fetching")) {
+      // Wait for health data to arrive
+      await expect(rawJson).not.toContainText("fetching", { timeout: 15000 });
+    }
     // Should contain JSON content
     const text = await rawJson.textContent();
     expect(text).toBeTruthy();

@@ -53,58 +53,29 @@ _All 8 items completed._
 
 ---
 
-## Phase 4: Infrastructure & Script Fixes (3–4h)
+## Phase 4: Infrastructure & Script Fixes ✅
 
-### 4.1 Fix Alertmanager dead webhook
-**File:** `compose/monitoring/alertmanager.yml:24`
-- `http://webhook:5001/alerts` doesn't exist — replace with `log`-based receiver or add a `webhook` service to `monitor.yml`
+_All 9 items completed._
 
-### 4.2 Fix `down.sh` pkill safety
-**File:** `scripts/down.sh:23-27`
-- `pkill -u "$(whoami)"` kills ALL matching processes, not just project ones
-- Remove pkill fallback; PID-file-based killing at lines 14-20 is sufficient
-
-### 4.3 Fix Dockerfile.python caching
-**File:** `compose/Dockerfile.python:10-13`
-- First `COPY py-api/pyproject.toml ./` is overwritten by `COPY py-api/ ./py-api/`
-- Fix: copy `pyproject.toml` + `uv.lock`, install deps in non-editable mode, THEN copy source
-
-### 4.4 Fix Dockerfile.frontend `npm install` on bun project
-**File:** `compose/Dockerfile.frontend:32`
-- `npm install --production` ignores `bun.lock` — copy `node_modules` directly from builder instead
-
-### 4.5 Fix `restore.sh` Redis reload
-**File:** `scripts/restore.sh:41`
-- `redis-cli DEBUG RELOAD` is dangerous — replace with proper AOF replay or `docker compose restart redis`
-
-### 4.6 Fix `dev.sh` Redis config permissions
-**File:** `scripts/dev.sh:68-78`
-- `.tmp/redis.conf` contains plaintext password with default umask — add `chmod 600`
-
-### 4.7 Fix Prometheus alert metric name
-**File:** `compose/monitoring/alerts.yml:17`
-- Verify `http_request_duration_seconds_bucket` matches what Axum `metrics` crate actually emits
-
-### 4.8 Pin Docker base image digests
-- `compose/Dockerfile.rust`, `Dockerfile.python`, `Dockerfile.frontend` — all use mutable tags
-
-### 4.9 Fix CI e2e test user cleanup
-- `.github/workflows/ci.yml` — cleanup `ws-ci@test.local` between runs, or use unique email per run
+- **4.1** Fix Alertmanager dead webhook — removed dead webhook receiver, alerts log to stdout
+- **4.2** Fix `down.sh` pkill safety — removed `pkill -u "$(whoami)"` lines
+- **4.3** Fix Dockerfile.python caching — copy `pyproject.toml`+`uv.lock` first, install deps in non-editable mode, THEN copy source
+- **4.4** Fix Dockerfile.frontend `npm install` on bun project — copy `node_modules` directly from builder instead
+- **4.5** Fix `restore.sh` Redis reload — replaced `redis-cli DEBUG RELOAD` with `docker compose restart redis`
+- **4.6** Fix `dev.sh` Redis config permissions — added `chmod 600` after redis.conf write
+- **4.7** Fix Prometheus alert metric name — verified `http_request_duration_seconds_bucket` matches Axum metrics emitter
+- **4.8** Pin Docker base image digests — all three Dockerfiles pinned to manifest list digests
+- **4.9** Fix CI e2e test user cleanup — timestamped email `ws-ci-${ts}@test.local` per run
 
 ---
 
-## Phase 5: Missing Features (2–3h)
+## Phase 5: Missing Features ✅
 
-### 5.1 Add note editing
-- `frontend/src/pages/notes/[id].astro` — add Edit button, inline edit mode, PUT to existing endpoint
+_All 3 items completed. 267 backend tests pass, 104 frontend tests pass, clippy clean, astro check clean._
 
-### 5.2 Add password reset flow
-- `backend/auth/src/routes.rs` — add forgot-password and reset-password endpoints
-- `frontend/src/components/AuthForm.astro` — add "Forgot password?" link
-- `frontend/src/pages/forgot-password.astro`, `reset-password.astro`
-
-### 5.3 Add social meta tags
-**File:** `frontend/src/components/Layout.astro` — add `og:title`, `og:description`, `twitter:card`
+- **5.1** Add note editing — Edit button on detail page, edit page at `/notes/edit/[id]` with pre-populated form and PUT submission, redirects to detail page on success
+- **5.2** Add password reset flow — `POST /auth/forgot-password` (Redis token, 1h TTL, rate-limited, no email enumeration), `POST /auth/reset-password` (validates token, updates password hash, deletes token), forgot password link on login form, `/forgot-password` and `/reset-password` pages, dev reset URL in non-production
+- **5.3** Add social meta tags — `og:title`, `og:description`, `og:image`, `og:type`, `twitter:card` with configurable `description`/`image`/`ogType` props on Layout
 
 ---
 

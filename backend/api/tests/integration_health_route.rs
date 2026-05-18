@@ -89,10 +89,6 @@ async fn health_returns_json_with_status_ok() {
 
     assert_eq!(v["rust"]["status"], "ok", "rust.status must be 'ok'");
     assert_eq!(v["rust"]["service"], "api", "rust.service must be 'api'");
-    assert!(
-        v["rust"]["version"].is_string(),
-        "rust.version must be a string"
-    );
     assert!(v["db"]["status"].is_string(), "db.status must be a string");
     assert!(
         v["redis"]["status"].is_string(),
@@ -182,10 +178,6 @@ async fn health_db_error_when_no_database_url() {
         v["status"], "error",
         "status must be 'error' when DATABASE_URL is absent"
     );
-    assert!(
-        v["error"].is_string(),
-        "error field must be present and a string"
-    );
 }
 
 #[tokio::test]
@@ -272,10 +264,6 @@ async fn health_python_unavailable_when_socket_absent() {
     assert_eq!(
         v["status"], "unavailable",
         "status must be 'unavailable' when socket is absent"
-    );
-    assert!(
-        v["error"].is_string(),
-        "error field must be present and a string"
     );
 }
 
@@ -482,7 +470,6 @@ async fn health_python_ok_with_mock_socket() {
         "health_python should return 'ok' when sidecar responds successfully. Got: {v}"
     );
     assert_eq!(v["service"], "py-api");
-    assert_eq!(v["version"], "0.1.0");
 }
 
 // ---------------------------------------------------------------------------

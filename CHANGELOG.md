@@ -7,6 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.14.3] - 2026-05-18
+
+### Fixed
+- **Health disclosure**: `version`, `fix`, and detailed `error` messages stripped from all health endpoints (`/health`, `/health/db`, `/health/redis`, `/health/storage`, `/health/python`, `/health/auth`); detailed errors logged server-side with `tracing::warn!`
+- **`axum::serve` type error**: `build_router` now returns `Router<()>` (via early `.with_state()`) instead of `Router<Arc<AppState>>` — Axum 0.8.9 requires a unit-state router for `serve`
+
+### Changed
+- **Health values**: `format_health_value` and `sidecar_error_json` strip infrastructure fields at value-construction level, ensuring all response paths are safe
+- **Tests**: 4 health-route integration tests updated to match stripped response shape (no more `version`/`error` field assertions)
+
+## [0.14.2] - 2026-05-18
+
+### Fixed
+- **Prometheus label cardinality**: Python sidecar endpoint label normalized via `_UUID_PATTERN` regex — prevents explosion from dynamic path segments
+- **`register_metrics()` ordering**: moved from module level into `lifespan` — safe startup sequence, no duplicate-call errors
+
+### Changed
+- **py-api tests**: all converted from `def test_*` + `asyncio.run(...)` to `async def test_*` + `await` using `pytest-asyncio` with `asyncio_mode = "auto"`
+
+## [0.14.1] - 2026-05-18
+
+### Changed
+- **AppState split**: factored into `HealthState` (db, redis, sidecar, gauge_task, feature_flags) and `WebSocketState` (connection_permits, idle_timeout, shutdown, user_connections, per_user_max); `FromRef` impls for Axum sub-state extraction
+- **Router modularization**: `build_router` split into `health_routes()`, `auth_routes()`, `storage_routes()`, `notes_routes()` — each produces a typed sub-router
+- **WS user tracking**: `Arc<Mutex<HashMap>>` → `Arc<RwLock<HashMap>>` — async-friendly, no lock contention for readers
+
+## [0.14.0] - 2026-05-18
+
+### Changed
+- **Domain decoupling**: `From<cache::CacheError>` / `From<db::DbError>` moved behind optional feature gates `cache-conv` / `db-conv` in the domain crate; domain compiles without cache/db when features disabled
+
 ## [0.13.7] - 2026-05-17
 
 ### Fixed

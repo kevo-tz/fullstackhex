@@ -240,7 +240,32 @@ fn build_router(state: Arc<AppState>) -> Router {
         router = router.nest("/storage", storage_router);
     }
 
-    notes_routes(&mut router, &state);
+    let db_connected = matches!(state.health.db, DbStatus::Connected(_));
+    if state.auth.is_some() && db_connected {
+        let notes_router = Router::new()
+            .route("/", axum::routing::get(notes::list_notes))
+            .route("/", axum::routing::post(notes::create_note))
+            .route("/{id}", axum::routing::get(notes::get_note))
+            .route("/{id}", axum::routing::put(notes::update_note))
+            .route("/{id}", axum::routing::delete(notes::delete_note))
+            .layer(DefaultBodyLimit::max(128 * 1024))
+            .with_state(state.clone());
+        router = router.nest("/notes", notes_router);
+    }
+    if state.auth.is_none() {
+        router = router.route("/auth/me", get(auth_me_disabled));
+    }
+    if state.auth.is_none() || !db_connected {
+        let fb = Router::new()
+            .route("/", get(notes_fallback).post(notes_fallback))
+            .route(
+                "/{id}",
+                get(notes_fallback)
+                    .put(notes_fallback)
+                    .delete(notes_fallback),
+            );
+        router = router.nest("/notes", fb);
+    }
 
     if let Some(ref auth_svc) = state.auth {
         router = router
@@ -264,7 +289,7 @@ fn health_routes() -> Router<Arc<AppState>> {
         .route("/health/auth", get(health_auth))
 }
 
-fn auth_routes(state: &Arc<AppState>) -> Option<Router<Arc<AppState>>> {
+fn auth_routes(state: &Arc<AppState>) -> Option<Router> {
     let (auth_svc, redis) = (&state.auth, &state.health.redis);
     let pool = match &state.health.db {
         DbStatus::Connected(p) => p,
@@ -306,7 +331,7 @@ fn auth_routes(state: &Arc<AppState>) -> Option<Router<Arc<AppState>>> {
     )
 }
 
-fn storage_routes(state: &Arc<AppState>) -> Option<Router<Arc<AppState>>> {
+fn storage_routes(state: &Arc<AppState>) -> Option<Router> {
     let storage_svc = state.storage.as_ref()?;
     let storage_state = storage::routes::StorageState {
         client: reqwest::Client::new(),
@@ -338,38 +363,6 @@ fn storage_routes(state: &Arc<AppState>) -> Option<Router<Arc<AppState>>> {
             .layer(DefaultBodyLimit::max(10 * 1024 * 1024))
             .with_state(storage_state),
     )
-}
-
-fn notes_routes(router: &mut Router<Arc<AppState>>, state: &Arc<AppState>) {
-    let db_connected = matches!(state.health.db, DbStatus::Connected(_));
-
-    if state.auth.is_some() && db_connected {
-        let notes_router = Router::new()
-            .route("/", axum::routing::get(notes::list_notes))
-            .route("/", axum::routing::post(notes::create_note))
-            .route("/{id}", axum::routing::get(notes::get_note))
-            .route("/{id}", axum::routing::put(notes::update_note))
-            .route("/{id}", axum::routing::delete(notes::delete_note))
-            .layer(DefaultBodyLimit::max(128 * 1024))
-            .with_state(state.clone());
-        *router = router.clone().nest("/notes", notes_router);
-    }
-
-    if state.auth.is_none() {
-        *router = router.clone().route("/auth/me", get(auth_me_disabled));
-    }
-
-    if state.auth.is_none() || !db_connected {
-        let fb = Router::new()
-            .route("/", get(notes_fallback).post(notes_fallback))
-            .route(
-                "/{id}",
-                get(notes_fallback)
-                    .put(notes_fallback)
-                    .delete(notes_fallback),
-            );
-        *router = router.clone().nest("/notes", fb);
-    }
 }
 
 /// Maintenance mode middleware — returns 503 when FEATURE_MAINTENANCE is enabled,
@@ -412,7 +405,6 @@ async fn health(State(state): State<Arc<AppState>>) -> impl IntoResponse {
     let rust = json!({
         "status": "ok",
         "service": "api",
-        "version": env!("CARGO_PKG_VERSION")
     });
 
     let db = health_db_value(&state.health).await;
@@ -503,8 +495,6 @@ async fn health(State(state): State<Arc<AppState>>) -> impl IntoResponse {
 
     let flags = state.health.feature_flags.map(|f| {
         json!({
-            "chat_enabled": f.chat_enabled,
-            "storage_readonly": f.storage_readonly,
             "maintenance_mode": f.maintenance_mode,
         })
     });
@@ -528,10 +518,7 @@ fn health_auth_value(state: &AppState) -> serde_json::Value {
     if state.auth.is_some() {
         json!({ "status": "ok" })
     } else {
-        json!({
-            "status": "disabled",
-            "fix": "JWT_SECRET not set or is CHANGE_ME — auth disabled. Set a secure JWT_SECRET in .env and restart."
-        })
+        json!({ "status": "disabled" })
     }
 }
 
@@ -575,13 +562,15 @@ async fn health_redis_value(state: &HealthState) -> serde_json::Value {
     match &state.redis {
         Some(redis) => match redis.ping().await {
             Ok(()) => json!({ "status": "ok" }),
-            Err(e) => json!({ "status": "error", "error": e.to_string() }),
+            Err(e) => {
+                tracing::warn!(error = %e, "health check: Redis ping failed");
+                json!({ "status": "error" })
+            }
         },
-        None => json!({
-            "status": "error",
-            "error": "Redis not configured",
-            "fix": "Set REDIS_URL in .env and restart the backend."
-        }),
+        None => {
+            tracing::info!("health check: Redis not configured");
+            json!({ "status": "error" })
+        }
     }
 }
 
@@ -597,12 +586,11 @@ async fn health_redis(State(state): State<Arc<AppState>>) -> impl IntoResponse {
 
 fn health_storage_value(state: &AppState) -> serde_json::Value {
     match &state.storage {
-        Some(s) => json!({ "status": "ok", "bucket": s.config.bucket }),
-        None => json!({
-            "status": "error",
-            "error": "Storage not configured",
-            "fix": "Set RUSTFS_ENDPOINT, RUSTFS_ACCESS_KEY, and RUSTFS_SECRET_KEY in .env."
-        }),
+        Some(_) => json!({ "status": "ok" }),
+        None => {
+            tracing::info!("health check: storage not configured");
+            json!({ "status": "error" })
+        }
     }
 }
 
@@ -620,7 +608,6 @@ fn format_health_value(v: &serde_json::Value) -> serde_json::Value {
     json!({
         "status": v.get("status").and_then(|s| s.as_str()).unwrap_or("unknown"),
         "service": v.get("service").and_then(|s| s.as_str()).unwrap_or("unknown"),
-        "version": v.get("version").and_then(|s| s.as_str()).unwrap_or("unknown"),
     })
 }
 
@@ -633,43 +620,10 @@ async fn health_python_value(state: &HealthState) -> serde_json::Value {
 
 fn sidecar_error_json(
     e: &py_sidecar::SidecarError,
-    socket_path: &std::path::Path,
+    _socket_path: &std::path::Path,
 ) -> serde_json::Value {
-    let sock_display = socket_path.display();
-    let (error_msg, fix_msg) = match e {
-        py_sidecar::SidecarError::SocketNotFound(_) => (
-            "socket not found".to_string(),
-            format!(
-                "Start the Python sidecar: make dev starts it automatically, or run: cd py-api && uv run uvicorn app.main:app --uds {sock_display}"
-            ),
-        ),
-        py_sidecar::SidecarError::ConnectionFailed(msg) => (
-            format!("connection failed: {msg}"),
-            format!(
-                "Check that the Python sidecar is running. Run: cd py-api && uv run uvicorn app.main:app --uds {sock_display}"
-            ),
-        ),
-        py_sidecar::SidecarError::Timeout(d) => (
-            format!("request timed out after {d:?}"),
-            format!(
-                "The Python sidecar is not responding. Restart it with: cd py-api && uv run uvicorn app.main:app --uds {sock_display}"
-            ),
-        ),
-        py_sidecar::SidecarError::InvalidInput(msg) => (
-            format!("invalid input: {msg}"),
-            "The request contains invalid characters.".to_string(),
-        ),
-        py_sidecar::SidecarError::InvalidResponse(msg) => (
-            format!("invalid response: {msg}"),
-            "The Python sidecar returned an unexpected response. Check its logs for errors."
-                .to_string(),
-        ),
-        py_sidecar::SidecarError::HttpError { status, body } => (
-            format!("HTTP {status}: {body}"),
-            "The Python sidecar returned an HTTP error. Check its logs for details.".to_string(),
-        ),
-    };
-    json!({ "status": "unavailable", "error": error_msg, "fix": fix_msg })
+    tracing::warn!(error = %e, "health check: Python sidecar unavailable");
+    json!({ "status": "unavailable" })
 }
 
 async fn health_python(

@@ -51,7 +51,7 @@ async fn main() {
         graceful_state.ws.shutdown.notify_waiters();
     };
 
-    axum::serve(listener, app)
+    axum::serve(listener, app.into_make_service())
         .with_graceful_shutdown(shutdown)
         .await
         .unwrap_or_else(|e| {

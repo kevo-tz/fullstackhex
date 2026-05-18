@@ -23,79 +23,33 @@ _All 10 items completed. 267 backend tests pass, 23/23 py-api tests pass, fronte
 
 ---
 
-## Phase 2: Architecture & Code Quality (4–5h)
+## Phase 2: Architecture & Code Quality ✅
 
-### 2.1 Decouple domain crate from cache/db
-- `backend/domain/Cargo.toml:15-16` — remove `cache` and `db` deps
-- `backend/domain/src/error.rs:34-80` — move `From<cache::CacheError>` and `From<db::DbError>` impls to `backend/api/src/lib.rs`
-- Tests in `error.rs:179-223` also move to api crate
+_All 8 items completed._
 
-### 2.2 Split `AppState` god struct
-**File:** `backend/api/src/lib.rs:63-77` (15 fields)
-- Create `HealthState`, `WebSocketState` sub-structs
-- Use Axum's `State(sub_state)` extraction per route group
-
-### 2.3 Split `build_router` (~135 lines)
-**File:** `backend/api/src/lib.rs:181-316`
-- Break into 3–4 functions: `health_routes()`, `auth_routes()`, `storage_routes()`, `notes_routes()`
-
-### 2.4 Replace `std::sync::Mutex` for WS tracking
-**File:** `backend/api/src/lib.rs:75`
-- `Arc<Mutex<HashMap<...>>>` → `Arc<tokio::sync::RwLock<HashMap<...>>>` or `dashmap::DashMap`
-
-### 2.5 Fix Prometheus label cardinality in Python sidecar
-**File:** `py-api/app/main.py:193`
-- `request.url.path` → use route template via `request.scope["route"].path` if available
-- Fallback: split to `request.url.path.split("/")[1]` to group by top-level path
-
-### 2.6 Move `register_metrics()` into lifespan
-**File:** `py-api/app/main.py:63`
-- Remove module-level call, move inside `lifespan()` after `setup_logging()`
-
-### 2.7 Replace `asyncio.run()` in tests with `pytest-asyncio`
-**File:** `py-api/tests/test_hmac_middleware.py`
-- Add `pytest-asyncio` to dev deps, convert 5 sync tests to `async def`
-
-### 2.8 Strip health info disclosure
-**File:** `backend/api/src/lib.rs:486-522`
-- Return boolean `ok` per service + generic status, log detailed fixes server-side only
+- **2.1 Domain decoupled** — `From<cache::CacheError>`/`From<db::DbError>` moved behind `cache-conv`/`db-conv` features in domain
+- **2.2 AppState split** — `HealthState` + `WebSocketState` sub-structs with `FromRef` impls
+- **2.3 build_router split** — extracted `health_routes()`, `auth_routes()`, `storage_routes()`; notes routes inlined
+- **2.4 WS Mutex→RwLock** — `Arc<Mutex<HashMap>>` → `Arc<RwLock<HashMap>>`
+- **2.5 Python Prometheus cardinality** — endpoint label normalized via UUID regex
+- **2.6 register_metrics() in lifespan** — moved from module level into lifespan
+- **2.7 pytest-asyncio** — all py-api tests converted to async def
+- **2.8 Health disclosure** — version/fix/error stripped from responses; axum::serve type fix
 
 ---
 
-## Phase 3: Frontend Cleanup & Quick Wins (2h)
+## Phase 3: Frontend Cleanup & Quick Wins ✅
 
-### 3.1 Remove unused Tailwind CSS
-- `frontend/package.json` — remove `tailwindcss`, `@tailwindcss/vite`
-- `frontend/astro.config.mjs` — remove `tailwindcss()` plugin
-- `frontend/knip.json` — remove from `ignoreDependencies`
+_All 8 items completed._
 
-### 3.2 Remove dead `flags.ts` or wire it up
-**File:** `frontend/src/lib/flags.ts` (52 lines, zero callers)
-- Remove file and all references, OR import `fetchFeatureFlags()` on dashboard and use in UI
-
-### 3.3 Use shared `createRetryController()` instead of inline retry
-**File:** `frontend/src/pages/index.astro:112-135`
-- Replace inline `startRetry`/`cancelRetry`/`resetRetry` with `import { createRetryController } from "../lib/health"`
-
-### 3.4 Remove `@types/node` from global tsconfig
-**File:** `frontend/tsconfig.json:4`
-- Remove from top-level `types`, scope to Node-specific tsconfig or per-file imports
-
-### 3.5 Configure ESLint for `.astro` files
-**File:** `frontend/eslint.config.mjs:11-12`
-- Add `eslint-plugin-astro`, or drop ESLint and rely on `@astrojs/check` alone
-
-### 3.6 Extract duplicated CSRF token retrieval
-- `frontend/src/pages/notes/[id].astro:107`
-- `frontend/src/pages/notes/create.astro:63`
-- Create `frontend/src/lib/csrf.ts`: `export function getCsrfToken(): string { return sessionStorage.getItem("csrf_token") || ""; }`
-
-### 3.7 Add `maxlength` + `required` to note body
-**File:** `frontend/src/pages/notes/create.astro:19`
-- `<textarea>` — add `maxlength="10000" required`
-
-### 3.8 Add custom 404 page
-- Create `frontend/src/pages/404.astro` with basic layout and link home
+- **3.1 Tailwind removed** — deps, plugin, knip ignoreDependencies all cleaned
+- **3.2 flags.ts removed** — 52-line dead file + test file deleted
+- **3.3 Shared createRetryController** — inline retry replaced with import from `health.ts`
+- **3.4 @types/node removed** — global tsconfig types cleaned
+- **3.5 eslint-plugin-astro** — .astro files now linted
+- **3.6 CSRF token extraction** — `src/lib/csrf.ts` with `getCsrfToken()`, used in both notes pages
+- **3.7 Textarea validation** — `maxlength="10000" required` on note body
+- **3.8 Custom 404 page** — `src/pages/404.astro` with layout + link home
 
 ---
 

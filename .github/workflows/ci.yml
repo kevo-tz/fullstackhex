@@ -243,17 +243,18 @@ jobs:
 
       - name: Validate WebSocket upgrade
         run: |
-          # Register a test user
+          # Register a test user (email includes timestamp to avoid conflicts across runs)
+          ts=$(date +%s)
           resp=$(curl -s -X POST http://localhost:8001/auth/register \
             -H "Content-Type: application/json" \
-            -d '{"email":"ws-ci@test.local","password":"test-pw-12345","name":"WSCi"}')
+            -d "{\"email\":\"ws-ci-${ts}@test.local\",\"password\":\"test-pw-12345\",\"name\":\"WSCi\"}")
           # Login to get a session cookie (cookie-only WS auth, no ?token=)
           cookie_jar=$(mktemp)
           http_code=$(curl -s -o /dev/null -w '%{http_code}' \
             -c "$cookie_jar" \
             -X POST http://localhost:8001/auth/login \
             -H "Content-Type: application/json" \
-            -d '{"email":"ws-ci@test.local","password":"test-pw-12345"}')
+            -d "{\"email\":\"ws-ci-${ts}@test.local\",\"password\":\"test-pw-12345\"}")
           if [ "$http_code" != "200" ]; then
             echo "Login failed with status $http_code"
             exit 1

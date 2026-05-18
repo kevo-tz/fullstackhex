@@ -542,38 +542,21 @@ async fn health_auth(State(state): State<Arc<AppState>>) -> impl IntoResponse {
 async fn health_db_value(state: &HealthState) -> serde_json::Value {
     let pool = match &state.db {
         DbStatus::Connected(pool) => Some(pool),
-        DbStatus::NotConfigured => None,
+        DbStatus::NotConfigured => {
+            tracing::info!("health check: database not configured");
+            return json!({ "status": "error" });
+        }
         DbStatus::ConnectionFailed(msg) => {
-            return json!({
-                "status": "error",
-                "error": msg,
-                "fix": "Check that PostgreSQL is running and DATABASE_URL is correct in .env. Then restart the backend."
-            });
+            tracing::warn!(error = %msg, "health check: database connection failed");
+            return json!({ "status": "error" });
         }
     };
 
     match db::health_check(pool).await {
         Ok(()) => json!({ "status": "ok" }),
         Err(e) => {
-            let (error, fix) = match &e {
-                db::DbError::NotConfigured => (
-                    "database not configured",
-                    "Set DATABASE_URL in .env and restart the backend.",
-                ),
-                db::DbError::PoolTimeout(_) => (
-                    "database pool timeout",
-                    "The database pool is exhausted. Check PostgreSQL connection and increase DB_MAX_CONNECTIONS if needed.",
-                ),
-                db::DbError::QueryFailed(_) => (
-                    "database query failed",
-                    "Check that PostgreSQL is running and the database exists.",
-                ),
-                db::DbError::MigrationFailed(_) => (
-                    "database migration failed",
-                    "Check the migration files in backend/db/migrations/ and run: make migrate",
-                ),
-            };
-            json!({ "status": "error", "error": error, "fix": fix })
+            tracing::warn!(error = %e, "health check: database unhealthy");
+            json!({ "status": "error" })
         }
     }
 }

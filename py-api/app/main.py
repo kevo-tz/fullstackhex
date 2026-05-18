@@ -7,6 +7,7 @@ from importlib.metadata import version
 import logging
 import json
 import os
+import re
 import sys
 import time
 from typing import Awaitable, Callable
@@ -28,6 +29,7 @@ redis_client: aioredis.Redis | None = None
 async def lifespan(_app: FastAPI):
     global redis_client
     setup_logging()
+    register_metrics()
     redis_url = os.environ.get("REDIS_URL", "redis://localhost:6379/0")
     redis_client = aioredis.from_url(redis_url, decode_responses=True)
     try:
@@ -75,8 +77,6 @@ def register_metrics() -> None:
     except ValueError as e:
         logging.warning("register_metrics failed (may be duplicate import): %s", e)
 
-
-register_metrics()
 
 # Cache py-api version at module level — avoids importlib.metadata lookup per request
 try:
@@ -238,6 +238,14 @@ async def hmac_auth_middleware(
     return await call_next(request)
 
 
+_UUID_PATTERN = re.compile(r"/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
+
+
+def _normalize_endpoint(path: str) -> str:
+    """Replace UUID segments with `{id}` to prevent Prometheus label cardinality explosion."""
+    return _UUID_PATTERN.sub("/{id}", path)
+
+
 @app.middleware("http")
 async def trace_id_middleware(
     request: Request, call_next: Callable[[Request], Awaitable[Response]]
@@ -257,7 +265,7 @@ async def trace_id_middleware(
         },
     )
     # Record Prometheus metrics
-    endpoint = request.url.path
+    endpoint = _normalize_endpoint(request.url.path)
     status = str(response.status_code)
     PYTHON_REQUESTS_TOTAL.labels(method=request.method, endpoint=endpoint, status=status).inc()
     PYTHON_REQUEST_DURATION.labels(method=request.method, endpoint=endpoint).observe(duration)

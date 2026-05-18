@@ -1,5 +1,5 @@
 # Stage 1: Builder - Compile the Rust application
-FROM rust:1.95-trixie AS builder
+FROM rust:1.95-trixie@sha256:39d8cb39a54e7d1da665c4fabfdd265e532a5f836c11ab5aee27fd5c73891ce4 AS builder
 
 WORKDIR /app
 
@@ -39,7 +39,7 @@ COPY backend/ ./backend/
 RUN cd backend && cargo build --release -p api
 
 # Stage 2: Runtime - Minimal image with only the binary
-FROM debian:trixie-slim
+FROM debian:trixie-slim@sha256:109e2c65005bf160609e4ba6acf7783752f8502ad218e298253428690b9eaa4b
 
 WORKDIR /app
 

@@ -53,6 +53,10 @@ fn db_err(e: sqlx::Error, context: &'static str) -> domain::error::ApiError {
     domain::error::ApiError::InternalError(context.into())
 }
 
+/// Newtype to carry DEV_USER_ID via request extensions.
+#[derive(Clone)]
+struct DevUserId(String);
+
 /// Status of the database connection pool.
 #[derive(Clone)]
 pub enum DbStatus {
@@ -241,8 +245,16 @@ fn build_router(state: Arc<AppState>) -> Router {
     }
 
     let db_connected = matches!(state.health.db, DbStatus::Connected(_));
-    if state.auth.is_some() && db_connected {
-        let notes_router = Router::new()
+    let dev_user_id = std::env::var("DEV_USER_ID")
+        .ok()
+        .and_then(|v| if v.is_empty() { None } else { uuid::Uuid::parse_str(&v).ok().map(|_| v) });
+    if let Some(ref uid) = dev_user_id {
+        tracing::info!(dev_user_id = %uid, "DEV_USER_ID set — notes available without auth");
+    }
+
+    let mount_notes = state.auth.is_some() || dev_user_id.is_some();
+    if mount_notes && db_connected {
+        let mut notes_router = Router::new()
             .route("/", axum::routing::get(notes::list_notes))
             .route("/", axum::routing::post(notes::create_note))
             .route("/{id}", axum::routing::get(notes::get_note))
@@ -250,12 +262,16 @@ fn build_router(state: Arc<AppState>) -> Router {
             .route("/{id}", axum::routing::delete(notes::delete_note))
             .layer(DefaultBodyLimit::max(128 * 1024))
             .with_state(state.clone());
+
+        if state.auth.is_none() {
+            let uid = dev_user_id.clone().unwrap();
+            notes_router = notes_router
+                .layer(Extension(DevUserId(uid)))
+                .layer(middleware::from_fn(dev_user_middleware));
+        }
+
         router = router.nest("/notes", notes_router);
-    }
-    if state.auth.is_none() {
-        router = router.route("/auth/me", get(auth_me_disabled));
-    }
-    if state.auth.is_none() || !db_connected {
+    } else {
         let fb = Router::new()
             .route("/", get(notes_fallback).post(notes_fallback))
             .route(
@@ -265,6 +281,9 @@ fn build_router(state: Arc<AppState>) -> Router {
                     .delete(notes_fallback),
             );
         router = router.nest("/notes", fb);
+    }
+    if state.auth.is_none() {
+        router = router.route("/auth/me", get(auth_me_disabled));
     }
 
     if let Some(ref auth_svc) = state.auth {
@@ -716,6 +735,27 @@ async fn notes_fallback() -> impl IntoResponse {
         StatusCode::SERVICE_UNAVAILABLE,
         Json(serde_json::json!({"error": "notes unavailable — auth or database not configured"})),
     )
+}
+
+/// Middleware that injects a mock `AuthUser` using the `DEV_USER_ID` from
+/// request extensions.  Only applied on the notes sub-router when auth is
+/// disabled but `DEV_USER_ID` is set.
+async fn dev_user_middleware(
+    mut req: axum::http::Request<axum::body::Body>,
+    next: axum::middleware::Next,
+) -> axum::response::Response {
+    let dev_user_id = req.extensions().get::<DevUserId>().map(|d| d.0.clone());
+    if let Some(uid) = dev_user_id {
+        req.extensions_mut().insert(auth::middleware::AuthUser {
+            user_id: uid,
+            email: "dev@local.dev".into(),
+            name: Some("Dev User".into()),
+            provider: "dev".into(),
+            jti: String::new(),
+            session_id: None,
+        });
+    }
+    next.run(req).await
 }
 
 pub mod test_helpers;

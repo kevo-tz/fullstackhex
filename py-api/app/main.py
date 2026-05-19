@@ -188,11 +188,11 @@ async def hmac_auth_middleware(
             media_type="application/json",
         )
 
-    # Replay protection: check nonce hasn't been seen
+    # Replay protection: check nonce hasn't been seen (atomic SET NX)
     if nonce and redis_client is not None:
         nonce_key = f"hmac:nonce:{nonce}"
-        existed = await redis_client.get(nonce_key)
-        if existed is not None:
+        set_ok = await redis_client.set(nonce_key, "1", nx=True, ex=90)
+        if not set_ok:
             logger.warning(
                 "HMAC rejection: duplicate nonce (replay)",
                 extra={"trace_id": trace_id, "nonce": nonce},
@@ -202,7 +202,6 @@ async def hmac_auth_middleware(
                 status_code=401,
                 media_type="application/json",
             )
-        await redis_client.setex(nonce_key, 60, "1")
     elif nonce and redis_client is None:
         logger.warning(
             "HMAC nonce check skipped: Redis unavailable",
@@ -210,9 +209,11 @@ async def hmac_auth_middleware(
         )
 
     # Compute expected signature: HMAC-SHA256(secret, JSON payload)
+    # Compact separators match serde_json::to_string() from Rust side
     payload = json.dumps(
         {"user_id": user_id, "email": email, "name": name, "timestamp": ts},
         sort_keys=True,
+        separators=(",", ":"),
     )
     expected = hmac.new(
         settings.shared_secret.encode("utf-8"),

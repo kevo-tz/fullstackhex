@@ -982,6 +982,16 @@ pub async fn oauth_callback(
 ) -> Result<impl IntoResponse, ApiError> {
     let provider = parse_provider(&provider)?;
 
+    // Rate limit by IP
+    let ip = client_ip(&headers);
+    check_rate_limit(
+        &state.redis,
+        &format!("oauth_callback:{ip}"),
+        Duration::from_secs(state.auth.config.rate_limits.oauth_callback_window_secs),
+        state.auth.config.rate_limits.oauth_callback_max,
+    )
+    .await?;
+
     // Validate CSRF state token — atomic GETDEL prevents replay attacks
     // even when multiple callbacks race for the same state value
     let stored: Option<String> = state.redis.cache_get_delete("oauth_csrf", &query.state).await?;
@@ -1042,7 +1052,11 @@ pub async fn oauth_callback(
         &provider.to_string(),
     )?;
 
-    let refresh_token = uuid::Uuid::new_v4().to_string();
+    let mut refresh_token_bytes = [0u8; 32];
+    getrandom::fill(&mut refresh_token_bytes).map_err(|e| {
+        ApiError::InternalError(format!("failed to generate refresh token: {e}"))
+    })?;
+    let refresh_token = hex::encode(refresh_token_bytes);
     state
         .redis
         .cache_set(
@@ -1053,9 +1067,61 @@ pub async fn oauth_callback(
         )
         .await?;
 
+    let jwt_expiry = state.auth.config.jwt_expiry;
+    let refresh_expiry = state.auth.config.refresh_expiry;
+    let mut cookie_headers = HeaderMap::new();
+    super::cookies::set_cookie(
+        &mut cookie_headers,
+        "access_token",
+        &access_token,
+        jwt_expiry,
+        true,
+        true,
+    )?;
+    super::cookies::set_cookie(
+        &mut cookie_headers,
+        "refresh_token",
+        &refresh_token,
+        refresh_expiry,
+        true,
+        true,
+    )?;
+    let csrf_token = super::csrf::generate_csrf_token()?;
+    super::cookies::set_cookie(
+        &mut cookie_headers,
+        "csrf_token",
+        &csrf_token,
+        jwt_expiry,
+        false,
+        state.auth.config.cookie_secure,
+    )?;
+
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_err(|_| ApiError::InternalError("Time went backwards".to_string()))?
+        .as_secs();
+    let session = cache::session::Session {
+        user_id: user_id.clone(),
+        email: user_info.email.clone(),
+        name: user_info.name.clone(),
+        provider: provider.to_string(),
+        created_at: now,
+    };
+    let session_id = state
+        .redis
+        .session_create(&session, std::time::Duration::from_secs(jwt_expiry))
+        .await?;
+    super::cookies::set_cookie(
+        &mut cookie_headers,
+        "session",
+        &session_id,
+        jwt_expiry,
+        true,
+        true,
+    )?;
+
     metrics::counter!("oauth_callbacks_total", "provider" => provider.to_string()).increment(1);
 
-    let csrf_token = super::csrf::generate_csrf_token()?;
     let response = TokenResponse {
         access_token,
         refresh_token,
@@ -1070,7 +1136,7 @@ pub async fn oauth_callback(
         },
     };
 
-    Ok(Json(response))
+    Ok((StatusCode::OK, cookie_headers, Json(response)))
 }
 
 fn parse_provider(s: &str) -> Result<super::oauth::OAuthProvider, ApiError> {

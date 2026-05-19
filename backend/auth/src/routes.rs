@@ -920,10 +920,9 @@ pub async fn oauth_callback(
 ) -> Result<impl IntoResponse, ApiError> {
     let provider = parse_provider(&provider)?;
 
-    // Validate CSRF state token — delete immediately (one-time use)
-    // to prevent replay attacks even on provider mismatch
-    let stored: Option<String> = state.redis.cache_get("oauth_csrf", &query.state).await?;
-    state.redis.cache_delete("oauth_csrf", &query.state).await?;
+    // Validate CSRF state token — atomic GETDEL prevents replay attacks
+    // even when multiple callbacks race for the same state value
+    let stored: Option<String> = state.redis.cache_get_delete("oauth_csrf", &query.state).await?;
 
     let stored = stored
         .ok_or_else(|| ApiError::Unauthorized("Invalid or expired OAuth state".to_string()))?;

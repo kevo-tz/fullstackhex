@@ -20,15 +20,7 @@ pub fn validate_csrf_token(cookie_token: &str, header_token: &str) -> bool {
     if cookie_token.is_empty() || header_token.is_empty() {
         return false;
     }
-    if cookie_token.len() != header_token.len() {
-        return false;
-    }
-    // Constant-time comparison
-    cookie_token
-        .bytes()
-        .zip(header_token.bytes())
-        .fold(0u8, |acc, (a, b)| acc | (a ^ b))
-        == 0
+    super::util::constant_time_str_eq(cookie_token, header_token)
 }
 
 #[cfg(test)]

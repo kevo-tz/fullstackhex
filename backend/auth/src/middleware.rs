@@ -195,20 +195,12 @@ pub(crate) fn extract_bearer(
 /// Sync preparation: parse session cookie and validate CSRF.
 /// Returns the session_id if everything passes.
 fn cookie_auth_prepare(req: &axum::http::Request<axum::body::Body>) -> Option<String> {
-    let session_id = req
+    let cookie_header = req
         .headers()
         .get("cookie")
-        .and_then(|v| v.to_str().ok())
-        .and_then(|cookies| {
-            cookies.split(';').find_map(|c| {
-                let c = c.trim();
-                c.strip_prefix("session=")
-            })
-        })?;
+        .and_then(|v| v.to_str().ok())?;
 
-    if session_id.is_empty() {
-        return None;
-    }
+    let session_id = super::cookies::parse_cookie_value(cookie_header, "session")?;
 
     // CSRF validation for state-changing methods
     let method = req.method().clone();
@@ -223,16 +215,7 @@ fn cookie_auth_prepare(req: &axum::http::Request<axum::body::Body>) -> Option<St
             .and_then(|v| v.to_str().ok())
             .unwrap_or("");
 
-        let csrf_cookie = req
-            .headers()
-            .get("cookie")
-            .and_then(|v| v.to_str().ok())
-            .and_then(|cookies| {
-                cookies.split(';').find_map(|c| {
-                    let c = c.trim();
-                    c.strip_prefix("csrf_token=")
-                })
-            })
+        let csrf_cookie = super::cookies::parse_cookie_value(cookie_header, "csrf_token")
             .unwrap_or("");
 
         if !super::csrf::validate_csrf_token(csrf_cookie, csrf_header) {
@@ -308,15 +291,7 @@ pub fn verify_auth_signature(
     let Ok(expected) = compute_auth_signature(secret, user_id, email, name, timestamp) else {
         return false;
     };
-    // Constant-time comparison
-    if expected.len() != signature.len() {
-        return false;
-    }
-    expected
-        .bytes()
-        .zip(signature.bytes())
-        .fold(0u8, |acc, (a, b)| acc | (a ^ b))
-        == 0
+    super::util::constant_time_str_eq(&expected, signature)
 }
 
 #[cfg(test)]

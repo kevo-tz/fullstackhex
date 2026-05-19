@@ -11,6 +11,7 @@ pub mod middleware;
 pub mod oauth;
 pub mod password;
 pub mod routes;
+pub mod util;
 
 /// Rate limit thresholds for auth endpoints.
 ///
@@ -33,6 +34,10 @@ pub struct RateLimitConfig {
     pub forgot_max: u64,
     /// Forgot-password window in seconds (default: 900 = 15 min).
     pub forgot_window_secs: u64,
+    /// Max OAuth callback requests per IP per window (default: 10).
+    pub oauth_callback_max: u64,
+    /// OAuth callback window in seconds (default: 60 = 1 min).
+    pub oauth_callback_window_secs: u64,
 }
 
 impl Default for RateLimitConfig {
@@ -46,6 +51,8 @@ impl Default for RateLimitConfig {
             login_ip_window_secs: 300,
             forgot_max: 3,
             forgot_window_secs: 900,
+            oauth_callback_max: 10,
+            oauth_callback_window_secs: 60,
         }
     }
 }
@@ -61,6 +68,8 @@ impl RateLimitConfig {
             login_ip_window_secs: Self::env_or("RATE_LIMIT_LOGIN_IP_WINDOW", 300),
             forgot_max: Self::env_or("RATE_LIMIT_FORGOT_MAX", 3),
             forgot_window_secs: Self::env_or("RATE_LIMIT_FORGOT_WINDOW", 900),
+            oauth_callback_max: Self::env_or("RATE_LIMIT_OAUTH_CALLBACK_MAX", 10),
+            oauth_callback_window_secs: Self::env_or("RATE_LIMIT_OAUTH_CALLBACK_WINDOW", 60),
         }
     }
 

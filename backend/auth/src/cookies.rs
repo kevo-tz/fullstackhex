@@ -1,6 +1,18 @@
 use axum::http::{HeaderMap, HeaderValue, header};
 use domain::error::ApiError;
 
+/// Parse a named cookie value from a `Cookie` header string.
+///
+/// Returns `None` if the cookie is not found or the value is empty.
+pub fn parse_cookie_value<'a>(cookie_header: &'a str, name: &str) -> Option<&'a str> {
+    let prefix = format!("{name}=");
+    let val = cookie_header.split(';').find_map(|c| {
+        let c = c.trim();
+        c.strip_prefix(&prefix)
+    })?;
+    if val.is_empty() { None } else { Some(val) }
+}
+
 pub fn set_cookie(
     headers: &mut HeaderMap,
     name: &str,

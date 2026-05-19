@@ -798,6 +798,62 @@ pub async fn me(auth_user: AuthUser) -> impl IntoResponse {
     }))
 }
 
+/// DELETE /auth/me — delete the authenticated user's account.
+///
+/// Removes the user from the database, blacklists their tokens, and destroys
+/// all sessions. Returns 204 on success. Idempotent — subsequent calls with
+/// expired tokens return 401.
+///
+/// # Errors
+///
+/// Returns `Unauthorized` if auth token is missing, invalid, or expired.
+/// Returns `InternalError` on database failure.
+pub async fn delete_account(
+    State(state): State<AuthState>,
+    auth_user: AuthUser,
+) -> Result<impl IntoResponse, ApiError> {
+    // Blacklist the current JWT so it cannot be reused
+    let blacklist_ttl = std::time::Duration::from_secs(state.auth.config.jwt_expiry);
+    state
+        .redis
+        .cache_set("blacklist", &auth_user.jti, &true, blacklist_ttl)
+        .await?;
+
+    // Destroy session if present
+    if let Some(ref session_id) = auth_user.session_id {
+        if let Err(e) = state.redis.session_destroy(session_id).await {
+            tracing::warn!(session = %session_id, error = %e, "session_destroy failed");
+        }
+    }
+
+    // Delete the user's notes first (foreign key constraint)
+    let _ = sqlx::query("DELETE FROM notes WHERE user_id = $1::uuid")
+        .bind(&auth_user.user_id)
+        .execute(&state.db)
+        .await
+        .map_err(|e| {
+            tracing::error!(error = %e, "delete notes failed during account deletion");
+            ApiError::InternalError("Failed to delete account data".to_string())
+        })?;
+
+    // Delete the user
+    let result = sqlx::query("DELETE FROM users WHERE id = $1::uuid")
+        .bind(&auth_user.user_id)
+        .execute(&state.db)
+        .await
+        .map_err(|e| {
+            tracing::error!(error = %e, "delete user failed");
+            ApiError::InternalError("Failed to delete account".to_string())
+        })?;
+
+    if result.rows_affected() == 0 {
+        return Err(ApiError::NotFound("User not found".to_string()));
+    }
+
+    tracing::info!(user_id = %auth_user.user_id, "account deleted");
+    Ok(StatusCode::NO_CONTENT)
+}
+
 /// GET /auth/oauth/{provider} — redirect to OAuth provider.
 pub async fn oauth_redirect(
     State(state): State<AuthState>,

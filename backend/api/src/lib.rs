@@ -341,7 +341,7 @@ fn auth_routes(state: &Arc<AppState>) -> Option<Router> {
             .route("/reset-password", axum::routing::post(auth::routes::reset_password))
             .route("/refresh", axum::routing::post(auth::routes::refresh))
             .route("/providers", axum::routing::get(auth::routes::providers))
-            .route("/me", axum::routing::get(auth::routes::me))
+            .route("/me", axum::routing::get(auth::routes::me).delete(auth::routes::delete_account))
             .route(
                 "/oauth/{provider}",
                 axum::routing::get(auth::routes::oauth_redirect),

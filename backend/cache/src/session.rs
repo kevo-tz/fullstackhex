@@ -41,7 +41,51 @@ impl RedisClient {
             .await
             .map_err(CacheError::CommandFailed)?;
 
+        // Track in user→sessions set for bulk invalidation (password reset, etc.)
+        let user_key = self.make_key("user_sessions", &session.user_id);
+        self.client
+            .sadd::<(), _, _>(&user_key, &session_id)
+            .await
+            .map_err(CacheError::CommandFailed)?;
+        // Let the set TTL match the session TTL so stale entries clean themselves up
+        let _: () = self
+            .client
+            .expire(&user_key, ttl.as_secs() as i64, None)
+            .await
+            .map_err(CacheError::CommandFailed)?;
+
         Ok(session_id)
+    }
+
+    /// Destroy all sessions for a user (used after password reset).
+    ///
+    /// Atomically reads and deletes the user's session set, then deletes each
+    /// individual session key. Best-effort: logs warnings on individual failures
+    /// but does not return an error — the password reset has already succeeded.
+    pub async fn session_destroy_all_for_user(&self, user_id: &str) {
+        let user_key = self.make_key("user_sessions", user_id);
+
+        // Atomically pop all session IDs from the set
+        let session_ids: Vec<String> = self
+            .client
+            .smembers(&user_key)
+            .await
+            .unwrap_or_default();
+
+        if session_ids.is_empty() {
+            return;
+        }
+
+        // Delete the user→sessions mapping
+        let _: () = self.client.del(&user_key).await.unwrap_or_default();
+
+        // Delete each individual session key
+        for sid in &session_ids {
+            let key = self.make_key("session", sid);
+            if let Err(e) = self.client.del::<(), _>(&key).await {
+                tracing::warn!(session = %sid, error = %e, "failed to delete session during user invalidation");
+            }
+        }
     }
 
     /// Get a session by ID.
@@ -64,8 +108,33 @@ impl RedisClient {
     }
 
     /// Destroy a session (logout).
+    ///
+    /// Also removes the session ID from the user→sessions set if the session
+    /// can be read (best-effort — the session may already be expired).
     pub async fn session_destroy(&self, session_id: &str) -> Result<(), CacheError> {
         let key = self.make_key("session", session_id);
+
+        // Best-effort: read the session to find the user_id for set cleanup
+        let user_id: Option<String> = self
+            .client
+            .get::<Option<String>, _>(&key)
+            .await
+            .ok()
+            .and_then(|json| json)
+            .and_then(|json| {
+                serde_json::from_str::<Session>(&json)
+                    .ok()
+                    .map(|s| s.user_id)
+            });
+        if let Some(uid) = user_id {
+            let user_key = self.make_key("user_sessions", &uid);
+            let _: () = self
+                .client
+                .srem(&user_key, session_id)
+                .await
+                .unwrap_or_default();
+        }
+
         self.client
             .del::<(), _>(&key)
             .await

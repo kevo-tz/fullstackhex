@@ -193,25 +193,37 @@ impl RedisClient {
     pub async fn backoff_increment(&self, ip: &str, endpoint: &str) -> Result<(), CacheError> {
         let key = self.make_key("backoff", &format!("{ip}:{endpoint}"));
 
-        // Lua script: atomic INCR + EXPIRE to prevent key leak without TTL
+        // Lua script: atomic INCR + EXPIRE with correct TTL based on count.
         // KEYS[1] = backoff key
-        // ARGV[1] = tracking TTL (60s for first attempt)
-        // ARGV[2] = threshold TTL (higher values for repeated failures)
+        // ARGV[1-4] = TTL thresholds: tracking, 60s, 5min, 30min
         let script = r#"
             local count = redis.call('INCR', KEYS[1])
+            local ttl
             if count == 1 then
-                redis.call('EXPIRE', KEYS[1], ARGV[1])
+                ttl = tonumber(ARGV[1])
+            elseif count < 5 then
+                ttl = tonumber(ARGV[2])
+            elseif count < 10 then
+                ttl = tonumber(ARGV[3])
             else
-                redis.call('EXPIRE', KEYS[1], ARGV[2])
+                ttl = tonumber(ARGV[4])
             end
+            redis.call('EXPIRE', KEYS[1], ttl)
             return count
         "#;
 
-        let (tracking_ttl, _) = backoff_params(1);
-        let (ttl_secs, _) = backoff_params(2);
+        let (t1, _) = backoff_params(1);
+        let (t2, _) = backoff_params(5);
+        let (t3, _) = backoff_params(10);
+        let (t4, _) = backoff_params(20);
 
         let keys = vec![key];
-        let args = vec![tracking_ttl.to_string(), ttl_secs.to_string()];
+        let args = vec![
+            t1.to_string(),
+            t2.to_string(),
+            t3.to_string(),
+            t4.to_string(),
+        ];
 
         let _count: u64 = self
             .client

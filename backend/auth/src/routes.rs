@@ -823,10 +823,10 @@ pub async fn delete_account(
         .await?;
 
     // Destroy session if present
-    if let Some(ref session_id) = auth_user.session_id {
-        if let Err(e) = state.redis.session_destroy(session_id).await {
-            tracing::warn!(session = %session_id, error = %e, "session_destroy failed");
-        }
+    if let Some(ref session_id) = auth_user.session_id
+        && let Err(e) = state.redis.session_destroy(session_id).await
+    {
+        tracing::warn!(session = %session_id, error = %e, "session_destroy failed");
     }
 
     // Delete the user's notes first (foreign key constraint)

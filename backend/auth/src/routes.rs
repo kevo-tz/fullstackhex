@@ -552,7 +552,6 @@ pub async fn forgot_password(
             ApiError::InternalError("Internal server error".to_string())
         })?;
 
-    let mut dev_reset_url = None;
     if let Some((user_id,)) = user {
         // Generate reset token and store in Redis with TTL
         let reset_token = uuid::Uuid::new_v4().to_string();
@@ -572,18 +571,18 @@ pub async fn forgot_password(
             "password reset token generated"
         );
 
-        // In development, include the reset URL in the response
+        // In development, log the reset URL for testing
         if std::env::var("PRODUCTION").is_err() {
-            dev_reset_url = Some(format!("/reset-password?token={reset_token}"));
+            tracing::info!(
+                reset_token = %reset_token,
+                "dev mode: password reset URL: /reset-password?token={reset_token}"
+            );
         }
     }
 
-    let mut resp = serde_json::json!({
+    let resp = serde_json::json!({
         "message": "If the email exists, a reset link has been generated",
     });
-    if let Some(url) = dev_reset_url {
-        resp["dev_reset_url"] = serde_json::Value::String(url);
-    }
 
     // Always return 202 to prevent email enumeration
     Ok((StatusCode::ACCEPTED, Json(resp)))

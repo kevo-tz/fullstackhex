@@ -177,7 +177,7 @@ async def hmac_auth_middleware(
                 status_code=401,
                 media_type="application/json",
             )
-    except ValueError, TypeError:
+    except (ValueError, TypeError):
         logger.warning(
             "HMAC rejection: missing or invalid timestamp",
             extra={"trace_id": trace_id},

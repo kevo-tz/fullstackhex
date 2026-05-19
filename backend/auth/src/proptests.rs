@@ -11,6 +11,8 @@ fn test_service() -> JwtService {
     )
 }
 
+const PROPTEST_TS: u64 = 1_712_345_678;
+
 proptest! {
     /// validate_csrf_token must return false when given an empty token.
     #[test]
@@ -108,7 +110,7 @@ proptest! {
         prop_assume!(user_id.len() <= 256);
         prop_assume!(email.len() <= 256);
         prop_assume!(name.len() <= 256);
-        let _ = crate::middleware::compute_auth_signature("test-secret", &user_id, &email, &name);
+        let _ = crate::middleware::compute_auth_signature("test-secret", &user_id, &email, &name, PROPTEST_TS);
     }
 
     /// compute_auth_signature with empty secret returns error.
@@ -116,7 +118,7 @@ proptest! {
     fn auth_signature_empty_secret(user_id: String, email: String) {
         prop_assume!(user_id.len() <= 256);
         prop_assume!(email.len() <= 256);
-        let result = crate::middleware::compute_auth_signature("", &user_id, &email, "test");
+        let result = crate::middleware::compute_auth_signature("", &user_id, &email, "test", PROPTEST_TS);
         assert!(result.is_err());
     }
 
@@ -126,29 +128,29 @@ proptest! {
         prop_assume!(user_id.len() <= 256);
         prop_assume!(email.len() <= 256);
         prop_assume!(name.len() <= 256);
-        let Ok(sig) = crate::middleware::compute_auth_signature("test-secret", &user_id, &email, &name) else {
+        let Ok(sig) = crate::middleware::compute_auth_signature("test-secret", &user_id, &email, &name, PROPTEST_TS) else {
             return Ok(());
         };
-        assert!(crate::middleware::verify_auth_signature("test-secret", &user_id, &email, &name, &sig));
+        assert!(crate::middleware::verify_auth_signature("test-secret", &user_id, &email, &name, PROPTEST_TS, &sig));
     }
 
     /// verify_auth_signature rejects wrong secret.
     #[test]
     fn auth_signature_wrong_secret_fails(user_id: String) {
         prop_assume!(user_id.len() <= 256);
-        let Ok(sig) = crate::middleware::compute_auth_signature("secret-a", &user_id, "a@b.com", "test") else {
+        let Ok(sig) = crate::middleware::compute_auth_signature("secret-a", &user_id, "a@b.com", "test", PROPTEST_TS) else {
             return Ok(());
         };
-        assert!(!crate::middleware::verify_auth_signature("secret-b", &user_id, "a@b.com", "test", &sig));
+        assert!(!crate::middleware::verify_auth_signature("secret-b", &user_id, "a@b.com", "test", PROPTEST_TS, &sig));
     }
 
     /// verify_auth_signature constant-time: wrong email payload must not verify.
     #[test]
     fn auth_signature_wrong_payload_fails(user_id: String) {
         prop_assume!(user_id.len() <= 256);
-        let Ok(sig) = crate::middleware::compute_auth_signature("secret", &user_id, "a@b.com", "T") else { return Ok(()); };
+        let Ok(sig) = crate::middleware::compute_auth_signature("secret", &user_id, "a@b.com", "T", PROPTEST_TS) else { return Ok(()); };
         // Different email -> different payload -> signature must not match
-        assert!(!crate::middleware::verify_auth_signature("secret", &user_id, "wrong@email.com", "T", &sig));
+        assert!(!crate::middleware::verify_auth_signature("secret", &user_id, "wrong@email.com", "T", PROPTEST_TS, &sig));
     }
 
     /// extract_bearer never panics on arbitrary Authorization header values.

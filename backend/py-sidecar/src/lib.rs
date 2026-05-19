@@ -131,11 +131,11 @@ impl PythonSidecar {
     }
 
     /// GET a path with auth headers forwarded to the Python sidecar.
-    /// `auth_headers` is `(user_id, email, name, signature)` — all pre-computed.
+    /// `auth_headers` is `(user_id, email, name, timestamp, signature)`.
     pub async fn get_with_auth(
         &self,
         path: &str,
-        auth_headers: (&str, &str, &str, &str),
+        auth_headers: (&str, &str, &str, u64, &str),
     ) -> Result<serde_json::Value, SidecarError> {
         self.get_with_trace_id(path, &uuid::Uuid::new_v4().to_string(), Some(auth_headers))
             .await
@@ -147,7 +147,7 @@ impl PythonSidecar {
         &self,
         path: &str,
         trace_id: &str,
-        auth_headers: Option<(&str, &str, &str, &str)>,
+        auth_headers: Option<(&str, &str, &str, u64, &str)>,
     ) -> Result<serde_json::Value, SidecarError> {
         self.do_get(path, Some(trace_id), auth_headers).await
     }
@@ -163,7 +163,7 @@ impl PythonSidecar {
         &self,
         path: &str,
         trace_id: &str,
-        auth_headers: Option<(&str, &str, &str, &str)>,
+        auth_headers: Option<(&str, &str, &str, u64, &str)>,
     ) -> Result<Vec<u8>, SidecarError> {
         self.do_get_raw(path, Some(trace_id), auth_headers).await
     }
@@ -172,7 +172,7 @@ impl PythonSidecar {
         &self,
         path: &str,
         trace_id: Option<&str>,
-        auth_headers: Option<(&str, &str, &str, &str)>,
+        auth_headers: Option<(&str, &str, &str, u64, &str)>,
     ) -> Result<serde_json::Value, SidecarError> {
         let body = self.do_request_inner(path, trace_id, auth_headers).await?;
         serde_json::from_slice(&body).map_err(|e| SidecarError::InvalidResponse(e.to_string()))
@@ -182,7 +182,7 @@ impl PythonSidecar {
         &self,
         path: &str,
         trace_id: Option<&str>,
-        auth_headers: Option<(&str, &str, &str, &str)>,
+        auth_headers: Option<(&str, &str, &str, u64, &str)>,
     ) -> Result<Vec<u8>, SidecarError> {
         self.do_request_inner(path, trace_id, auth_headers).await
     }
@@ -193,7 +193,7 @@ impl PythonSidecar {
         &self,
         path: &str,
         trace_id: Option<&str>,
-        auth_headers: Option<(&str, &str, &str, &str)>,
+        auth_headers: Option<(&str, &str, &str, u64, &str)>,
     ) -> Result<Vec<u8>, SidecarError> {
         if !self.is_available() {
             return Err(SidecarError::SocketNotFound(self.socket_path.clone()));
@@ -248,7 +248,7 @@ impl PythonSidecar {
         &self,
         path: &str,
         trace_id: Option<&str>,
-        auth_headers: Option<(&str, &str, &str, &str)>,
+        auth_headers: Option<(&str, &str, &str, u64, &str)>,
     ) -> Result<(u16, Vec<u8>), SidecarError> {
         use tokio::io::{AsyncReadExt, AsyncWriteExt};
         use tokio::net::UnixStream;
@@ -262,7 +262,7 @@ impl PythonSidecar {
         }
 
         // Validate auth headers
-        if let Some((user_id, email, name, signature)) = auth_headers {
+        if let Some((user_id, email, name, _timestamp, signature)) = auth_headers {
             validate_header_value("X-User-Id", user_id)?;
             validate_header_value("X-User-Email", email)?;
             validate_header_value("X-User-Name", name)?;
@@ -285,10 +285,10 @@ impl PythonSidecar {
             )
         };
 
-        if let Some((user_id, email, name, signature)) = auth_headers {
+        if let Some((user_id, email, name, timestamp, signature)) = auth_headers {
             request.push_str(&format!(
-                "X-User-Id: {}\r\nX-User-Email: {}\r\nX-User-Name: {}\r\nX-Auth-Signature: {}\r\n",
-                user_id, email, name, signature,
+                "X-User-Id: {}\r\nX-User-Email: {}\r\nX-User-Name: {}\r\nX-Timestamp: {}\r\nX-Auth-Signature: {}\r\n",
+                user_id, email, name, timestamp, signature,
             ));
         }
 
@@ -511,7 +511,7 @@ mod tests {
         let sc = PythonSidecar::new(path, Duration::from_secs(1), 0);
         // CR in name should be rejected
         let result = sc
-            .get_with_auth("/health", ("user-1", "a@b.com", "bad\nname", "abc123"))
+            .get_with_auth("/health", ("user-1", "a@b.com", "bad\nname", 1_712_345_678u64, "abc123"))
             .await;
         assert!(matches!(result, Err(SidecarError::InvalidInput(_))));
     }

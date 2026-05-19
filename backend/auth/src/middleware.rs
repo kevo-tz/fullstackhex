@@ -267,13 +267,16 @@ async fn resolve_cookie_user(
 
 /// Compute HMAC-SHA256 signature for forwarding auth headers to Python sidecar.
 ///
-/// Signs a JSON payload: `{"user_id":"...","email":"...","name":"..."}` sorted by key,
-/// using the shared secret. Returns an error if the secret is empty.
+/// Signs a JSON payload: `{"user_id":"...","email":"...","name":"...","timestamp":...}`
+/// sorted by key, using the shared secret. The timestamp is included so the
+/// Python sidecar can validate against clock skew (±30s window).
+/// Returns an error if the secret is empty.
 pub fn compute_auth_signature(
     secret: &str,
     user_id: &str,
     email: &str,
     name: &str,
+    timestamp: u64,
 ) -> Result<String, domain::error::ApiError> {
     if secret.is_empty() {
         return Err(domain::error::ApiError::InternalError(
@@ -284,6 +287,7 @@ pub fn compute_auth_signature(
         "user_id": user_id,
         "email": email,
         "name": name,
+        "timestamp": timestamp,
     })
     .to_string();
     let mut mac = Hmac::<Sha256>::new_from_slice(secret.as_bytes())
@@ -298,9 +302,10 @@ pub fn verify_auth_signature(
     user_id: &str,
     email: &str,
     name: &str,
+    timestamp: u64,
     signature: &str,
 ) -> bool {
-    let Ok(expected) = compute_auth_signature(secret, user_id, email, name) else {
+    let Ok(expected) = compute_auth_signature(secret, user_id, email, name, timestamp) else {
         return false;
     };
     // Constant-time comparison
@@ -339,38 +344,41 @@ mod tests {
         AuthService::new(config)
     }
 
+    const TEST_TS: u64 = 1_712_345_678;
+
     #[test]
     fn hmac_roundtrip() {
         let secret = "test-shared-secret";
-        let sig = compute_auth_signature(secret, "user-123", "test@example.com", "Test").unwrap();
+        let sig = compute_auth_signature(secret, "user-123", "test@example.com", "Test", TEST_TS).unwrap();
         assert!(verify_auth_signature(
             secret,
             "user-123",
             "test@example.com",
             "Test",
+            TEST_TS,
             &sig
         ));
     }
 
     #[test]
     fn hmac_wrong_secret_fails() {
-        let sig = compute_auth_signature("secret1", "user-123", "a@b.com", "T").unwrap();
+        let sig = compute_auth_signature("secret1", "user-123", "a@b.com", "T", TEST_TS).unwrap();
         assert!(!verify_auth_signature(
-            "secret2", "user-123", "a@b.com", "T", &sig
+            "secret2", "user-123", "a@b.com", "T", TEST_TS, &sig
         ));
     }
 
     #[test]
     fn hmac_wrong_payload_fails() {
-        let sig = compute_auth_signature("secret", "user-123", "a@b.com", "T").unwrap();
+        let sig = compute_auth_signature("secret", "user-123", "a@b.com", "T", TEST_TS).unwrap();
         assert!(!verify_auth_signature(
-            "secret", "user-456", "a@b.com", "T", &sig
+            "secret", "user-456", "a@b.com", "T", TEST_TS, &sig
         ));
     }
 
     #[test]
     fn hmac_empty_secret_fails() {
-        let result = compute_auth_signature("", "user-123", "a@b.com", "T");
+        let result = compute_auth_signature("", "user-123", "a@b.com", "T", TEST_TS);
         assert!(result.is_err());
     }
 
@@ -416,12 +424,13 @@ mod tests {
 
     #[test]
     fn compute_auth_signature_sidecar_secret_roundtrip() {
-        let sig = compute_auth_signature("my-shared-secret", "user-1", "a@b.com", "Alice").unwrap();
+        let sig = compute_auth_signature("my-shared-secret", "user-1", "a@b.com", "Alice", TEST_TS).unwrap();
         assert!(verify_auth_signature(
             "my-shared-secret",
             "user-1",
             "a@b.com",
             "Alice",
+            TEST_TS,
             &sig,
         ));
         assert!(!verify_auth_signature(
@@ -429,6 +438,7 @@ mod tests {
             "user-1",
             "a@b.com",
             "Eve",
+            TEST_TS,
             &sig,
         ));
     }

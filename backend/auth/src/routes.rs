@@ -469,7 +469,7 @@ pub async fn logout(
     tracing::info!(user_id = %auth_user.user_id, jti = %auth_user.jti, "user logged out");
 
     let mut headers = HeaderMap::new();
-    let mut clear = |name: &str, http_only: bool| {
+    let mut clear = |name: &str, http_only: bool| -> Result<(), ApiError> {
         let cookie = if http_only {
             format!("{name}=; HttpOnly; Path=/; Max-Age=0; SameSite=Lax")
         } else {
@@ -477,13 +477,16 @@ pub async fn logout(
         };
         headers.append(
             header::SET_COOKIE,
-            cookie.parse().expect("valid Set-Cookie header"),
+            cookie
+                .parse()
+                .map_err(|_| ApiError::InternalError("failed to parse Set-Cookie header".into()))?,
         );
+        Ok(())
     };
-    clear("session", true);
-    clear("access_token", true);
-    clear("refresh_token", true);
-    clear("csrf_token", false);
+    clear("session", true)?;
+    clear("access_token", true)?;
+    clear("refresh_token", true)?;
+    clear("csrf_token", false)?;
 
     Ok((StatusCode::NO_CONTENT, headers))
 }

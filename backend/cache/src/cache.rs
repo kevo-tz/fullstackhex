@@ -72,6 +72,32 @@ impl RedisClient {
         Ok(())
     }
 
+    /// Atomically get and delete a key using Redis GETDEL (Redis 6.2+).
+    ///
+    /// Returns `None` if the key doesn't exist. Unlike `cache_get` + `cache_delete`,
+    /// this is atomic — no race window where a concurrent reader can also see the value.
+    pub async fn cache_get_delete<T: DeserializeOwned>(
+        &self,
+        namespace: &str,
+        key: &str,
+    ) -> Result<Option<T>, CacheError> {
+        let full_key = self.make_key(namespace, key);
+        let result: Option<String> = self
+            .client
+            .getdel(&full_key)
+            .await
+            .map_err(CacheError::CommandFailed)?;
+
+        match result {
+            Some(json) => {
+                let value: T = serde_json::from_str(&json)
+                    .map_err(|e| CacheError::SerializationFailed(e.to_string()))?;
+                Ok(Some(value))
+            }
+            None => Ok(None),
+        }
+    }
+
     /// Delete all keys matching a pattern.
     ///
     /// Uses SCAN to iterate and delete. Not atomic but safe for cleanup.

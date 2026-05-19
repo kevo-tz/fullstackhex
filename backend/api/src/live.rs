@@ -108,6 +108,26 @@ async fn validate_ws_connection(
     headers: &HeaderMap,
     state: &AppState,
 ) -> WsConnectionOutcome {
+    // Validate Origin when ALLOWED_ORIGIN is configured — prevents cross-site
+    // WebSocket hijacking even when session cookies are present.
+    if let Some(ref allowed) = state.allowed_origin {
+        let origin = headers
+            .get(axum::http::header::ORIGIN)
+            .and_then(|v| v.to_str().ok());
+        match origin {
+            Some(o) if o == allowed => {}
+            Some(_) | None => {
+                return WsConnectionOutcome::Reject(
+                    (
+                        StatusCode::FORBIDDEN,
+                        "{\"error\":\"Origin not allowed\"}",
+                    )
+                        .into_response(),
+                );
+            }
+        }
+    }
+
     let maybe_user_id = if state.auth.is_some() {
         cookie_authenticated(headers, state).await
     } else {
@@ -608,6 +628,7 @@ mod tests {
             }))),
             storage: None,
             prometheus_handle: metrics::init_metrics_recorder(),
+            allowed_origin: None,
         };
         match validate_ws_connection(&headers, &state).await {
             WsConnectionOutcome::Reject(response) => {
@@ -656,6 +677,7 @@ mod tests {
             auth: None,
             storage: None,
             prometheus_handle: metrics::init_metrics_recorder(),
+            allowed_origin: None,
         })
     }
 
@@ -716,6 +738,7 @@ mod tests {
             auth: None,
             storage: None,
             prometheus_handle: metrics::init_metrics_recorder(),
+            allowed_origin: None,
         }
     }
 }

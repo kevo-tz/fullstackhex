@@ -84,6 +84,7 @@ async fn connect_db() -> Option<(AppState, PgPool)> {
         auth: Some(test_auth_service()),
         storage: None,
         prometheus_handle: test_prometheus_handle(),
+        allowed_origin: None,
     };
 
     Some((state, pool))

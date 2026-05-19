@@ -86,6 +86,7 @@ async fn full_state() -> Option<AppState> {
         auth: Some(auth),
         storage: None,
         prometheus_handle: test_prometheus_handle(),
+        allowed_origin: None,
     })
 }
 

@@ -107,6 +107,7 @@ pub struct AppState {
     pub auth: Option<Arc<auth::AuthService>>,
     pub storage: Option<storage::StorageClient>,
     pub prometheus_handle: PrometheusHandle,
+    pub allowed_origin: Option<String>,
 }
 
 impl AppState {
@@ -193,6 +194,7 @@ pub async fn router(
 
     let ws_shutdown = Arc::new(Notify::new());
     let ws_per_user_max: usize = parse_env_or("WS_PER_USER_MAX", 10);
+    let allowed_origin: Option<String> = std::env::var("ALLOWED_ORIGIN").ok().filter(|v| !v.is_empty());
 
     let state = Arc::new(AppState {
         health: Arc::new(HealthState {
@@ -212,6 +214,7 @@ pub async fn router(
         auth,
         storage,
         prometheus_handle,
+        allowed_origin,
     });
 
     Ok((build_router(state.clone()), state))
@@ -794,6 +797,7 @@ mod tests {
             auth: None,
             storage: None,
             prometheus_handle: metrics::init_metrics_recorder(),
+            allowed_origin: None,
         }
     }
 

@@ -29,5 +29,6 @@ pub fn new_test_state() -> AppState {
         auth: None,
         storage: None,
         prometheus_handle: metrics::init_metrics_recorder(),
+        allowed_origin: None,
     }
 }

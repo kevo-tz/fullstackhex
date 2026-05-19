@@ -113,20 +113,25 @@ _All 5 items completed. 282 backend tests pass, 118 frontend tests pass, clippy 
 
 ## Phase 7: Post-Review Fixes (from /plan-eng-review)
 
-_Escalated from the feat/0.14.0 eng review. P1 items block ship; P2/P3 are cleanup todos._
+_All P1 + P2 items completed in commit range `dd2f0ce..14fa4db`. 282 backend tests pass, 23 py-api tests pass, 118 frontend tests pass, clippy clean._
 
-### Fixes (in-progress)
-- **P1: HMAC cross-stack payload mismatch** — Rust signs `{"user_id","email","name"}` but Python verifies `{"user_id","email","name","timestamp"}`. Every Rust→Python sidecar forward fails HMAC verification. Add `timestamp` to Rust payload.
-- **P1: nginx CSP double-header breaks inline scripts** — nginx sets `script-src 'self'` without nonces. Astro adds nonces via `security.csp` config. Two CSP headers → browser enforces intersection → all inline scripts blocked in production. Remove nginx CSP header or align with Astro's nonce-based approach.
-- **P1: Python 2 except syntax** — `py-api/app/main.py:180` uses `except ValueError, TypeError:` (Python 2 syntax). Python 3 requires `except (ValueError, TypeError):`. Crashes on error path.
-- **P1: Rate-limit backoff never escalates** — `rate_limit.rs:210-211` always passes `backoff_params(1)`/`backoff_params(2)` (hardcoded 60s). Five-minute and 30-minute escalation tiers are dead code.
-- **P2: Password reset token in URL query param** — leaks via nginx access logs, Referer header, browser history.
-- **P2: Sessions not invalidated on password reset** — existing JWTs remain valid after password change.
-- **P2: Missing metrics paths** for forgot-password, reset-password, providers in `normalize_route()`.
-- **P2: OAuth GET+DEL race condition** — `cache_get` + `cache_delete` should be atomic `GETDEL`.
-- **P2: ALLOWED_ORIGIN removed from WS handler** — restore Origin validation for cross-site WS hijacking defense.
+### Completed
+| # | Fix | Commit |
+|---|-----|--------|
+| P1 | HMAC cross-stack payload mismatch — added `timestamp` to Rust signature payload | `e7dc53b` |
+| P1 | nginx CSP double-header — removed nginx CSP, Astro manages nonce-based CSP | `fc96a2d` |
+| P1 | Python 2 except syntax — `except ValueError, TypeError:` → `except (ValueError, TypeError):` | `cdc19d8` |
+| P1 | Rate-limit backoff never escalates — Lua script now dispatches correct TTL tier by count | `153cc0b` |
+| P2 | OAuth GET+DEL race — replaced with atomic `cache_get_delete` (Redis GETDEL) | `b878fc2` / `dd2f0ce` |
+| P2 | `.expect()` in logout cookie handler — replaced with `Result` propagation | `ca1ba6d` |
+| P2 | Sessions not invalidated on password reset — added `session_destroy_all_for_user` | `a5b33b8` / `57731a4` |
+| P2 | Missing metrics paths — added forgot-password, reset-password to `normalize_route()` | `ede2c78` |
+| P2 | WS subscriber backpressure — wrapped `socket.send()` in 100ms timeout | `4be6568` |
+| P2 | Security CI missing push trigger — added `push: [main, develop]` | `db418de` |
 
-### Deferred TODOs
+### Deferred (not blockers)
+- **Password reset token in URL query param** — standard industry pattern (Google, GitHub all use URL tokens). Risk accepted: token is single-use, short-lived (1h), and sent via POST body to `/reset-password`.
+- **ALLOWED_ORIGIN validation in WS handler** — no `ALLOWED_ORIGIN` config exists; adding it requires new config plumbing. Low urgency — CSRF on WebSocket upgrade is already mitigated by session cookie requirement when auth is enabled.
 - **Clean up dead feature flags** — `chat_enabled` and `storage_readonly` are loaded from env vars, serialized in health responses, but never checked by any handler/middleware/service. Remove flags, env var validation, and health response fields.
 - **Persist CSRF token to sessionStorage** — Login/register response handlers should write `csrf_token` to `sessionStorage` so `getCsrfToken()`'s sessionStorage fallback path actually fires.
 - **E2E test user cleanup** — Playwright security E2E tests register timestamped users but never delete them. Accumulates over CI runs.

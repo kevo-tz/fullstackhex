@@ -60,24 +60,30 @@ impl RedisClient {
     /// Destroy all sessions for a user (used after password reset).
     ///
     /// Atomically reads and deletes the user's session set, then deletes each
-    /// individual session key. Best-effort: logs warnings on individual failures
-    /// but does not return an error — the password reset has already succeeded.
+    /// individual session key. Uses RENAME to atomically move the set to a
+    /// temp key, eliminating any TOCTOU between reading members and deleting
+    /// the set. Best-effort: logs warnings on individual failures but does not
+    /// return an error — the password reset has already succeeded.
     pub async fn session_destroy_all_for_user(&self, user_id: &str) {
         let user_key = self.make_key("user_sessions", user_id);
+        let temp_key = format!("{user_key}:destroying");
 
-        // Atomically pop all session IDs from the set
-        let session_ids: Vec<String> = self
-            .client
-            .smembers(&user_key)
-            .await
-            .unwrap_or_default();
-
-        if session_ids.is_empty() {
+        // Atomically rename the set to a temp key. If no key exists (already
+        // deleted or no sessions), RENAME returns an error — bail out early.
+        let renamed: Result<(), _> = self.client.rename(&user_key, &temp_key).await;
+        if renamed.is_err() {
             return;
         }
 
-        // Delete the user→sessions mapping
-        let _: () = self.client.del(&user_key).await.unwrap_or_default();
+        // Now operate on the temp key — the original key is gone, so no new
+        // sessions can be added to the set we're about to delete.
+        let session_ids: Vec<String> = self
+            .client
+            .smembers(&temp_key)
+            .await
+            .unwrap_or_default();
+
+        let _: () = self.client.del(&temp_key).await.unwrap_or_default();
 
         // Delete each individual session key
         for sid in &session_ids {

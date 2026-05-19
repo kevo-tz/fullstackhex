@@ -184,13 +184,17 @@ pub async fn register(
             .create_token(&user_id.0, &body.email, body.name.as_deref(), "local")?;
 
     // Create refresh token in Redis
-    let refresh_token = uuid::Uuid::new_v4().to_string();
+    let mut refresh_token_bytes = [0u8; 32];
+    getrandom::fill(&mut refresh_token_bytes).map_err(|e| {
+        ApiError::InternalError(format!("failed to generate refresh token: {e}"))
+    })?;
+    let refresh_token = hex::encode(refresh_token_bytes);
     state
         .redis
         .cache_set(
             "refresh",
             &refresh_token,
-            &user_id.0,
+            &user_id,
             std::time::Duration::from_secs(state.auth.config.refresh_expiry),
         )
         .await?;

@@ -95,6 +95,7 @@ async def test_hmac_valid_signature_passes():
             "timestamp": int(ts),
         },
         sort_keys=True,
+        separators=(",", ":"),
     )
     sig = hmac.new(
         secret.encode("utf-8"),
@@ -130,6 +131,7 @@ async def test_hmac_expired_timestamp_returns_401():
             "timestamp": int(ts),
         },
         sort_keys=True,
+        separators=(",", ":"),
     )
     sig = hmac.new(
         secret.encode("utf-8"),

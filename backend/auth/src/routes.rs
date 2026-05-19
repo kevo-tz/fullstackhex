@@ -849,6 +849,65 @@ pub struct OAuthCallbackQuery {
     pub state: String,
 }
 
+/// Parsed and validated OAuth state from Redis.
+#[derive(Debug)]
+struct StoredOAuthState {
+    pub provider: String,
+    pub session_id: Option<String>,
+}
+
+/// Parse and validate the JSON value stored in Redis for OAuth CSRF state.
+///
+/// Returns the provider and optional bound session_id.
+fn parse_stored_oauth_state(stored: &str) -> Result<StoredOAuthState, ApiError> {
+    let stored_data: serde_json::Value = serde_json::from_str(stored)
+        .map_err(|_| ApiError::Unauthorized("Invalid OAuth state format".to_string()))?;
+
+    let provider = stored_data["provider"]
+        .as_str()
+        .ok_or_else(|| ApiError::Unauthorized("Invalid OAuth state: missing provider".to_string()))?
+        .to_string();
+
+    let session_id = stored_data["session_id"]
+        .as_str()
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string());
+
+    Ok(StoredOAuthState { provider, session_id })
+}
+
+/// Validate that the provider from the stored OAuth state matches the expected provider,
+/// and that an optional session binding is still active.
+fn validate_oauth_state_match(
+    stored: &StoredOAuthState,
+    expected_provider: &str,
+    current_session_id: Option<&str>,
+) -> Result<(), ApiError> {
+    if stored.provider != expected_provider {
+        return Err(ApiError::Unauthorized(
+            "OAuth provider mismatch".to_string(),
+        ));
+    }
+
+    if let Some(ref bound_session_id) = stored.session_id {
+        match current_session_id {
+            Some(sid) if sid == bound_session_id => {}
+            Some(_) => {
+                return Err(ApiError::Unauthorized(
+                    "OAuth session mismatch".to_string(),
+                ));
+            }
+            None => {
+                return Err(ApiError::Unauthorized(
+                    "OAuth requires an active session".to_string(),
+                ));
+            }
+        }
+    }
+
+    Ok(())
+}
+
 /// GET /auth/oauth/{provider}/callback — handle OAuth callback.
 pub async fn oauth_callback(
     State(state): State<AuthState>,
@@ -866,45 +925,23 @@ pub async fn oauth_callback(
     let stored = stored
         .ok_or_else(|| ApiError::Unauthorized("Invalid or expired OAuth state".to_string()))?;
 
-    let stored_data: serde_json::Value = serde_json::from_str(&stored)
-        .map_err(|_| ApiError::Unauthorized("Invalid OAuth state format".to_string()))?;
+    let stored_state = parse_stored_oauth_state(&stored)?;
 
-    let stored_provider = stored_data["provider"]
-        .as_str()
-        .ok_or_else(|| ApiError::Unauthorized("Invalid OAuth state: missing provider".to_string()))?;
+    let current_session_id = headers
+        .get("cookie")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|cookies| {
+            cookies.split(';').find_map(|c| {
+                let c = c.trim();
+                c.strip_prefix("session=").map(|s| s.to_string())
+            })
+        });
 
-    if stored_provider != provider.to_string() {
-        return Err(ApiError::Unauthorized(
-            "OAuth provider mismatch".to_string(),
-        ));
-    }
-
-    // Validate session binding if one was stored
-    if let Some(bound_session_id) = stored_data["session_id"].as_str().filter(|s| !s.is_empty()) {
-        let current_session_id = headers
-            .get("cookie")
-            .and_then(|v| v.to_str().ok())
-            .and_then(|cookies| {
-                cookies.split(';').find_map(|c| {
-                    let c = c.trim();
-                    c.strip_prefix("session=").map(|s| s.to_string())
-                })
-            });
-        match current_session_id {
-            Some(ref sid) if sid == bound_session_id => {}
-            Some(_) => {
-                return Err(ApiError::Unauthorized(
-                    "OAuth session mismatch".to_string(),
-                ));
-            }
-            None => {
-                // No session cookie — attacker doesn't have one, reject
-                return Err(ApiError::Unauthorized(
-                    "OAuth requires an active session".to_string(),
-                ));
-            }
-        }
-    }
+    validate_oauth_state_match(
+        &stored_state,
+        &provider.to_string(),
+        current_session_id.as_deref(),
+    )?;
 
     // Exchange code for access token
     let user_info = state
@@ -1212,6 +1249,91 @@ mod route_tests {
         };
         let list = list_providers(&config);
         assert_eq!(list, vec!["google", "github"]);
+    }
+
+    #[test]
+    fn parse_stored_oauth_state_valid() {
+        let stored = r#"{"provider":"google","session_id":"sess-1"}"#;
+        let result = parse_stored_oauth_state(stored).unwrap();
+        assert_eq!(result.provider, "google");
+        assert_eq!(result.session_id.unwrap(), "sess-1");
+    }
+
+    #[test]
+    fn parse_stored_oauth_state_no_session_id() {
+        let stored = r#"{"provider":"github"}"#;
+        let result = parse_stored_oauth_state(stored).unwrap();
+        assert_eq!(result.provider, "github");
+        assert!(result.session_id.is_none());
+    }
+
+    #[test]
+    fn parse_stored_oauth_state_empty_session_id() {
+        let stored = r#"{"provider":"github","session_id":""}"#;
+        let result = parse_stored_oauth_state(stored).unwrap();
+        assert_eq!(result.provider, "github");
+        assert!(result.session_id.is_none());
+    }
+
+    #[test]
+    fn parse_stored_oauth_state_invalid_json() {
+        let err = parse_stored_oauth_state("not-json").unwrap_err();
+        assert!(matches!(err, ApiError::Unauthorized(_)));
+    }
+
+    #[test]
+    fn parse_stored_oauth_state_missing_provider() {
+        let stored = r#"{"session_id":"sess-1"}"#;
+        let err = parse_stored_oauth_state(stored).unwrap_err();
+        assert!(matches!(err, ApiError::Unauthorized(_)));
+    }
+
+    #[test]
+    fn validate_oauth_state_match_provider_mismatch() {
+        let stored = StoredOAuthState {
+            provider: "google".to_string(),
+            session_id: None,
+        };
+        let err = validate_oauth_state_match(&stored, "github", None).unwrap_err();
+        assert!(matches!(err, ApiError::Unauthorized(_)));
+    }
+
+    #[test]
+    fn validate_oauth_state_match_no_session_binding() {
+        let stored = StoredOAuthState {
+            provider: "google".to_string(),
+            session_id: None,
+        };
+        assert!(validate_oauth_state_match(&stored, "google", None).is_ok());
+    }
+
+    #[test]
+    fn validate_oauth_state_match_session_mismatch() {
+        let stored = StoredOAuthState {
+            provider: "google".to_string(),
+            session_id: Some("sess-1".to_string()),
+        };
+        let err = validate_oauth_state_match(&stored, "google", Some("sess-2")).unwrap_err();
+        assert!(matches!(err, ApiError::Unauthorized(_)));
+    }
+
+    #[test]
+    fn validate_oauth_state_match_missing_session_when_bound() {
+        let stored = StoredOAuthState {
+            provider: "google".to_string(),
+            session_id: Some("sess-1".to_string()),
+        };
+        let err = validate_oauth_state_match(&stored, "google", None).unwrap_err();
+        assert!(matches!(err, ApiError::Unauthorized(_)));
+    }
+
+    #[test]
+    fn validate_oauth_state_match_session_match() {
+        let stored = StoredOAuthState {
+            provider: "google".to_string(),
+            session_id: Some("sess-1".to_string()),
+        };
+        assert!(validate_oauth_state_match(&stored, "google", Some("sess-1")).is_ok());
     }
 
     #[test]

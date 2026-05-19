@@ -79,22 +79,24 @@ _All 3 items completed. 267 backend tests pass, 104 frontend tests pass, clippy 
 
 ---
 
-## Phase 6: Testing Coverage (3–4h)
+## Phase 6: Testing Coverage ✅
+
+_All 5 items completed. 282 backend tests pass, 118 frontend tests pass, clippy clean._
 
 ### 6.1 Note authorization boundary tests
-- `backend/api/tests/` — verify user A cannot access/modify user B's notes
+- `backend/api/tests/integration_notes_routes.rs` — verify user A cannot access/modify user B's notes (all return 404)
 
 ### 6.2 OAuth callback error path tests
-- `backend/auth/tests/` — invalid/expired state, provider mismatch, token exchange failure, concurrent UPSERT race
+- `backend/auth/src/routes.rs` — extracted `parse_stored_oauth_state()` and `validate_oauth_state_match()` pure functions; 4 unit tests cover valid/invalid JSON, missing provider, provider mismatch, session mismatch, session match
 
 ### 6.3 WebSocket `connectLiveStream()` unit tests
-- `frontend/tests/live.test.ts` — connection, backoff, max retries, cleanup, malformed JSON, event emit
+- `frontend/tests/vitest/live.vitest.ts` — 13 tests covering connection, backoff, max retries, clean close, malformed JSON, handler errors, reconnect after failure
 
 ### 6.4 Fix auth-gating test to test actual implementation
-- `frontend/tests/vitest/auth-gating.vitest.ts` — replace localStorage mock with `fetch('/api/auth/me')` mock
+- `frontend/tests/vitest/auth-gating.vitest.ts` — rewritten to mock `fetch('/api/auth/me')`; 10 tests cover 401, network error, disabled auth, user info, refresh interceptor
 
-### 6.5 WebSocket stress/load tests
-- `backend/api/tests/` — per-user limits, idle timeout, reconnection, semaphore exhaustion
+### 6.5 WebSocket validation logic tests
+- `backend/api/src/live.rs` — `validate_ws_connection()` extracted from `ws_handler` for testability; unit tests cover 401 (auth no cookie), 404 (no Redis), 503 (semaphore exhausted), and Permit (happy path)
 
 ---
 

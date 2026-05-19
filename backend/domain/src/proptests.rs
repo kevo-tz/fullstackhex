@@ -6,10 +6,8 @@ proptest! {
     /// FeatureFlags serde round-trip: arbitrary flag combinations survive
     /// serialization and deserialization without data loss.
     #[test]
-    fn feature_flags_serde_roundtrip(chat: bool, storage: bool, maintenance: bool) {
+    fn feature_flags_serde_roundtrip(maintenance: bool) {
         let flags = FeatureFlags {
-            chat_enabled: chat,
-            storage_readonly: storage,
             maintenance_mode: maintenance,
         };
         let json = serde_json::to_string(&flags).unwrap();

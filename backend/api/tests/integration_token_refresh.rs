@@ -71,8 +71,6 @@ async fn full_state() -> Option<AppState> {
             ),
             gauge_task: None,
             feature_flags: Some(domain::FeatureFlags {
-                chat_enabled: false,
-                storage_readonly: false,
                 maintenance_mode: false,
             }),
         }),

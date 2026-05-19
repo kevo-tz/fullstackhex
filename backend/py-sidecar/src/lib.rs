@@ -286,9 +286,10 @@ impl PythonSidecar {
         };
 
         if let Some((user_id, email, name, timestamp, signature)) = auth_headers {
+            let nonce = uuid::Uuid::new_v4().to_string();
             request.push_str(&format!(
-                "X-User-Id: {}\r\nX-User-Email: {}\r\nX-User-Name: {}\r\nX-Timestamp: {}\r\nX-Auth-Signature: {}\r\n",
-                user_id, email, name, timestamp, signature,
+                "X-User-Id: {}\r\nX-User-Email: {}\r\nX-User-Name: {}\r\nX-Timestamp: {}\r\nX-Nonce: {}\r\nX-Auth-Signature: {}\r\n",
+                user_id, email, name, timestamp, nonce, signature,
             ));
         }
 

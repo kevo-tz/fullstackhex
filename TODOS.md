@@ -129,9 +129,13 @@ _All P1 + P2 items completed in commit range `dd2f0ce..14fa4db`. 282 backend tes
 | P2 | WS subscriber backpressure — wrapped `socket.send()` in 100ms timeout | `4be6568` |
 | P2 | Security CI missing push trigger — added `push: [main, develop]` | `db418de` |
 
-### Deferred (not blockers)
-- **Password reset token in URL query param** — standard industry pattern (Google, GitHub all use URL tokens). Risk accepted: token is single-use, short-lived (1h), and sent via POST body to `/reset-password`.
-- **ALLOWED_ORIGIN validation in WS handler** — no `ALLOWED_ORIGIN` config exists; adding it requires new config plumbing. Low urgency — CSRF on WebSocket upgrade is already mitigated by session cookie requirement when auth is enabled.
-- **Clean up dead feature flags** — `chat_enabled` and `storage_readonly` are loaded from env vars, serialized in health responses, but never checked by any handler/middleware/service. Remove flags, env var validation, and health response fields.
-- **Persist CSRF token to sessionStorage** — Login/register response handlers should write `csrf_token` to `sessionStorage` so `getCsrfToken()`'s sessionStorage fallback path actually fires.
-- **E2E test user cleanup** — Playwright security E2E tests register timestamped users but never delete them. Accumulates over CI runs.
+### Resolved (all deferred items completed)
+| # | Task | Solution | Commit |
+|---|------|----------|--------|
+| 1 | Password reset token in URL | `history.replaceState` strips token after extraction; `Referrer-Policy: no-referrer` in Layout | `56a0b56` |
+| 2 | ALLOWED_ORIGIN in WS handler | `ALLOWED_ORIGIN` env var added to AppState; Origin check in `validate_ws_connection` returns 403 | `9d9eed2` |
+| 3 | Dead feature flags | Removed `chat_enabled`, `storage_readonly` from struct, env loading, and tests | `7d97d27` |
+| 4 | CSRF token to sessionStorage | Already implemented in `AuthForm.astro:146` (writes on login/register) | pre-existing |
+| 5 | E2E test user cleanup | `global-teardown.ts` + `security.spec.ts afterAll` via `DELETE /auth/me` | `a0c5d93` |
+
+_All deferred items resolved. 281 backend tests pass, 23 py-api, 118 frontend. Clippy clean._

@@ -80,6 +80,8 @@ pub fn normalize_route(path: &str) -> &'static str {
         "/storage/multipart/{key}/{upload_id}/complete" => "/storage/multipart/id/complete",
         "/storage/multipart/{key}/{upload_id}/part/{part_number}" => "/storage/multipart/id/part",
         "/auth/providers" => "/auth/providers",
+        "/auth/forgot-password" => "/auth/forgot-password",
+        "/auth/reset-password" => "/auth/reset-password",
         _ => "unknown",
     }
 }

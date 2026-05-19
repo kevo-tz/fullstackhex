@@ -640,6 +640,9 @@ pub async fn reset_password(
         ));
     }
 
+    // Invalidate all existing sessions for this user
+    state.redis.session_destroy_all_for_user(&user_id).await;
+
     tracing::info!(user_id = %user_id, "password reset completed");
 
     Ok(Json(serde_json::json!({ "message": "Password updated successfully" })))

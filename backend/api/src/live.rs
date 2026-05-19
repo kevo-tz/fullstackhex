@@ -317,9 +317,21 @@ async fn handle_socket(
             msg = tokio::time::timeout(ws_idle_timeout, subscriber.recv()) => {
                 match msg {
                     Ok(Some(PubSubMessage { payload, .. })) => {
-                        if let Err(e) = socket.send(Message::Text(payload.into())).await {
-                            tracing::info!(error = %e, "WS send error — client disconnected");
-                            break;
+                        // Use a short timeout on send() to avoid blocking the subscriber
+                        // loop when the client's TCP buffer is full. Drop the message
+                        // instead of stalling all event delivery.
+                        match tokio::time::timeout(
+                            Duration::from_millis(100),
+                            socket.send(Message::Text(payload.into())),
+                        ).await {
+                            Ok(Ok(())) => {}
+                            Ok(Err(e)) => {
+                                tracing::info!(error = %e, "WS send error — client disconnected");
+                                break;
+                            }
+                            Err(_) => {
+                                tracing::warn!("WS backpressure — dropping message");
+                            }
                         }
                     }
                     Ok(None) => {

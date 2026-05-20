@@ -372,7 +372,7 @@ async fn health_db_ok_with_real_pool() {
     let response = app
         .oneshot(
             Request::builder()
-                .uri("/health/python")
+                .uri("/health/db")
                 .body(axum::body::Body::empty())
                 .unwrap(),
         )
@@ -386,9 +386,8 @@ async fn health_db_ok_with_real_pool() {
 
     assert_eq!(
         v["status"], "ok",
-        "health_python should return 'ok' when sidecar responds successfully. Got: {v}"
+        "health_db should return 'ok' when DB is connected. Got: {v}"
     );
-    assert_eq!(v["service"], "py-api");
 }
 
 // ---------------------------------------------------------------------------

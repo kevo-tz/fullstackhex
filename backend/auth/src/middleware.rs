@@ -100,7 +100,10 @@ pub async fn auth_middleware(
     let bearer_user = extract_bearer(&req, &auth_service);
 
     // Cookie auth prep: parse session cookie + validate CSRF (sync)
-    let cookie_prep = cookie_auth_prepare(&req);
+    let cookie_session = match cookie_auth_prepare(&req) {
+        Ok(s) => s,
+        Err(rejection) => return rejection.into_response(),
+    };
 
     // Determine the auth source and resolve the user.  Cookie auth needs Redis
     // I/O which produces a complex Future type; we box it to keep
@@ -109,7 +112,7 @@ pub async fn auth_middleware(
         AuthMode::Bearer => bearer_user,
         AuthMode::Both if bearer_user.is_some() => bearer_user,
         _ => {
-            let (sess, rd) = match (cookie_prep, redis.as_ref()) {
+            let (sess, rd) = match (cookie_session, redis.as_ref()) {
                 (Some(s), Some(r)) => (s, r),
                 _ => return next.run(req).await,
             };
@@ -193,14 +196,25 @@ pub(crate) fn extract_bearer(
 }
 
 /// Sync preparation: parse session cookie and validate CSRF.
-/// Returns the session_id if everything passes.
-fn cookie_auth_prepare(req: &axum::http::Request<axum::body::Body>) -> Option<String> {
-    let cookie_header = req
+/// Returns `Ok(Some(session_id))` on success,
+/// `Ok(None)` when no session cookie is present,
+/// `Err(AuthRejection)` when CSRF validation fails.
+fn cookie_auth_prepare(
+    req: &axum::http::Request<axum::body::Body>,
+) -> Result<Option<String>, AuthRejection> {
+    let cookie_header = match req
         .headers()
         .get("cookie")
-        .and_then(|v| v.to_str().ok())?;
+        .and_then(|v| v.to_str().ok())
+    {
+        Some(c) => c,
+        None => return Ok(None),
+    };
 
-    let session_id = super::cookies::parse_cookie_value(cookie_header, "session")?;
+    let session_id = match super::cookies::parse_cookie_value(cookie_header, "session") {
+        Some(s) => s,
+        None => return Ok(None),
+    };
 
     // CSRF validation for state-changing methods
     let method = req.method().clone();
@@ -219,11 +233,11 @@ fn cookie_auth_prepare(req: &axum::http::Request<axum::body::Body>) -> Option<St
             .unwrap_or("");
 
         if !super::csrf::validate_csrf_token(csrf_cookie, csrf_header) {
-            return None;
+            return Err(AuthRejection::Forbidden);
         }
     }
 
-    Some(session_id.to_string())
+    Ok(Some(session_id.to_string()))
 }
 
 /// Async: Resolve a cookie session via Redis lookup + JWT validation.

@@ -146,11 +146,15 @@ impl RedisClient {
         let key = self.make_key("backoff", &format!("{ip}:{endpoint}"));
 
         // KEYS[1] = backoff:<ip:endpoint>
-        // Returns: {count, ttl} or {-1, -1} if key missing
+        // Returns: {count, ttl} or {-1, -1} if key missing or expired
         let script = r#"
             local count = redis.call('GET', KEYS[1])
             if count then
                 local ttl = redis.call('TTL', KEYS[1])
+                if ttl == -1 then
+                    redis.call('DEL', KEYS[1])
+                    return {-1, -1}
+                end
                 return {count, ttl}
             end
             return {-1, -1}

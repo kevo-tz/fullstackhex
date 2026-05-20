@@ -172,11 +172,11 @@ async fn refresh_token_lifecycle() {
         .await
         .unwrap();
 
-    assert_eq!(
-        response.status(),
-        StatusCode::OK,
-        "refresh should return 200"
-    );
+    if response.status() != StatusCode::OK {
+        let bytes = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        eprintln!("REFRESH ERROR: {:?}", serde_json::from_slice::<serde_json::Value>(&bytes));
+        panic!("refresh should return 200, got {}", response.status());
+    }
 
     let bytes = to_bytes(response.into_body(), usize::MAX).await.unwrap();
     let refreshed: Value = serde_json::from_slice(&bytes).unwrap();

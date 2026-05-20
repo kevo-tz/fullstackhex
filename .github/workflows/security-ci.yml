@@ -36,7 +36,9 @@ jobs:
           python -m pip install -e .
           python -m pip install pip-audit
       - name: Run pip-audit
-        run: python -m pip_audit --strict --skip-pkg py-api
+        run: |
+          python -m pip freeze | grep -v "py-api" > /tmp/requirements.txt
+          python -m pip_audit --strict --requirement /tmp/requirements.txt
 
   eslint-security:
     name: eslint-security

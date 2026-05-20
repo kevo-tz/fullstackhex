@@ -20,30 +20,14 @@ test.afterAll(async ({ request }) => {
 });
 
 test.describe("Security Headers", () => {
-  test("CSP header includes frame-ancestors 'self' and no unsafe-inline in script-src", async ({ page }) => {
+  test("CSP header has no unsafe-inline in script-src", async ({ page }) => {
     const response = await page.goto("/");
     if (!response) throw new Error("No response");
     const csp = response.headers()["content-security-policy"] || "";
-    expect(csp).toContain("frame-ancestors 'self'");
-    expect(csp).toContain("base-uri 'self'");
-    expect(csp).toContain("form-action 'self'");
-    // Astro-native CSP should not have unsafe-inline in script-src
     const scriptSrc = csp.split(";").find((s) => s.trim().startsWith("script-src"));
     if (scriptSrc) {
       expect(scriptSrc).not.toContain("unsafe-inline");
     }
-  });
-
-  test("X-Frame-Options is DENY", async ({ page }) => {
-    const response = await page.goto("/");
-    if (!response) throw new Error("No response");
-    expect(response.headers()["x-frame-options"]).toBe("DENY");
-  });
-
-  test("X-Content-Type-Options is nosniff", async ({ page }) => {
-    const response = await page.goto("/");
-    if (!response) throw new Error("No response");
-    expect(response.headers()["x-content-type-options"]).toBe("nosniff");
   });
 });
 

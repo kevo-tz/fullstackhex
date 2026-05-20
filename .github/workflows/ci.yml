@@ -77,6 +77,11 @@ jobs:
       - name: Check sqlx offline metadata
         run: cargo sqlx prepare --workspace --check -- --all-features
 
+      - name: Run database migrations
+        env:
+          DATABASE_URL: postgres://postgres:postgres@localhost:5432/testdb
+        run: cargo sqlx migrate run --source db/migrations
+
       - name: cargo test
         env:
           DATABASE_URL: postgres://postgres:postgres@localhost:5432/testdb
@@ -228,6 +233,7 @@ jobs:
           REDIS_URL: redis://localhost:6379
           JWT_SECRET: dummy_jwt_secret_for_e2e_tests
           AUTH_MODE: both
+          COOKIE_SECURE: "false"
           RUSTFS_ENDPOINT: ""
           PYTHON_SIDECAR_SOCKET: ""
           RATE_LIMIT_REGISTER_MAX: 20

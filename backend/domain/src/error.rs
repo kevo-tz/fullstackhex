@@ -63,6 +63,22 @@ impl From<cache::CacheError> for ApiError {
     }
 }
 
+#[cfg(feature = "sqlx-conv")]
+impl From<sqlx::Error> for ApiError {
+    fn from(e: sqlx::Error) -> Self {
+        match &e {
+            sqlx::Error::RowNotFound => ApiError::NotFound(e.to_string()),
+            sqlx::Error::PoolTimedOut => {
+                ApiError::ServiceUnavailable("Database pool timeout".to_string())
+            }
+            sqlx::Error::PoolClosed => {
+                ApiError::ServiceUnavailable("Database pool closed".to_string())
+            }
+            _ => ApiError::InternalError(format!("Database query failed: {e}")),
+        }
+    }
+}
+
 #[cfg(feature = "db-conv")]
 impl From<db::DbError> for ApiError {
     fn from(e: db::DbError) -> Self {
@@ -232,5 +248,28 @@ mod db_conv_tests {
     fn db_error_pool_timeout_converts_to_service_unavailable() {
         let err = ApiError::from(db::DbError::PoolTimeout(std::time::Duration::from_secs(3)));
         assert!(matches!(err, ApiError::ServiceUnavailable(_)));
+    }
+}
+
+#[cfg(all(test, feature = "sqlx-conv"))]
+mod sqlx_conv_tests {
+    use super::ApiError;
+
+    #[test]
+    fn sqlx_error_not_found_converts_to_not_found() {
+        let err = ApiError::from(sqlx::Error::RowNotFound);
+        assert!(matches!(err, ApiError::NotFound(_)));
+    }
+
+    #[test]
+    fn sqlx_error_pool_timed_out_converts_to_service_unavailable() {
+        let err = ApiError::from(sqlx::Error::PoolTimedOut);
+        assert!(matches!(err, ApiError::ServiceUnavailable(_)));
+    }
+
+    #[test]
+    fn sqlx_error_database_converts_to_internal_error() {
+        let err = ApiError::from(sqlx::Error::Protocol("test protocol error".into()));
+        assert!(matches!(err, ApiError::InternalError(_)));
     }
 }

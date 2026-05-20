@@ -136,35 +136,46 @@ impl RedisClient {
     /// Returns an error with the remaining cooldown seconds if the IP is blocked.
     /// Call this BEFORE the rate limit check on login endpoints.
     ///
+    /// Uses a Lua script to atomically GET and TTL the backoff key.
+    ///
     /// # Errors
     ///
     /// Returns `CacheError::BackoffBlocked` when the IP is blocked,
     /// or `CacheError::CommandFailed` on Redis errors.
     pub async fn backoff_check(&self, ip: &str, endpoint: &str) -> Result<(), CacheError> {
         let key = self.make_key("backoff", &format!("{ip}:{endpoint}"));
-        let count: Option<u64> = self
+
+        // KEYS[1] = backoff:<ip:endpoint>
+        // Returns: {count, ttl} or {-1, -1} if key missing
+        let script = r#"
+            local count = redis.call('GET', KEYS[1])
+            if count then
+                local ttl = redis.call('TTL', KEYS[1])
+                return {count, ttl}
+            end
+            return {-1, -1}
+        "#;
+
+        let result: Vec<i64> = self
             .client
-            .get::<Option<u64>, _>(&key)
+            .eval(script, vec![key], Vec::<String>::new())
             .await
             .map_err(CacheError::CommandFailed)?;
 
-        let Some(count) = count else {
-            return Ok(());
-        };
+        let count = result[0];
+        let remaining_ttl = result[1];
 
-        let (_ttl, label) = backoff_params(count);
-
-        // Counts below 5 are tracking-only — never block, just let failures
-        // accumulate until the threshold is reached.
-        if count < 5 {
+        if count < 0 {
             return Ok(());
         }
 
-        let remaining_ttl: i64 = self
-            .client
-            .ttl(&key)
-            .await
-            .map_err(CacheError::CommandFailed)?;
+        let count = count as u64;
+        let (_ttl, label) = backoff_params(count);
+
+        // Counts below 5 are tracking-only — never block
+        if count < 5 {
+            return Ok(());
+        }
 
         if remaining_ttl > 0 {
             return Err(CacheError::BackoffBlocked {
@@ -174,10 +185,6 @@ impl RedisClient {
             });
         }
 
-        // TTL expired — clean up the stale key
-        if let Err(e) = self.client.del::<(), _>(&key).await {
-            tracing::warn!(key = %key, error = %e, "backoff stale key cleanup failed");
-        }
         Ok(())
     }
 

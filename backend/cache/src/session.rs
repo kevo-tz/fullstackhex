@@ -4,6 +4,7 @@
 //! No PostgreSQL sessions table — Redis is the sole session store.
 
 use super::{CacheError, RedisClient};
+use fred::interfaces::LuaInterface;
 use fred::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
@@ -20,6 +21,9 @@ pub struct Session {
 
 impl RedisClient {
     /// Create a new session and return the session ID.
+    ///
+    /// Uses a Lua script to atomically SET the session JSON, SADD to the
+    /// user→sessions set, and EXPIRE both keys in a single round-trip.
     pub async fn session_create(
         &self,
         session: &Session,
@@ -27,34 +31,27 @@ impl RedisClient {
     ) -> Result<String, CacheError> {
         let session_id = uuid::Uuid::new_v4().to_string();
         let key = self.make_key("session", &session_id);
+        let user_key = self.make_key("user_sessions", &session.user_id);
         let json = serde_json::to_string(session)
             .map_err(|e| CacheError::SerializationFailed(e.to_string()))?;
 
+        // KEYS[1] = session:<id>, KEYS[2] = user_sessions:<uid>
+        // ARGV[1] = session JSON, ARGV[2] = session_id, ARGV[3] = TTL seconds
+        let script = r#"
+            redis.call('SET', KEYS[1], ARGV[1], 'EX', ARGV[3])
+            redis.call('SADD', KEYS[2], ARGV[2])
+            redis.call('EXPIRE', KEYS[2], ARGV[3])
+            return ARGV[2]
+        "#;
+
         self.client
-            .set::<(), _, _>(
-                &key,
+            .eval(script, vec![key, user_key], vec![
                 json,
-                Some(Expiration::EX(ttl.as_secs() as i64)),
-                None,
-                false,
-            )
+                session_id.clone(),
+                ttl.as_secs().to_string(),
+            ])
             .await
-            .map_err(CacheError::CommandFailed)?;
-
-        // Track in user→sessions set for bulk invalidation (password reset, etc.)
-        let user_key = self.make_key("user_sessions", &session.user_id);
-        self.client
-            .sadd::<(), _, _>(&user_key, &session_id)
-            .await
-            .map_err(CacheError::CommandFailed)?;
-        // Let the set TTL match the session TTL so stale entries clean themselves up
-        let _: () = self
-            .client
-            .expire(&user_key, ttl.as_secs() as i64, None)
-            .await
-            .map_err(CacheError::CommandFailed)?;
-
-        Ok(session_id)
+            .map_err(CacheError::CommandFailed)
     }
 
     /// Destroy all sessions for a user (used after password reset).
@@ -85,12 +82,13 @@ impl RedisClient {
 
         let _: () = self.client.del(&temp_key).await.unwrap_or_default();
 
-        // Delete each individual session key
-        for sid in &session_ids {
-            let key = self.make_key("session", sid);
-            if let Err(e) = self.client.del::<(), _>(&key).await {
-                tracing::warn!(session = %sid, error = %e, "failed to delete session during user invalidation");
-            }
+        // Batch delete all session keys in one call
+        let session_keys: Vec<String> = session_ids
+            .iter()
+            .map(|sid| self.make_key("session", sid))
+            .collect();
+        if let Err(e) = self.client.del::<(), _>(session_keys).await {
+            tracing::warn!(error = %e, "failed to delete some sessions during user invalidation");
         }
     }
 

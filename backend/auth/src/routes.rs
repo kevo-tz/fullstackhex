@@ -924,21 +924,30 @@ struct StoredOAuthState {
 /// Parse and validate the JSON value stored in Redis for OAuth CSRF state.
 ///
 /// Returns the provider and optional bound session_id.
+/// Falls back to treating the stored value as a plain provider string for
+/// backward compatibility with CSRF tokens created before the JSON format.
 fn parse_stored_oauth_state(stored: &str) -> Result<StoredOAuthState, ApiError> {
-    let stored_data: serde_json::Value = serde_json::from_str(stored)
-        .map_err(|_| ApiError::Unauthorized("Invalid OAuth state format".to_string()))?;
+    if let Ok(stored_data) = serde_json::from_str::<serde_json::Value>(stored) {
+        if let Some(provider) = stored_data["provider"].as_str() {
+            let session_id = stored_data["session_id"]
+                .as_str()
+                .filter(|s| !s.is_empty())
+                .map(|s| s.to_string());
+            return Ok(StoredOAuthState {
+                provider: provider.to_string(),
+                session_id,
+            });
+        }
+    }
 
-    let provider = stored_data["provider"]
-        .as_str()
-        .ok_or_else(|| ApiError::Unauthorized("Invalid OAuth state: missing provider".to_string()))?
-        .to_string();
-
-    let session_id = stored_data["session_id"]
-        .as_str()
-        .filter(|s| !s.is_empty())
-        .map(|s| s.to_string());
-
-    Ok(StoredOAuthState { provider, session_id })
+    let provider = stored.to_string();
+    if provider.is_empty() {
+        return Err(ApiError::Unauthorized("Invalid OAuth state".to_string()));
+    }
+    Ok(StoredOAuthState {
+        provider,
+        session_id: None,
+    })
 }
 
 /// Validate that the provider from the stored OAuth state matches the expected provider,

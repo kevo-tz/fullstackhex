@@ -252,7 +252,11 @@ fn build_router(state: Arc<AppState>) -> Router {
         .ok()
         .and_then(|v| if v.is_empty() { None } else { uuid::Uuid::parse_str(&v).ok().map(|_| v) });
     if let Some(ref uid) = dev_user_id {
-        tracing::info!(dev_user_id = %uid, "DEV_USER_ID set — notes available without auth");
+        if std::env::var("PRODUCTION").is_ok() {
+            tracing::warn!(dev_user_id = %uid, "DEV_USER_ID is set in PRODUCTION mode — notes bypass authentication");
+        } else {
+            tracing::info!(dev_user_id = %uid, "DEV_USER_ID set — notes available without auth");
+        }
     }
 
     let mount_notes = state.auth.is_some() || dev_user_id.is_some();

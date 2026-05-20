@@ -202,34 +202,35 @@ pub async fn register(
     let jwt_expiry = state.auth.config.jwt_expiry;
     let refresh_expiry = state.auth.config.refresh_expiry;
     let mut headers = HeaderMap::new();
-    super::cookies::set_cookie(
+    let csrf_token = super::cookies::set_auth_cookies(
         &mut headers,
-        "access_token",
         &access_token,
-        jwt_expiry,
-        true,
-        true,
-    )?;
-    super::cookies::set_cookie(
-        &mut headers,
-        "refresh_token",
         &refresh_token,
-        refresh_expiry,
-        true,
-        true,
-    )?;
-    let csrf_token = super::csrf::generate_csrf_token()?;
-    super::cookies::set_cookie(
-        &mut headers,
-        "csrf_token",
-        &csrf_token,
+        None,
         jwt_expiry,
-        false,
+        refresh_expiry,
         state.auth.config.cookie_secure,
     )?;
 
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_err(|_| ApiError::InternalError("Time went backwards".to_string()))?
+        .as_secs();
+    let session = cache::session::Session {
+        user_id: user_id.0.clone(),
+        email: body.email.clone(),
+        name: body.name.clone(),
+        provider: "local".to_string(),
+        created_at: now,
+    };
+    let session_id = state
+        .redis
+        .session_create(&session, std::time::Duration::from_secs(jwt_expiry))
+        .await?;
+    super::cookies::set_cookie(&mut headers, "session", &session_id, jwt_expiry, true, true)?;
+
     let response = TokenResponse {
-        access_token: access_token.clone(),
+        access_token,
         refresh_token,
         token_type: "Bearer".to_string(),
         expires_in: state.auth.config.jwt_expiry,
@@ -241,23 +242,6 @@ pub async fn register(
             provider: "local".to_string(),
         },
     };
-
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map_err(|_| ApiError::InternalError("Time went backwards".to_string()))?
-        .as_secs();
-    let session = cache::session::Session {
-        user_id: response.user.id.clone(),
-        email: response.user.email.clone(),
-        name: response.user.name.clone(),
-        provider: response.user.provider.clone(),
-        created_at: now,
-    };
-    let session_id = state
-        .redis
-        .session_create(&session, std::time::Duration::from_secs(jwt_expiry))
-        .await?;
-    super::cookies::set_cookie(&mut headers, "session", &session_id, jwt_expiry, true, true)?;
 
     Ok((StatusCode::CREATED, headers, Json(response)))
 }
@@ -395,28 +379,13 @@ pub async fn login(
     };
 
     let mut headers = HeaderMap::new();
-    super::cookies::set_cookie(
+    super::cookies::set_auth_cookies(
         &mut headers,
-        "access_token",
         &response.access_token,
-        jwt_expiry,
-        true,
-        true,
-    )?;
-    super::cookies::set_cookie(
-        &mut headers,
-        "refresh_token",
         &response.refresh_token,
-        refresh_expiry,
-        true,
-        true,
-    )?;
-    super::cookies::set_cookie(
-        &mut headers,
-        "csrf_token",
-        &csrf_token,
+        None,
         jwt_expiry,
-        false,
+        refresh_expiry,
         state.auth.config.cookie_secure,
     )?;
 
@@ -734,29 +703,13 @@ pub async fn refresh(
     metrics::counter!("token_refresh_total", "status" => "success").increment(1);
 
     let mut resp_headers = HeaderMap::new();
-    super::cookies::set_cookie(
+    let csrf_token = super::cookies::set_auth_cookies(
         &mut resp_headers,
-        "access_token",
         &access_token,
-        state.auth.config.jwt_expiry,
-        true,
-        true,
-    )?;
-    super::cookies::set_cookie(
-        &mut resp_headers,
-        "refresh_token",
         &new_refresh_token,
-        state.auth.config.refresh_expiry,
-        true,
-        true,
-    )?;
-    let csrf_token = super::csrf::generate_csrf_token()?;
-    super::cookies::set_cookie(
-        &mut resp_headers,
-        "csrf_token",
-        &csrf_token,
+        None,
         state.auth.config.jwt_expiry,
-        false,
+        state.auth.config.refresh_expiry,
         state.auth.config.cookie_secure,
     )?;
 
@@ -1091,32 +1044,6 @@ pub async fn oauth_callback(
 
     let jwt_expiry = state.auth.config.jwt_expiry;
     let refresh_expiry = state.auth.config.refresh_expiry;
-    let mut cookie_headers = HeaderMap::new();
-    super::cookies::set_cookie(
-        &mut cookie_headers,
-        "access_token",
-        &access_token,
-        jwt_expiry,
-        true,
-        true,
-    )?;
-    super::cookies::set_cookie(
-        &mut cookie_headers,
-        "refresh_token",
-        &refresh_token,
-        refresh_expiry,
-        true,
-        true,
-    )?;
-    let csrf_token = super::csrf::generate_csrf_token()?;
-    super::cookies::set_cookie(
-        &mut cookie_headers,
-        "csrf_token",
-        &csrf_token,
-        jwt_expiry,
-        false,
-        state.auth.config.cookie_secure,
-    )?;
 
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -1133,13 +1060,16 @@ pub async fn oauth_callback(
         .redis
         .session_create(&session, std::time::Duration::from_secs(jwt_expiry))
         .await?;
-    super::cookies::set_cookie(
+
+    let mut cookie_headers = HeaderMap::new();
+    let csrf_token = super::cookies::set_auth_cookies(
         &mut cookie_headers,
-        "session",
-        &session_id,
+        &access_token,
+        &refresh_token,
+        Some(&session_id),
         jwt_expiry,
-        true,
-        true,
+        refresh_expiry,
+        state.auth.config.cookie_secure,
     )?;
 
     metrics::counter!("oauth_callbacks_total", "provider" => provider.to_string()).increment(1);

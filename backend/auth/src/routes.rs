@@ -928,15 +928,20 @@ struct StoredOAuthState {
 /// backward compatibility with CSRF tokens created before the JSON format.
 fn parse_stored_oauth_state(stored: &str) -> Result<StoredOAuthState, ApiError> {
     if let Ok(stored_data) = serde_json::from_str::<serde_json::Value>(stored) {
-        if let Some(provider) = stored_data["provider"].as_str() {
-            let session_id = stored_data["session_id"]
-                .as_str()
-                .filter(|s| !s.is_empty())
-                .map(|s| s.to_string());
-            return Ok(StoredOAuthState {
-                provider: provider.to_string(),
-                session_id,
-            });
+        match stored_data["provider"].as_str() {
+            Some(provider) => {
+                let session_id = stored_data["session_id"]
+                    .as_str()
+                    .filter(|s| !s.is_empty())
+                    .map(|s| s.to_string());
+                return Ok(StoredOAuthState {
+                    provider: provider.to_string(),
+                    session_id,
+                });
+            }
+            None => {
+                return Err(ApiError::Unauthorized("Invalid OAuth state: JSON without provider".to_string()));
+            }
         }
     }
 
@@ -1415,9 +1420,10 @@ mod route_tests {
     }
 
     #[test]
-    fn parse_stored_oauth_state_invalid_json() {
-        let err = parse_stored_oauth_state("not-json").unwrap_err();
-        assert!(matches!(err, ApiError::Unauthorized(_)));
+    fn non_json_falls_back_to_plain_string() {
+        let result = parse_stored_oauth_state("not-json").unwrap();
+        assert_eq!(result.provider, "not-json");
+        assert!(result.session_id.is_none());
     }
 
     #[test]

@@ -4,7 +4,7 @@
 /// actual HTTP requests via `tower::ServiceExt`.  Tests that mutate
 /// environment use `#[serial]` to prevent concurrent execution.
 use api::metrics::init_metrics_recorder;
-use api::{AppState, DbStatus, HealthState, WebSocketState, router, router_with_state};
+use api::{router, router_with_state};
 use axum::body::to_bytes;
 use axum::http::{Request, StatusCode};
 use serde_json::Value;

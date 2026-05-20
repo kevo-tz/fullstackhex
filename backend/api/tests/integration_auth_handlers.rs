@@ -340,7 +340,7 @@ async fn forgot_password_creates_reset_token_for_existing_user() {
     assert_eq!(response.status(), StatusCode::ACCEPTED);
 
     // Cleanup
-    if let Some(db_url) = std::env::var("DATABASE_URL").ok() {
+    if let Ok(db_url) = std::env::var("DATABASE_URL") {
         cleanup_user(&db_url, &email).await;
     }
 }
@@ -483,7 +483,7 @@ async fn reset_password_full_flow_with_seeded_token() {
     assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
 
     // Cleanup
-    if let Some(db_url) = std::env::var("DATABASE_URL").ok() {
+    if let Ok(db_url) = std::env::var("DATABASE_URL") {
         cleanup_user(&db_url, &email).await;
     }
 }

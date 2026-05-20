@@ -1,6 +1,7 @@
 import { describe, expect, test, vi, beforeEach, afterEach } from "vitest";
 import { connectLiveStream, type LiveEvent } from "../../src/lib/live";
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 type WsEventListener = ((event: any) => void) | null;
 
 interface MockWebSocketStatic {

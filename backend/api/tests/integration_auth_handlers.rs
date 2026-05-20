@@ -95,6 +95,24 @@ fn unique_email(prefix: &str) -> String {
     format!("{prefix}-{}@test.fullstackhex.local", uuid::Uuid::new_v4())
 }
 
+/// Delete a test user by email to prevent database pollution.
+/// Uses a fresh connection so it works independently of the test's `full_state()`.
+async fn cleanup_user(database_url: &str, email: &str) {
+    let pool = match sqlx::postgres::PgPoolOptions::new()
+        .max_connections(1)
+        .acquire_timeout(Duration::from_secs(3))
+        .connect(database_url)
+        .await
+    {
+        Ok(p) => p,
+        Err(_) => return,
+    };
+    let _ = sqlx::query("DELETE FROM users WHERE email = $1")
+        .bind(email)
+        .execute(&pool)
+        .await;
+}
+
 // ─── forgot_password ───────────────────────────────────────────────────
 
 #[tokio::test]
@@ -320,6 +338,11 @@ async fn forgot_password_creates_reset_token_for_existing_user() {
         .await
         .unwrap();
     assert_eq!(response.status(), StatusCode::ACCEPTED);
+
+    // Cleanup
+    if let Some(db_url) = std::env::var("DATABASE_URL").ok() {
+        cleanup_user(&db_url, &email).await;
+    }
 }
 
 #[tokio::test]
@@ -458,6 +481,11 @@ async fn reset_password_full_flow_with_seeded_token() {
         .await
         .unwrap();
     assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+
+    // Cleanup
+    if let Some(db_url) = std::env::var("DATABASE_URL").ok() {
+        cleanup_user(&db_url, &email).await;
+    }
 }
 
 // ─── delete_account ────────────────────────────────────────────────────

@@ -23,7 +23,7 @@ export default defineConfig({
   security: {
     csp: {
       scriptDirective: { resources: ["'self'"] },
-      styleDirective: { resources: ["'self'", "'unsafe-inline'"] },
+      styleDirective: { resources: ["'self'"] },
     },
   },
 });

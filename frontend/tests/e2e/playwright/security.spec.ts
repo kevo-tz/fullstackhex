@@ -67,7 +67,7 @@ test.describe("XSS Prevention", () => {
       headers: { Authorization: `Bearer ${token}` },
       data: { title: "Safe", body: "Test note", created_at: "<img src=x onerror=alert(1)>" },
     });
-    console.log("XSS note creation status:", noteRes.status(), await noteRes.text());
+    expect(noteRes.ok()).toBeTruthy();
 
     // Auth via browser so the notes page can load with session cookies
     await page.goto("/login");

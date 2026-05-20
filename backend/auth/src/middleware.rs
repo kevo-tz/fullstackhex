@@ -99,19 +99,18 @@ pub async fn auth_middleware(
     // Bearer extraction (sync, always available)
     let bearer_user = extract_bearer(&req, &auth_service);
 
-    // Cookie auth prep: parse session cookie + validate CSRF (sync)
-    let cookie_session = match cookie_auth_prepare(&req) {
-        Ok(s) => s,
-        Err(rejection) => return rejection.into_response(),
-    };
-
-    // Determine the auth source and resolve the user.  Cookie auth needs Redis
-    // I/O which produces a complex Future type; we box it to keep
-    // axum::middleware::FromFn happy (it has a 16-type-parameter limit).
+    // Determine the auth source and resolve the user.
+    // Cookie auth (including CSRF validation) is only run when we actually
+    // need cookie auth — bearer-authenticated requests skip it entirely.
     let auth_user: Option<AuthUser> = match auth_service.config.auth_mode {
         AuthMode::Bearer => bearer_user,
         AuthMode::Both if bearer_user.is_some() => bearer_user,
         _ => {
+            // Cookie auth prep: parse session cookie + validate CSRF (sync)
+            let cookie_session = match cookie_auth_prepare(&req) {
+                Ok(s) => s,
+                Err(rejection) => return rejection.into_response(),
+            };
             let (sess, rd) = match (cookie_session, redis.as_ref()) {
                 (Some(s), Some(r)) => (s, r),
                 _ => return next.run(req).await,

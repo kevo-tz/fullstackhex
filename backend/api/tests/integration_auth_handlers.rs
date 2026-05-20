@@ -58,7 +58,13 @@ async fn full_state() -> Option<AppState> {
         oauth_redirect_url: None,
         sidecar_shared_secret: None,
         fail_open_on_redis_error: true,
-        rate_limits: Default::default(),
+        rate_limits: auth::RateLimitConfig {
+            forgot_max: 20,
+            forgot_window_secs: 10,
+            oauth_callback_max: 20,
+            oauth_callback_window_secs: 10,
+            ..Default::default()
+        },
         cookie_secure: false,
     };
     let auth = Arc::new(auth::AuthService::new(auth_config));

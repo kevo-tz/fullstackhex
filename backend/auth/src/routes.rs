@@ -367,7 +367,17 @@ pub async fn login(
 
     let jwt_expiry = state.auth.config.jwt_expiry;
     let refresh_expiry = state.auth.config.refresh_expiry;
-    let csrf_token = super::csrf::generate_csrf_token()?;
+
+    let mut headers = HeaderMap::new();
+    let csrf_token = super::cookies::set_auth_cookies(
+        &mut headers,
+        &access_token,
+        &refresh_token,
+        None,
+        jwt_expiry,
+        refresh_expiry,
+        state.auth.config.cookie_secure,
+    )?;
 
     let response = TokenResponse {
         access_token: access_token.clone(),
@@ -382,17 +392,6 @@ pub async fn login(
             provider,
         },
     };
-
-    let mut headers = HeaderMap::new();
-    super::cookies::set_auth_cookies(
-        &mut headers,
-        &response.access_token,
-        &response.refresh_token,
-        None,
-        jwt_expiry,
-        refresh_expiry,
-        state.auth.config.cookie_secure,
-    )?;
 
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)

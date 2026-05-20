@@ -361,7 +361,11 @@ pub async fn login(
         .create_token(&user_id, &email, name.as_deref(), &provider)?;
 
     // Create refresh token in Redis
-    let refresh_token = uuid::Uuid::new_v4().to_string();
+    let mut refresh_token_bytes = [0u8; 32];
+    getrandom::fill(&mut refresh_token_bytes).map_err(|e| {
+        ApiError::InternalError(format!("failed to generate refresh token: {e}"))
+    })?;
+    let refresh_token = hex::encode(refresh_token_bytes);
     state
         .redis
         .cache_set(
@@ -712,7 +716,11 @@ pub async fn refresh(
         .map_err(|_| ApiError::InternalError("Failed to create token".to_string()))?;
 
     // Create new refresh token
-    let new_refresh_token = uuid::Uuid::new_v4().to_string();
+    let mut refresh_token_bytes = [0u8; 32];
+    getrandom::fill(&mut refresh_token_bytes).map_err(|e| {
+        ApiError::InternalError(format!("failed to generate refresh token: {e}"))
+    })?;
+    let new_refresh_token = hex::encode(refresh_token_bytes);
     state
         .redis
         .cache_set(

@@ -4,7 +4,7 @@ import type { TestUser } from "./auth-helpers";
 
 async function globalTeardown() {
   const baseURL = process.env.FRONTEND_URL || "http://localhost:4321";
-  let testUser: TestUser | null = null;
+  let testUser: TestUser | null;
 
   try {
     const data = readFileSync("e2e-test-user.json", "utf-8");

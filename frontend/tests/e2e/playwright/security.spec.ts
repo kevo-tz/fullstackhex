@@ -63,10 +63,11 @@ test.describe("XSS Prevention", () => {
     });
     const loginData = await loginRes.json();
     const token = loginData.access_token;
-    await request.post("/api/notes", {
+    const noteRes = await request.post("/api/notes", {
       headers: { Authorization: `Bearer ${token}` },
       data: { title: "Safe", body: "Test note", created_at: "<img src=x onerror=alert(1)>" },
     });
+    console.log("XSS note creation status:", noteRes.status(), await noteRes.text());
 
     // Auth via browser so the notes page can load with session cookies
     await page.goto("/login");

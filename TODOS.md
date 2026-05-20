@@ -139,3 +139,20 @@ _All P1 + P2 items completed in commit range `dd2f0ce..14fa4db`. 282 backend tes
 | 5 | E2E test user cleanup | `global-teardown.ts` + `security.spec.ts afterAll` via `DELETE /auth/me` | `a0c5d93` |
 
 _All deferred items resolved. 281 backend tests pass, 23 py-api, 118 frontend. Clippy clean._
+
+---
+
+## Phase 8: Auth Hardening & Redis Performance (feat/0.14.0)
+
+_All 8 items completed. 300 backend tests pass, 118 frontend tests pass, 23 py-api tests pass, clippy clean, eslint clean._
+
+| # | Fix | Solution | Commit |
+|---|-----|----------|--------|
+| T1 | CSRF → 403 | `AuthRejection::Forbidden` returned on CSRF mismatch — no silent fallthrough to bearer | `47e9678` |
+| T2 | OAuth state JSON validation | `parse_stored_oauth_state` rejects valid JSON without `"provider"` field | `496dcd6` |
+| T3 | Refresh token entropy | `getrandom(32)` + hex replaces `uuid::Uuid::new_v4()` across all generators | `cb5eabb` |
+| T4 | Cookie dedup | `set_auth_cookies()` helper in `cookies.rs` eliminates ~60 lines of duplication | `1ea415b` |
+| T5 | CSP lockdown | nginx: `frame-src`, `object-src`, `connect-src`, `img-src`, `base-uri`, `form-action`, `report-uri`; Astro: remove `'unsafe-inline'` | `abe6485` / `c6f257b` |
+| T6 | `From<sqlx::Error>` | RowNotFound→NotFound, PoolClosed→ServiceUnavailable behind `sqlx-conv` feature | `55e00ab` |
+| T7 | Integration tests | 13 tests for forgot/reset/delete/oauth in `integration_auth_handlers.rs` + `cleanup_user()` | `4c938f9` / `b919884` |
+| T8 | Redis Lua perf | Atomic session_create (SET+SADD+EXPIRE), backoff_check (GET+TTL+stale cleanup), batch DEL for multi-session | `3debbf7` / `588f532` |_

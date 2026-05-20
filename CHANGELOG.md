@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.14.4] - 2026-05-20
+
+### Security
+- **CSRF mismatch now returns 403**: Cookie auth failure (missing/wrong CSRF token) no longer silently falls through to bearer auth — returns `403 Forbidden` immediately
+- **OAuth state validation**: `parse_stored_oauth_state` rejects valid JSON without a `"provider"` field — prevents state injection attacks
+- **Refresh token entropy**: All refresh token generators now use `getrandom(32)` + hex (256-bit cryptographic entropy) instead of `uuid::Uuid::new_v4()`
+- **CSP lockdown**: nginx adds `frame-src 'none'`, `object-src 'none'`, `connect-src`, `img-src`, `base-uri`, `form-action`, `report-uri`; Astro `styleDirective` drops `'unsafe-inline'`
+- **CSP default-src removed**: removed from nginx to prevent blocking Astro nonce-based inline scripts/styles — dual-policy CSP enforced independently by browser
+
+### Added
+- **sqlx error conversion**: `From<sqlx::Error>` for `ApiError` behind `sqlx-conv` feature — `RowNotFound→NotFound`, `PoolTimedOut/PoolClosed→ServiceUnavailable`
+- **Integration tests**: 13 new tests for forgot_password, reset_password, delete_account, oauth_callback — verify error paths and success flows
+
+### Changed
+- **Cookie dedup**: extracted `set_auth_cookies()` helper — removed ~60 lines of duplicate cookie-set logic across register, login, refresh, oauth_callback
+
+### Performance
+- **Redis Lua scripts**: `session_create` now atomic (SET+SADD+EXPIRE in one round-trip); `backoff_check` uses Lua (GET+TTL) with stale-key cleanup
+- **Batch session destroy**: `session_destroy_all_for_user` uses RENAME + SMEMBERS + batch DEL instead of per-session loop
+
+### Fixed
+- **Stale backoff keys**: `backoff_check` Lua handles TTL=-1 (key with no expiry) — deletes and returns -1 instead of leaking stale keys
+
 ## [0.14.3] - 2026-05-18
 
 ### Fixed

@@ -40,14 +40,22 @@ Sessions are Redis-only — no PostgreSQL sessions table. Each session is a JSON
 ```
 
 Operations:
-- `session_create(session, ttl)` — create session, returns session ID.
+- `session_create(session, ttl)` — create session (atomic Lua: SET + SADD + EXPIRE in one round-trip), returns session ID.
 - `session_get(session_id)` — lookup session.
-- `session_destroy(session_id)` — delete session.
+- `session_destroy(session_id)` — delete session, removes from user→sessions set.
+- `session_destroy_all_for_user(user_id)` — batch destroy all sessions for a user (atomic RENAME + SMEMBERS + batch DEL).
 - `session_refresh(session_id, ttl)` — extend TTL without changing data.
 
 ## Rate Limiting
 
 Sliding window via Redis sorted sets. Each request adds a member with timestamp as score. Old entries cleaned on each check via Lua script (atomic).
+
+## Brute-Force Backoff
+
+Progressive backoff on login failures per IP+endpoint. Uses a Lua script for atomic GET+TTL with stale-key cleanup. Failure counts escalate TTL:
+- 5 failures → 60s block
+- 10 failures → 5min block
+- 20 failures → 30min block
 
 ## Token Refresh Atomicity
 

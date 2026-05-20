@@ -45,11 +45,11 @@ impl RedisClient {
         "#;
 
         self.client
-            .eval(script, vec![key, user_key], vec![
-                json,
-                session_id.clone(),
-                ttl.as_secs().to_string(),
-            ])
+            .eval(
+                script,
+                vec![key, user_key],
+                vec![json, session_id.clone(), ttl.as_secs().to_string()],
+            )
             .await
             .map_err(CacheError::CommandFailed)
     }
@@ -74,11 +74,7 @@ impl RedisClient {
 
         // Now operate on the temp key — the original key is gone, so no new
         // sessions can be added to the set we're about to delete.
-        let session_ids: Vec<String> = self
-            .client
-            .smembers(&temp_key)
-            .await
-            .unwrap_or_default();
+        let session_ids: Vec<String> = self.client.smembers(&temp_key).await.unwrap_or_default();
 
         let _: () = self.client.del(&temp_key).await.unwrap_or_default();
 

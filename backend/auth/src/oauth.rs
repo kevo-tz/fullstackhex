@@ -231,17 +231,16 @@ async fn fetch_github_user_info(
     // Fetch primary email if not public
     let email = match user.email {
         Some(e) => e,
-        None => {
-            match fetch_github_primary_email(access_token, http_client).await {
-                Ok(Some(e)) => e,
-                Ok(None) => {
-                    return Err(ApiError::InternalError(
-                        "GitHub email not available — make sure user:email scope is granted".to_string(),
-                    ));
-                }
-                Err(e) => return Err(e),
+        None => match fetch_github_primary_email(access_token, http_client).await {
+            Ok(Some(e)) => e,
+            Ok(None) => {
+                return Err(ApiError::InternalError(
+                    "GitHub email not available — make sure user:email scope is granted"
+                        .to_string(),
+                ));
             }
-        }
+            Err(e) => return Err(e),
+        },
     };
 
     Ok(OAuthUserInfo {
@@ -273,10 +272,7 @@ async fn fetch_github_primary_email(
     };
 
     if !resp.status().is_success() {
-        tracing::warn!(
-            "GitHub email endpoint returned HTTP {}",
-            resp.status()
-        );
+        tracing::warn!("GitHub email endpoint returned HTTP {}", resp.status());
         return Err(ApiError::InternalError(format!(
             "GitHub email request failed: HTTP {}",
             resp.status()

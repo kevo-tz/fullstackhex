@@ -185,9 +185,8 @@ pub async fn register(
 
     // Create refresh token in Redis
     let mut refresh_token_bytes = [0u8; 32];
-    getrandom::fill(&mut refresh_token_bytes).map_err(|e| {
-        ApiError::InternalError(format!("failed to generate refresh token: {e}"))
-    })?;
+    getrandom::fill(&mut refresh_token_bytes)
+        .map_err(|e| ApiError::InternalError(format!("failed to generate refresh token: {e}")))?;
     let refresh_token = hex::encode(refresh_token_bytes);
     state
         .redis
@@ -346,9 +345,8 @@ pub async fn login(
 
     // Create refresh token in Redis
     let mut refresh_token_bytes = [0u8; 32];
-    getrandom::fill(&mut refresh_token_bytes).map_err(|e| {
-        ApiError::InternalError(format!("failed to generate refresh token: {e}"))
-    })?;
+    getrandom::fill(&mut refresh_token_bytes)
+        .map_err(|e| ApiError::InternalError(format!("failed to generate refresh token: {e}")))?;
     let refresh_token = hex::encode(refresh_token_bytes);
     state
         .redis
@@ -581,15 +579,16 @@ pub async fn reset_password(
     }
 
     if body.token.is_empty() {
-        return Err(ApiError::ValidationError("Reset token is required".to_string()));
+        return Err(ApiError::ValidationError(
+            "Reset token is required".to_string(),
+        ));
     }
 
     // Look up token in Redis
     let user_id: Option<String> = state.redis.cache_get("reset", &body.token).await?;
 
-    let user_id = user_id.ok_or_else(|| {
-        ApiError::Unauthorized("Invalid or expired reset token".to_string())
-    })?;
+    let user_id = user_id
+        .ok_or_else(|| ApiError::Unauthorized("Invalid or expired reset token".to_string()))?;
 
     // Hash the new password
     let password_hash = password::hash_password(&body.password)?;
@@ -621,7 +620,9 @@ pub async fn reset_password(
 
     tracing::info!(user_id = %user_id, "password reset completed");
 
-    Ok(Json(serde_json::json!({ "message": "Password updated successfully" })))
+    Ok(Json(
+        serde_json::json!({ "message": "Password updated successfully" }),
+    ))
 }
 
 /// POST /auth/refresh — refresh access token using refresh token.
@@ -686,9 +687,8 @@ pub async fn refresh(
 
     // Create new refresh token
     let mut refresh_token_bytes = [0u8; 32];
-    getrandom::fill(&mut refresh_token_bytes).map_err(|e| {
-        ApiError::InternalError(format!("failed to generate refresh token: {e}"))
-    })?;
+    getrandom::fill(&mut refresh_token_bytes)
+        .map_err(|e| ApiError::InternalError(format!("failed to generate refresh token: {e}")))?;
     let new_refresh_token = hex::encode(refresh_token_bytes);
     state
         .redis
@@ -901,7 +901,9 @@ fn parse_stored_oauth_state(stored: &str) -> Result<StoredOAuthState, ApiError> 
                 });
             }
             None => {
-                return Err(ApiError::Unauthorized("Invalid OAuth state: JSON without provider".to_string()));
+                return Err(ApiError::Unauthorized(
+                    "Invalid OAuth state: JSON without provider".to_string(),
+                ));
             }
         }
     }
@@ -933,9 +935,7 @@ fn validate_oauth_state_match(
         match current_session_id {
             Some(sid) if sid == bound_session_id => {}
             Some(_) => {
-                return Err(ApiError::Unauthorized(
-                    "OAuth session mismatch".to_string(),
-                ));
+                return Err(ApiError::Unauthorized("OAuth session mismatch".to_string()));
             }
             None => {
                 return Err(ApiError::Unauthorized(
@@ -969,7 +969,10 @@ pub async fn oauth_callback(
 
     // Validate CSRF state token — atomic GETDEL prevents replay attacks
     // even when multiple callbacks race for the same state value
-    let stored: Option<String> = state.redis.cache_get_delete("oauth_csrf", &query.state).await?;
+    let stored: Option<String> = state
+        .redis
+        .cache_get_delete("oauth_csrf", &query.state)
+        .await?;
 
     let stored = stored
         .ok_or_else(|| ApiError::Unauthorized("Invalid or expired OAuth state".to_string()))?;
@@ -1028,9 +1031,8 @@ pub async fn oauth_callback(
     )?;
 
     let mut refresh_token_bytes = [0u8; 32];
-    getrandom::fill(&mut refresh_token_bytes).map_err(|e| {
-        ApiError::InternalError(format!("failed to generate refresh token: {e}"))
-    })?;
+    getrandom::fill(&mut refresh_token_bytes)
+        .map_err(|e| ApiError::InternalError(format!("failed to generate refresh token: {e}")))?;
     let refresh_token = hex::encode(refresh_token_bytes);
     state
         .redis

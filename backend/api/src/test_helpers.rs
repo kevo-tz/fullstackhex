@@ -1,5 +1,5 @@
-use crate::{AppState, DbStatus, HealthState, WebSocketState};
 use crate::metrics;
+use crate::{AppState, DbStatus, HealthState, WebSocketState};
 use py_sidecar::PythonSidecar;
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};

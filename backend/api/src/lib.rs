@@ -194,7 +194,9 @@ pub async fn router(
 
     let ws_shutdown = Arc::new(Notify::new());
     let ws_per_user_max: usize = parse_env_or("WS_PER_USER_MAX", 10);
-    let allowed_origin: Option<String> = std::env::var("ALLOWED_ORIGIN").ok().filter(|v| !v.is_empty());
+    let allowed_origin: Option<String> = std::env::var("ALLOWED_ORIGIN")
+        .ok()
+        .filter(|v| !v.is_empty());
 
     let state = Arc::new(AppState {
         health: Arc::new(HealthState {
@@ -248,9 +250,13 @@ fn build_router(state: Arc<AppState>) -> Router {
     }
 
     let db_connected = matches!(state.health.db, DbStatus::Connected(_));
-    let dev_user_id = std::env::var("DEV_USER_ID")
-        .ok()
-        .and_then(|v| if v.is_empty() { None } else { uuid::Uuid::parse_str(&v).ok().map(|_| v) });
+    let dev_user_id = std::env::var("DEV_USER_ID").ok().and_then(|v| {
+        if v.is_empty() {
+            None
+        } else {
+            uuid::Uuid::parse_str(&v).ok().map(|_| v)
+        }
+    });
     if let Some(ref uid) = dev_user_id {
         if std::env::var("PRODUCTION").is_ok() {
             tracing::warn!(dev_user_id = %uid, "DEV_USER_ID is set in PRODUCTION mode — notes bypass authentication");
@@ -341,11 +347,20 @@ fn auth_routes(state: &Arc<AppState>) -> Option<Router> {
             .route("/register", axum::routing::post(auth::routes::register))
             .route("/login", axum::routing::post(auth::routes::login))
             .route("/logout", axum::routing::post(auth::routes::logout))
-            .route("/forgot-password", axum::routing::post(auth::routes::forgot_password))
-            .route("/reset-password", axum::routing::post(auth::routes::reset_password))
+            .route(
+                "/forgot-password",
+                axum::routing::post(auth::routes::forgot_password),
+            )
+            .route(
+                "/reset-password",
+                axum::routing::post(auth::routes::reset_password),
+            )
             .route("/refresh", axum::routing::post(auth::routes::refresh))
             .route("/providers", axum::routing::get(auth::routes::providers))
-            .route("/me", axum::routing::get(auth::routes::me).delete(auth::routes::delete_account))
+            .route(
+                "/me",
+                axum::routing::get(auth::routes::me).delete(auth::routes::delete_account),
+            )
             .route(
                 "/oauth/{provider}",
                 axum::routing::get(auth::routes::oauth_redirect),

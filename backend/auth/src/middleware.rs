@@ -202,11 +202,7 @@ pub(crate) fn extract_bearer(
 fn cookie_auth_prepare(
     req: &axum::http::Request<axum::body::Body>,
 ) -> Result<Option<String>, AuthRejection> {
-    let cookie_header = match req
-        .headers()
-        .get("cookie")
-        .and_then(|v| v.to_str().ok())
-    {
+    let cookie_header = match req.headers().get("cookie").and_then(|v| v.to_str().ok()) {
         Some(c) => c,
         None => return Ok(None),
     };
@@ -229,8 +225,8 @@ fn cookie_auth_prepare(
             .and_then(|v| v.to_str().ok())
             .unwrap_or("");
 
-        let csrf_cookie = super::cookies::parse_cookie_value(cookie_header, "csrf_token")
-            .unwrap_or("");
+        let csrf_cookie =
+            super::cookies::parse_cookie_value(cookie_header, "csrf_token").unwrap_or("");
 
         if !super::csrf::validate_csrf_token(csrf_cookie, csrf_header) {
             return Err(AuthRejection::Forbidden);
@@ -338,7 +334,8 @@ mod tests {
     #[test]
     fn hmac_roundtrip() {
         let secret = "test-shared-secret";
-        let sig = compute_auth_signature(secret, "user-123", "test@example.com", "Test", TEST_TS).unwrap();
+        let sig = compute_auth_signature(secret, "user-123", "test@example.com", "Test", TEST_TS)
+            .unwrap();
         assert!(verify_auth_signature(
             secret,
             "user-123",
@@ -413,7 +410,8 @@ mod tests {
 
     #[test]
     fn compute_auth_signature_sidecar_secret_roundtrip() {
-        let sig = compute_auth_signature("my-shared-secret", "user-1", "a@b.com", "Alice", TEST_TS).unwrap();
+        let sig = compute_auth_signature("my-shared-secret", "user-1", "a@b.com", "Alice", TEST_TS)
+            .unwrap();
         assert!(verify_auth_signature(
             "my-shared-secret",
             "user-1",

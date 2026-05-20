@@ -419,10 +419,7 @@ async fn notes_authorization_user_b_cannot_access_user_a_note() {
     let bytes = to_bytes(response.into_body(), usize::MAX).await.unwrap();
     let list: Value = serde_json::from_slice(&bytes).unwrap();
     let items = list["items"].as_array().unwrap();
-    let note_ids: Vec<&str> = items
-        .iter()
-        .filter_map(|i| i["id"].as_str())
-        .collect();
+    let note_ids: Vec<&str> = items.iter().filter_map(|i| i["id"].as_str()).collect();
     assert!(
         !note_ids.contains(&note_id.as_str()),
         "user B's note list should not contain user A's note"

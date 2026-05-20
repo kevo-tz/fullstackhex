@@ -10,8 +10,8 @@
 //! - delete_account (DELETE /auth/me)
 //! - oauth_callback (GET /auth/oauth/{provider}/callback)
 
-use api::router_with_state;
 use api::metrics::init_metrics_recorder;
+use api::router_with_state;
 use api::{AppState, DbStatus, HealthState, WebSocketState};
 use axum::body::to_bytes;
 use axum::http::{Request, StatusCode};

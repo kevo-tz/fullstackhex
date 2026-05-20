@@ -512,7 +512,10 @@ mod tests {
         let sc = PythonSidecar::new(path, Duration::from_secs(1), 0);
         // CR in name should be rejected
         let result = sc
-            .get_with_auth("/health", ("user-1", "a@b.com", "bad\nname", 1_712_345_678u64, "abc123"))
+            .get_with_auth(
+                "/health",
+                ("user-1", "a@b.com", "bad\nname", 1_712_345_678u64, "abc123"),
+            )
             .await;
         assert!(matches!(result, Err(SidecarError::InvalidInput(_))));
     }

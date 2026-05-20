@@ -237,9 +237,8 @@ fn validate_storage_key(key: &str) -> Result<(), ApiError> {
     if key.is_empty() {
         return Err(ApiError::ValidationError("Invalid storage key".to_string()));
     }
-    let decoded = urlencoding::decode(key).map_err(|_| {
-        ApiError::ValidationError("Invalid storage key encoding".to_string())
-    })?;
+    let decoded = urlencoding::decode(key)
+        .map_err(|_| ApiError::ValidationError("Invalid storage key encoding".to_string()))?;
     if decoded.contains('\0') || decoded.contains('\\') {
         return Err(ApiError::ValidationError("Invalid storage key".to_string()));
     }

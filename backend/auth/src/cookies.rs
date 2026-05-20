@@ -53,9 +53,30 @@ pub fn set_auth_cookies(
     cookie_secure: bool,
 ) -> Result<String, ApiError> {
     let csrf_token = super::csrf::generate_csrf_token()?;
-    set_cookie(headers, "access_token", access_token, jwt_expiry, true, true)?;
-    set_cookie(headers, "refresh_token", refresh_token, refresh_expiry, true, true)?;
-    set_cookie(headers, "csrf_token", &csrf_token, jwt_expiry, false, cookie_secure)?;
+    set_cookie(
+        headers,
+        "access_token",
+        access_token,
+        jwt_expiry,
+        true,
+        true,
+    )?;
+    set_cookie(
+        headers,
+        "refresh_token",
+        refresh_token,
+        refresh_expiry,
+        true,
+        true,
+    )?;
+    set_cookie(
+        headers,
+        "csrf_token",
+        &csrf_token,
+        jwt_expiry,
+        false,
+        cookie_secure,
+    )?;
     if let Some(sid) = session_id {
         set_cookie(headers, "session", sid, jwt_expiry, true, true)?;
     }

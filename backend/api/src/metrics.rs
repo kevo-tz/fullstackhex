@@ -20,20 +20,21 @@ pub fn init_metrics_recorder() -> PrometheusHandle {
                 0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0,
             ];
             let builder = PrometheusBuilder::new();
-            let builder = builder.set_buckets_for_metric(
-                Matcher::Full("http_request_duration_seconds".to_string()),
-                buckets,
-            ).unwrap_or_else(|e| {
-                tracing::error!("failed to set http buckets: {e}");
-                PrometheusBuilder::new()
-            });
-            let builder = builder.set_buckets_for_metric(
-                Matcher::Full("auth_latency_seconds".to_string()),
-                buckets,
-            ).unwrap_or_else(|e| {
-                tracing::error!("failed to set auth latency buckets: {e}");
-                PrometheusBuilder::new()
-            });
+            let builder = builder
+                .set_buckets_for_metric(
+                    Matcher::Full("http_request_duration_seconds".to_string()),
+                    buckets,
+                )
+                .unwrap_or_else(|e| {
+                    tracing::error!("failed to set http buckets: {e}");
+                    PrometheusBuilder::new()
+                });
+            let builder = builder
+                .set_buckets_for_metric(Matcher::Full("auth_latency_seconds".to_string()), buckets)
+                .unwrap_or_else(|e| {
+                    tracing::error!("failed to set auth latency buckets: {e}");
+                    PrometheusBuilder::new()
+                });
             let recorder = builder.build_recorder();
             let handle = recorder.handle();
             if metrics::set_global_recorder(recorder).is_err() {

@@ -104,10 +104,7 @@ enum WsConnectionOutcome {
 ///
 /// Extracted from `ws_handler` so the business logic can be unit-tested
 /// without requiring the Axum `WebSocketUpgrade` extractor.
-async fn validate_ws_connection(
-    headers: &HeaderMap,
-    state: &AppState,
-) -> WsConnectionOutcome {
+async fn validate_ws_connection(headers: &HeaderMap, state: &AppState) -> WsConnectionOutcome {
     // Validate Origin when ALLOWED_ORIGIN is configured — prevents cross-site
     // WebSocket hijacking even when session cookies are present.
     if let Some(ref allowed) = state.allowed_origin {
@@ -118,11 +115,7 @@ async fn validate_ws_connection(
             Some(o) if o == allowed => {}
             Some(_) | None => {
                 return WsConnectionOutcome::Reject(
-                    (
-                        StatusCode::FORBIDDEN,
-                        "{\"error\":\"Origin not allowed\"}",
-                    )
-                        .into_response(),
+                    (StatusCode::FORBIDDEN, "{\"error\":\"Origin not allowed\"}").into_response(),
                 );
             }
         }
@@ -136,7 +129,10 @@ async fn validate_ws_connection(
 
     if state.auth.is_some() && maybe_user_id.is_none() {
         return WsConnectionOutcome::Reject(
-            (StatusCode::UNAUTHORIZED, "{\"error\":\"Authentication required\"}")
+            (
+                StatusCode::UNAUTHORIZED,
+                "{\"error\":\"Authentication required\"}",
+            )
                 .into_response(),
         );
     }

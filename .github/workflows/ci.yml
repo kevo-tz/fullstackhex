@@ -324,6 +324,7 @@ jobs:
         working-directory: frontend
         env:
           FRONTEND_URL: http://localhost:4321
+          COOKIE_SECURE: "false"
         run: |
           bun run test:e2e:playwright
 

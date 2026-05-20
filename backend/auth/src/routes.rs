@@ -226,7 +226,7 @@ pub async fn register(
         .redis
         .session_create(&session, std::time::Duration::from_secs(jwt_expiry))
         .await?;
-    super::cookies::set_cookie(&mut headers, "session", &session_id, jwt_expiry, true, true)?;
+    super::cookies::set_cookie(&mut headers, "session", &session_id, jwt_expiry, true, state.auth.config.cookie_secure)?;
 
     let response = TokenResponse {
         access_token,
@@ -402,7 +402,7 @@ pub async fn login(
         .redis
         .session_create(&session, std::time::Duration::from_secs(jwt_expiry))
         .await?;
-    super::cookies::set_cookie(&mut headers, "session", &session_id, jwt_expiry, true, true)?;
+    super::cookies::set_cookie(&mut headers, "session", &session_id, jwt_expiry, true, state.auth.config.cookie_secure)?;
 
     Ok((headers, Json(response)))
 }

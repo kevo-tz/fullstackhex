@@ -59,7 +59,7 @@ pub fn set_auth_cookies(
         access_token,
         jwt_expiry,
         true,
-        true,
+        cookie_secure,
     )?;
     set_cookie(
         headers,
@@ -67,7 +67,7 @@ pub fn set_auth_cookies(
         refresh_token,
         refresh_expiry,
         true,
-        true,
+        cookie_secure,
     )?;
     set_cookie(
         headers,
@@ -78,7 +78,7 @@ pub fn set_auth_cookies(
         cookie_secure,
     )?;
     if let Some(sid) = session_id {
-        set_cookie(headers, "session", sid, jwt_expiry, true, true)?;
+        set_cookie(headers, "session", sid, jwt_expiry, true, cookie_secure)?;
     }
     Ok(csrf_token)
 }

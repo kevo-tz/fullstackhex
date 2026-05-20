@@ -89,21 +89,23 @@ const metaType = ogType || "website";
         const user = await fetchUser();
 
         function buildUserNav(u: Record<string, string>) {
-          const span = document.createElement("span");
-          span.className = "user-menu";
-          span.textContent = u.email;
+          const userLabel = document.createElement("span");
+          userLabel.className = "user-menu";
+          userLabel.textContent = u.email;
 
           const logoutBtn = document.createElement("button");
           logoutBtn.className = "logout-btn";
           logoutBtn.id = "nav-logout";
           logoutBtn.textContent = "logout";
 
+          const userLabelMobile = userLabel.cloneNode(true) as HTMLSpanElement;
+
           const logoutBtnMobile = document.createElement("button");
           logoutBtnMobile.className = "logout-btn";
           logoutBtnMobile.id = "nav-logout-mobile";
           logoutBtnMobile.textContent = "logout";
 
-          return [span, logoutBtn, logoutBtnMobile];
+          return { desktop: [userLabel, logoutBtn], mobile: [userLabelMobile, logoutBtnMobile] };
         }
 
         function buildGuestNav() {
@@ -121,8 +123,9 @@ const metaType = ogType || "website";
         }
 
         if (user) {
-          if (el) setNav(el, buildUserNav(user));
-          if (elMobile) setNav(elMobile, buildUserNav(user));
+          const nav = buildUserNav(user);
+          if (el) setNav(el, nav.desktop);
+          if (elMobile) setNav(elMobile, nav.mobile);
         } else {
           if (el) setNav(el, buildGuestNav());
           if (elMobile) setNav(elMobile, buildGuestNav());

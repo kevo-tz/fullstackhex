@@ -163,7 +163,7 @@ pub async fn register(
     let password_hash = password::hash_password(&body.password)?;
 
     // Insert user
-    let user_id: (String,) = sqlx::query_as(
+    let user_id: String = sqlx::query_scalar(
         "INSERT INTO users (email, name, provider, password_hash) VALUES ($1, $2, 'local', $3) RETURNING id::text",
     )
     .bind(&body.email)
@@ -181,7 +181,7 @@ pub async fn register(
         state
             .auth
             .jwt
-            .create_token(&user_id.0, &body.email, body.name.as_deref(), "local")?;
+            .create_token(&user_id, &body.email, body.name.as_deref(), "local")?;
 
     // Create refresh token in Redis
     let mut refresh_token_bytes = [0u8; 32];
@@ -216,7 +216,7 @@ pub async fn register(
         .map_err(|_| ApiError::InternalError("Time went backwards".to_string()))?
         .as_secs();
     let session = cache::session::Session {
-        user_id: user_id.0.clone(),
+        user_id: user_id.clone(),
         email: body.email.clone(),
         name: body.name.clone(),
         provider: "local".to_string(),
@@ -242,7 +242,7 @@ pub async fn register(
         expires_in: state.auth.config.jwt_expiry,
         csrf_token: csrf_token.clone(),
         user: UserInfo {
-            id: user_id.0,
+            id: user_id.clone(),
             email: body.email,
             name: body.name,
             provider: "local".to_string(),

@@ -161,7 +161,7 @@ impl RedisClient {
             Ok(None)
         } else {
             let value: String = serde_json::from_str(&result)
-                .map_err(|e| CacheError::SerializationFailed(format!("raw={result} err={e}")))?;
+                .map_err(|e| CacheError::SerializationFailed(e.to_string()))?;
             Ok(Some(value))
         }
     }

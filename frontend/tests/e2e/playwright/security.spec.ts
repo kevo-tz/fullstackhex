@@ -51,24 +51,31 @@ test.describe("Auth Cookie Security", () => {
 });
 
 test.describe("XSS Prevention", () => {
-  test("note created_at with invalid date renders safe text", async ({ page, request }) => {
+  test("note created_at with invalid date renders safe text", async ({ page, playwright }) => {
     const email = `xss-e2e-${Date.now()}@test.example.com`;
     const password = "e2e-test-password-123";
     createdUsers.push({ email, password });
-    await request.post("/api/auth/register", {
-      data: { email, password, name: "XSS Test" },
-    });
-    const loginRes = await request.post("/api/auth/login", {
-      data: { email, password },
-    });
-    expect(loginRes.ok()).toBeTruthy();
-    const loginData = await loginRes.json();
-    const token = loginData.access_token;
-    const noteRes = await request.post("/api/notes", {
-      headers: { Authorization: `Bearer ${token}` },
-      data: { title: "Safe", body: "Test note" },
-    });
-    expect(noteRes.ok()).toBeTruthy();
+
+    // Use a fresh API context to avoid CSRF from stale cookies in the shared fixture
+    const ctx = await playwright.request.newContext({ baseURL: "http://localhost:4321" });
+    try {
+      await ctx.post("/api/auth/register", {
+        data: { email, password, name: "XSS Test" },
+      });
+      const loginRes = await ctx.post("/api/auth/login", {
+        data: { email, password },
+      });
+      expect(loginRes.ok()).toBeTruthy();
+      const loginData = await loginRes.json();
+      const token = loginData.access_token;
+      const noteRes = await ctx.post("/api/notes", {
+        headers: { Authorization: `Bearer ${token}` },
+        data: { title: "Safe", body: "Test note" },
+      });
+      expect(noteRes.ok()).toBeTruthy();
+    } finally {
+      await ctx.dispose();
+    }
 
     // Auth via browser so the notes page can load with session cookies
     await page.goto("/login");

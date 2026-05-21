@@ -37,6 +37,7 @@ test.describe("Notes CRUD", () => {
 
   test("view note detail and delete", async ({ page, request }) => {
     // Create a note via API so this test doesn't depend on the create test
+    const deleteTitle = `Delete Test ${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
     const loginRes = await request.post("/api/auth/login", {
       data: { email: testUser.email, password: testUser.password },
     });
@@ -44,7 +45,7 @@ test.describe("Notes CRUD", () => {
     const token = loginData.access_token;
     const noteRes = await request.post("/api/notes", {
       headers: { Authorization: `Bearer ${token}` },
-      data: { title, body },
+      data: { title: deleteTitle, body },
     });
     expect(noteRes.ok()).toBeTruthy();
 
@@ -67,6 +68,6 @@ test.describe("Notes CRUD", () => {
     // Deletion navigates back to notes list — verify note is gone
     await page.waitForURL("/notes", { timeout: 15000 });
     await page.waitForSelector("#notes-loading", { state: "hidden", timeout: 10000 }).catch(e => console.error("notes-loading not hidden (verify deleted):", e.message));
-    await expect(page.getByText(title)).toHaveCount(0);
+    await expect(page.getByText(deleteTitle)).toHaveCount(0);
   });
 });

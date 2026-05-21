@@ -56,18 +56,19 @@ test.describe("XSS Prevention", () => {
     const password = "e2e-test-password-123";
     createdUsers.push({ email, password });
 
-    // Use a fresh API context to avoid CSRF from stale cookies in the shared fixture
+    // Use a fresh API context to avoid CSRF from stale cookies in the shared fixture.
+    // Register and extract the token from the response directly — a separate
+    // login call via the same context would carry registration cookies and
+    // fail CSRF validation because the middleware requires X-CSRF-Token on
+    // POST requests that include a session cookie.
     const ctx = await playwright.request.newContext({ baseURL: "http://localhost:4321" });
     try {
-      await ctx.post("/api/auth/register", {
+      const regRes = await ctx.post("/api/auth/register", {
         data: { email, password, name: "XSS Test" },
       });
-      const loginRes = await ctx.post("/api/auth/login", {
-        data: { email, password },
-      });
-      expect(loginRes.ok()).toBeTruthy();
-      const loginData = await loginRes.json();
-      const token = loginData.access_token;
+      expect(regRes.ok()).toBeTruthy();
+      const regData = await regRes.json();
+      const token = regData.access_token;
       const noteRes = await ctx.post("/api/notes", {
         headers: { Authorization: `Bearer ${token}` },
         data: { title: "Safe", body: "Test note" },

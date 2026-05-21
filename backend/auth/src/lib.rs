@@ -220,8 +220,21 @@ mod tests {
 
     #[test]
     fn auth_config_from_env_env_variants() {
+        // Save all env vars this test touches
         let secret_old = std::env::var("JWT_SECRET").ok();
         let mode_old = std::env::var("AUTH_MODE").ok();
+        let rate_register_max = std::env::var("RATE_LIMIT_REGISTER_MAX").ok();
+        let rate_register_window = std::env::var("RATE_LIMIT_REGISTER_WINDOW").ok();
+        let rate_login_email_max = std::env::var("RATE_LIMIT_LOGIN_EMAIL_MAX").ok();
+        let rate_login_ip_window = std::env::var("RATE_LIMIT_LOGIN_IP_WINDOW").ok();
+
+        // Unset CI/outer env vars that would override defaults
+        unsafe {
+            std::env::remove_var("RATE_LIMIT_REGISTER_MAX");
+            std::env::remove_var("RATE_LIMIT_REGISTER_WINDOW");
+            std::env::remove_var("RATE_LIMIT_LOGIN_EMAIL_MAX");
+            std::env::remove_var("RATE_LIMIT_LOGIN_IP_WINDOW");
+        }
 
         // 1. Missing JWT_SECRET => None
         unsafe { std::env::remove_var("JWT_SECRET") };
@@ -248,6 +261,7 @@ mod tests {
         assert_eq!(c.rate_limits.login_email_max, 5);
         assert_eq!(c.rate_limits.login_ip_window_secs, 300);
 
+        // Restore everything
         if let Some(v) = secret_old {
             unsafe { std::env::set_var("JWT_SECRET", v) };
         } else {
@@ -257,6 +271,18 @@ mod tests {
             unsafe { std::env::set_var("AUTH_MODE", v) };
         } else {
             unsafe { std::env::remove_var("AUTH_MODE") };
+        }
+        if let Some(v) = rate_register_max {
+            unsafe { std::env::set_var("RATE_LIMIT_REGISTER_MAX", v) };
+        }
+        if let Some(v) = rate_register_window {
+            unsafe { std::env::set_var("RATE_LIMIT_REGISTER_WINDOW", v) };
+        }
+        if let Some(v) = rate_login_email_max {
+            unsafe { std::env::set_var("RATE_LIMIT_LOGIN_EMAIL_MAX", v) };
+        }
+        if let Some(v) = rate_login_ip_window {
+            unsafe { std::env::set_var("RATE_LIMIT_LOGIN_IP_WINDOW", v) };
         }
     }
 

@@ -23,7 +23,7 @@ test.describe("Notes CRUD", () => {
     await page.goto("/notes");
 
     await page.waitForSelector("#notes-loading", { state: "hidden", timeout: 10000 }).catch(e => console.error("notes-loading not hidden (create test):", e.message));
-    await page.waitForTimeout(500);
+    await page.waitForSelector("#notes-table", { timeout: 10000 });
 
     await page.click('a[href="/notes/create"]');
     await page.waitForURL("/notes/create");
@@ -36,7 +36,19 @@ test.describe("Notes CRUD", () => {
     await expect(page.locator("text=" + title)).toBeVisible({ timeout: 10000 });
   });
 
-  test("view note detail and delete", async ({ page }) => {
+  test("view note detail and delete", async ({ page, request }) => {
+    // Create a note via API so this test doesn't depend on the create test
+    const loginRes = await request.post("/api/auth/login", {
+      data: { email: testUser.email, password: testUser.password },
+    });
+    const loginData = await loginRes.json();
+    const token = loginData.access_token;
+    const noteRes = await request.post("/api/notes", {
+      headers: { Authorization: `Bearer ${token}` },
+      data: { title, body },
+    });
+    expect(noteRes.ok()).toBeTruthy();
+
     await authenticate(page);
     await page.goto("/notes");
 

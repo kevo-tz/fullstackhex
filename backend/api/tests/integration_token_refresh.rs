@@ -18,6 +18,7 @@ use serial_test::serial;
 use std::sync::Arc;
 use std::time::Duration;
 use tower::ServiceExt;
+use uuid::Uuid;
 
 fn test_prometheus_handle() -> metrics_exporter_prometheus::PrometheusHandle {
     init_metrics_recorder()
@@ -90,6 +91,24 @@ async fn full_state() -> Option<AppState> {
     })
 }
 
+/// Delete a test user by email to prevent database pollution.
+/// Uses a fresh connection so it works independently of the test's `full_state()`.
+async fn cleanup_user(database_url: &str, email: &str) {
+    let pool = match sqlx::postgres::PgPoolOptions::new()
+        .max_connections(1)
+        .acquire_timeout(Duration::from_secs(3))
+        .connect(database_url)
+        .await
+    {
+        Ok(p) => p,
+        Err(_) => return,
+    };
+    let _ = sqlx::query("DELETE FROM users WHERE email = $1")
+        .bind(email)
+        .execute(&pool)
+        .await;
+}
+
 #[tokio::test]
 #[serial]
 async fn refresh_token_lifecycle() {
@@ -101,10 +120,14 @@ async fn refresh_token_lifecycle() {
     };
 
     let app = router_with_state(state);
+    let email = format!(
+        "refresh-lifecycle-{}@test.fullstackhex.local",
+        Uuid::new_v4()
+    );
 
     // 1. REGISTER a test user
     let register_body = serde_json::json!({
-        "email": "refresh-lifecycle@example.com",
+        "email": email,
         "password": "SecureP@ss1",
         "name": "Refresh Tester",
     });
@@ -237,6 +260,11 @@ async fn refresh_token_lifecycle() {
         StatusCode::UNAUTHORIZED,
         "refreshing after logout should fail"
     );
+
+    // Cleanup
+    if let Ok(db_url) = std::env::var("DATABASE_URL") {
+        cleanup_user(&db_url, &email).await;
+    }
 }
 
 #[tokio::test]
@@ -276,7 +304,7 @@ async fn refresh_with_invalid_token_returns_401() {
 
 #[tokio::test]
 #[serial]
-async fn refresh_without_body_returns_422() {
+async fn refresh_without_body_returns_401() {
     let Some(state) = full_state().await else {
         eprintln!("SKIP: DATABASE_URL or REDIS_URL not set/unreachable");
         return;

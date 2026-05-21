@@ -217,8 +217,10 @@ mod proptests;
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serial_test::serial;
 
     #[test]
+    #[serial]
     fn auth_config_from_env_env_variants() {
         // Save all env vars this test touches
         let secret_old = std::env::var("JWT_SECRET").ok();

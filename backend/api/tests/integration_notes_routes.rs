@@ -6,6 +6,8 @@
 
 use api::AppState;
 use api::DbStatus;
+use api::HealthState;
+use api::WebSocketState;
 use api::metrics::init_metrics_recorder;
 use api::router_with_state;
 use auth::AuthConfig;
@@ -41,6 +43,7 @@ fn test_auth_service() -> Arc<AuthService> {
         sidecar_shared_secret: None,
         fail_open_on_redis_error: true,
         rate_limits: Default::default(),
+        cookie_secure: true,
     };
     Arc::new(AuthService::new(config))
 }
@@ -56,29 +59,32 @@ async fn connect_db() -> Option<(AppState, PgPool)> {
         .ok()?;
 
     let state = AppState {
-        db: DbStatus::Connected(pool.clone()),
-        redis: None,
+        health: Arc::new(HealthState {
+            db: DbStatus::Connected(pool.clone()),
+            redis: None,
+            sidecar: PythonSidecar::new(
+                "/tmp/__nonexistent_test_socket__.sock",
+                Duration::from_secs(1),
+                0,
+            ),
+            gauge_task: None,
+            feature_flags: Some(domain::FeatureFlags {
+                maintenance_mode: false,
+            }),
+        }),
+        ws: Arc::new(WebSocketState {
+            connection_permits: std::sync::Arc::new(tokio::sync::Semaphore::new(100)),
+            idle_timeout: Duration::from_secs(300),
+            shutdown: std::sync::Arc::new(tokio::sync::Notify::new()),
+            user_connections: std::sync::Arc::new(std::sync::RwLock::new(
+                std::collections::HashMap::new(),
+            )),
+            per_user_max: 10,
+        }),
         auth: Some(test_auth_service()),
         storage: None,
-        sidecar: PythonSidecar::new(
-            "/tmp/__nonexistent_test_socket__.sock",
-            Duration::from_secs(1),
-            0,
-        ),
         prometheus_handle: test_prometheus_handle(),
-        gauge_task: None,
-        feature_flags: Some(domain::FeatureFlags {
-            chat_enabled: false,
-            storage_readonly: false,
-            maintenance_mode: false,
-        }),
-        ws_connection_permits: std::sync::Arc::new(tokio::sync::Semaphore::new(100)),
-        ws_idle_timeout: Duration::from_secs(300),
-        ws_shutdown: std::sync::Arc::new(tokio::sync::Notify::new()),
-        ws_user_connections: std::sync::Arc::new(std::sync::Mutex::new(
-            std::collections::HashMap::new(),
-        )),
-        ws_per_user_max: 10,
+        allowed_origin: None,
     };
 
     Some((state, pool))
@@ -287,6 +293,156 @@ async fn notes_get_nonexistent_returns_404() {
         .unwrap();
 
     assert_eq!(response.status(), StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+#[serial]
+async fn notes_authorization_user_b_cannot_access_user_a_note() {
+    let Some((state, pool)) = connect_db().await else {
+        eprintln!("SKIP: DATABASE_URL not set or unreachable");
+        return;
+    };
+
+    let app = router_with_state(state);
+    let auth = test_auth_service();
+
+    // Create user A and a note
+    let email_a = format!("notes-auth-a-{}@example.com", Uuid::new_v4());
+    let (_user_a_id, token_a) = create_test_user(&pool, &auth, &email_a).await;
+
+    let create_body = serde_json::json!({
+        "title": "User A's secret note",
+        "body": "This should not be visible to User B",
+    });
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/notes")
+                .method("POST")
+                .header("authorization", format!("Bearer {token_a}"))
+                .header("content-type", "application/json")
+                .body(axum::body::Body::from(
+                    serde_json::to_vec(&create_body).unwrap(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::CREATED);
+    let bytes = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    let note: Value = serde_json::from_slice(&bytes).unwrap();
+    let note_id = note["id"].as_str().unwrap().to_string();
+
+    // Create user B
+    let email_b = format!("notes-auth-b-{}@example.com", Uuid::new_v4());
+    let (_user_b_id, token_b) = create_test_user(&pool, &auth, &email_b).await;
+
+    // User B GETs user A's note → 404
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri(format!("/notes/{note_id}"))
+                .method("GET")
+                .header("authorization", format!("Bearer {token_b}"))
+                .body(axum::body::Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        response.status(),
+        StatusCode::NOT_FOUND,
+        "user B should not see user A's note"
+    );
+
+    // User B PUTs user A's note → 404
+    let update_body = serde_json::json!({
+        "title": "Hacked title",
+        "body": "Hacked body",
+    });
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri(format!("/notes/{note_id}"))
+                .method("PUT")
+                .header("authorization", format!("Bearer {token_b}"))
+                .header("content-type", "application/json")
+                .body(axum::body::Body::from(
+                    serde_json::to_vec(&update_body).unwrap(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        response.status(),
+        StatusCode::NOT_FOUND,
+        "user B should not update user A's note"
+    );
+
+    // User B DELETEs user A's note → 404
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri(format!("/notes/{note_id}"))
+                .method("DELETE")
+                .header("authorization", format!("Bearer {token_b}"))
+                .body(axum::body::Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        response.status(),
+        StatusCode::NOT_FOUND,
+        "user B should not delete user A's note"
+    );
+
+    // User B's list does not include user A's note
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/notes")
+                .method("GET")
+                .header("authorization", format!("Bearer {token_b}"))
+                .body(axum::body::Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let bytes = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    let list: Value = serde_json::from_slice(&bytes).unwrap();
+    let items = list["items"].as_array().unwrap();
+    let note_ids: Vec<&str> = items.iter().filter_map(|i| i["id"].as_str()).collect();
+    assert!(
+        !note_ids.contains(&note_id.as_str()),
+        "user B's note list should not contain user A's note"
+    );
+
+    // Verify user A can still access their own note
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri(format!("/notes/{note_id}"))
+                .method("GET")
+                .header("authorization", format!("Bearer {token_a}"))
+                .body(axum::body::Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        response.status(),
+        StatusCode::OK,
+        "user A should still see their own note"
+    );
 }
 
 #[tokio::test]

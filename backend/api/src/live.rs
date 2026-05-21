@@ -20,7 +20,7 @@
 use crate::AppState;
 use axum::extract::State;
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
-use axum::http::{HeaderMap, StatusCode, Uri};
+use axum::http::{HeaderMap, StatusCode};
 use axum::response::IntoResponse;
 use cache::pubsub::PubSubMessage;
 use serde::{Deserialize, Serialize};
@@ -28,7 +28,7 @@ use serde::{Deserialize, Serialize};
 use futures_util::sink::SinkExt;
 use std::collections::HashMap;
 use std::sync::Arc;
-use std::sync::Mutex;
+use std::sync::RwLock;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 use tokio::sync::Notify;
@@ -68,7 +68,7 @@ pub enum LiveEvent {
 /// Events are serialized to JSON and published to the `live:events` Redis channel
 /// through the cache crate's pub/sub methods (not raw fred) for correct namespacing.
 pub async fn broadcast_event(state: &AppState, event: &LiveEvent) {
-    let redis = match &state.redis {
+    let redis = match &state.health.redis {
         Some(r) => r,
         None => return, // Redis not configured — event is dropped (polling fallback handles this)
     };
@@ -89,6 +89,102 @@ pub async fn broadcast_event(state: &AppState, event: &LiveEvent) {
     ::metrics::counter!("ws_events_published_total").increment(1);
 }
 
+/// Result of WebSocket connection validation.
+enum WsConnectionOutcome {
+    Permit {
+        redis: Arc<cache::RedisClient>,
+        permit: tokio::sync::OwnedSemaphorePermit,
+        user_id: Option<String>,
+    },
+    Reject(axum::response::Response),
+}
+
+/// Validate a WebSocket connection request and return the resources needed
+/// for a successful upgrade, or an HTTP error response.
+///
+/// Extracted from `ws_handler` so the business logic can be unit-tested
+/// without requiring the Axum `WebSocketUpgrade` extractor.
+async fn validate_ws_connection(headers: &HeaderMap, state: &AppState) -> WsConnectionOutcome {
+    // Validate Origin when ALLOWED_ORIGIN is configured — prevents cross-site
+    // WebSocket hijacking even when session cookies are present.
+    if let Some(ref allowed) = state.allowed_origin {
+        let origin = headers
+            .get(axum::http::header::ORIGIN)
+            .and_then(|v| v.to_str().ok());
+        match origin {
+            Some(o) if o == allowed => {}
+            Some(_) | None => {
+                return WsConnectionOutcome::Reject(
+                    (StatusCode::FORBIDDEN, "{\"error\":\"Origin not allowed\"}").into_response(),
+                );
+            }
+        }
+    }
+
+    let maybe_user_id = if state.auth.is_some() {
+        cookie_authenticated(headers, state).await
+    } else {
+        None
+    };
+
+    if state.auth.is_some() && maybe_user_id.is_none() {
+        return WsConnectionOutcome::Reject(
+            (
+                StatusCode::UNAUTHORIZED,
+                "{\"error\":\"Authentication required\"}",
+            )
+                .into_response(),
+        );
+    }
+
+    let redis = match &state.health.redis {
+        Some(r) => r.clone(),
+        None => {
+            return WsConnectionOutcome::Reject(
+                (
+                    StatusCode::NOT_FOUND,
+                    "{\"error\":\"WebSocket not available — Redis is disabled\"}",
+                )
+                    .into_response(),
+            );
+        }
+    };
+
+    let permit = match state.ws.connection_permits.clone().try_acquire_owned() {
+        Ok(p) => p,
+        Err(_) => {
+            return WsConnectionOutcome::Reject(
+                (
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    "{\"error\":\"Server at capacity — too many WebSocket connections\"}",
+                )
+                    .into_response(),
+            );
+        }
+    };
+
+    if let Some(ref uid) = maybe_user_id {
+        let mut conns = state.ws.user_connections.write().unwrap();
+        let current = *conns.get(uid).unwrap_or(&0);
+        if current >= state.ws.per_user_max {
+            return WsConnectionOutcome::Reject(
+                (
+                    StatusCode::TOO_MANY_REQUESTS,
+                    "{\"error\":\"Too many connections from this user\"}",
+                )
+                    .into_response(),
+            );
+        }
+        conns.insert(uid.clone(), current + 1);
+    }
+
+    WsConnectionOutcome::Permit {
+        redis,
+        permit,
+        user_id: maybe_user_id,
+    }
+}
+
 /// Handle WebSocket upgrade requests.
 ///
 /// Returns 404 Not Found when Redis is disabled — the frontend falls back
@@ -98,113 +194,31 @@ pub async fn broadcast_event(state: &AppState, event: &LiveEvent) {
 pub async fn ws_handler(
     ws: WebSocketUpgrade,
     headers: HeaderMap,
-    _uri: Uri,
     State(state): State<Arc<AppState>>,
 ) -> impl IntoResponse {
-    // Auth check: when auth is configured, require valid session cookie
-    let maybe_user_id = if state.auth.is_some() {
-        cookie_authenticated(&headers, &state).await
-    } else {
-        None
-    };
-
-    if state.auth.is_some() && maybe_user_id.is_none() {
-        tracing::info!("WS connection rejected — not authenticated");
-        return (
-            StatusCode::UNAUTHORIZED,
-            "{\"error\":\"Authentication required\"}",
-        )
-            .into_response();
-    }
-
-    // Validate Origin header against ALLOWED_ORIGIN when configured
-    if let Some(allowed) = std::env::var("ALLOWED_ORIGIN")
-        .ok()
-        .filter(|s| !s.is_empty())
-    {
-        let origin = headers
-            .get("origin")
-            .and_then(|v| v.to_str().ok())
-            .unwrap_or("");
-        if !origin.is_empty() {
-            let allowed_host = allowed
-                .trim_start_matches("https://")
-                .trim_start_matches("http://");
-            // Extract host from Origin URI for exact matching (prevents
-            // substring bypass like "evil-example.com" when "example.com" is allowed)
-            let origin_host = origin
-                .trim_start_matches("https://")
-                .trim_start_matches("http://")
-                .split('/')
-                .next()
-                .unwrap_or("");
-            let origin_host = origin_host.split(':').next().unwrap_or("");
-            // Case-insensitive hostname comparison per HTTP semantics
-            if !origin_host.eq_ignore_ascii_case(allowed_host) {
-                tracing::warn!(%origin, "WS connection rejected — Origin not allowed");
-                return (StatusCode::FORBIDDEN, "{\"error\":\"Origin not allowed\"}")
-                    .into_response();
-            }
-        }
-    }
-
-    // Check Redis availability before touching per-user state
-    let redis = match &state.redis {
-        Some(r) => r.clone(),
-        None => {
-            return (
-                StatusCode::NOT_FOUND,
-                "{\"error\":\"WebSocket not available — Redis is disabled\"}",
-            )
-                .into_response();
-        }
-    };
-
-    // Acquire semaphore permit (non-blocking fail returns 503)
-    let permits = state.ws_connection_permits.clone();
-    let permit = match permits.try_acquire_owned() {
-        Ok(p) => p,
-        Err(_) => {
-            tracing::warn!("WS connection limit reached — rejecting connection");
-            return (
-                StatusCode::SERVICE_UNAVAILABLE,
-                "{\"error\":\"Server at capacity — too many WebSocket connections\"}",
-            )
-                .into_response();
-        }
-    };
-
-    // Per-user quota: check AND increment in one critical section to prevent
-    // TOCTOU race where concurrent connections from the same user both pass
-    let user_id = maybe_user_id.clone();
-    if let Some(ref uid) = maybe_user_id {
-        let mut conns = state.ws_user_connections.lock().unwrap();
-        let current = *conns.get(uid).unwrap_or(&0);
-        if current >= state.ws_per_user_max {
-            tracing::warn!(user_id = %uid, "WS connection rejected — per-user limit reached");
-            return (
-                StatusCode::TOO_MANY_REQUESTS,
-                "{\"error\":\"Too many connections from this user\"}",
-            )
-                .into_response();
-        }
-        conns.insert(uid.clone(), current + 1);
-    }
-
-    let idle_timeout = state.ws_idle_timeout;
-    let ws_shutdown = state.ws_shutdown.clone();
-    let user_connections = state.ws_user_connections.clone();
-    ws.on_upgrade(move |socket| {
-        handle_socket(
-            socket,
+    match validate_ws_connection(&headers, &state).await {
+        WsConnectionOutcome::Permit {
             redis,
-            idle_timeout,
-            ws_shutdown,
-            user_connections,
-            user_id,
             permit,
-        )
-    })
+            user_id,
+        } => {
+            let idle_timeout = state.ws.idle_timeout;
+            let ws_shutdown = state.ws.shutdown.clone();
+            let user_connections = state.ws.user_connections.clone();
+            ws.on_upgrade(move |socket| {
+                handle_socket(
+                    socket,
+                    redis,
+                    idle_timeout,
+                    ws_shutdown,
+                    user_connections,
+                    user_id,
+                    permit,
+                )
+            })
+        }
+        WsConnectionOutcome::Reject(response) => response,
+    }
 }
 
 /// Authenticate a WebSocket connection via session cookie.
@@ -226,7 +240,7 @@ async fn cookie_authenticated(headers: &HeaderMap, state: &AppState) -> Option<S
         _ => return None,
     };
 
-    let redis = match &state.redis {
+    let redis = match &state.health.redis {
         Some(r) => r.clone(),
         None => return None,
     };
@@ -262,13 +276,13 @@ impl Drop for WsGuard {
 /// Drop guard that decrements the per-user connection count.
 struct WsUserGuard {
     user_id: String,
-    connections: Arc<Mutex<HashMap<String, usize>>>,
+    connections: Arc<RwLock<HashMap<String, usize>>>,
 }
 
 impl Drop for WsUserGuard {
     fn drop(&mut self) {
         let uid = &self.user_id;
-        let mut map = self.connections.lock().unwrap();
+        let mut map = self.connections.write().unwrap();
         if let Some(count) = map.get_mut(uid) {
             *count = count.saturating_sub(1);
             if *count == 0 {
@@ -284,7 +298,7 @@ async fn handle_socket(
     redis: Arc<cache::RedisClient>,
     ws_idle_timeout: Duration,
     ws_shutdown: Arc<Notify>,
-    user_connections: Arc<Mutex<HashMap<String, usize>>>,
+    user_connections: Arc<RwLock<HashMap<String, usize>>>,
     user_id: Option<String>,
     _permit: tokio::sync::OwnedSemaphorePermit,
 ) {
@@ -319,9 +333,21 @@ async fn handle_socket(
             msg = tokio::time::timeout(ws_idle_timeout, subscriber.recv()) => {
                 match msg {
                     Ok(Some(PubSubMessage { payload, .. })) => {
-                        if let Err(e) = socket.send(Message::Text(payload.into())).await {
-                            tracing::info!(error = %e, "WS send error — client disconnected");
-                            break;
+                        // Use a short timeout on send() to avoid blocking the subscriber
+                        // loop when the client's TCP buffer is full. Drop the message
+                        // instead of stalling all event delivery.
+                        match tokio::time::timeout(
+                            Duration::from_millis(100),
+                            socket.send(Message::Text(payload.into())),
+                        ).await {
+                            Ok(Ok(())) => {}
+                            Ok(Err(e)) => {
+                                tracing::info!(error = %e, "WS send error — client disconnected");
+                                break;
+                            }
+                            Err(_) => {
+                                tracing::warn!("WS backpressure — dropping message");
+                            }
                         }
                     }
                     Ok(None) => {
@@ -442,27 +468,7 @@ mod tests {
         use axum::http::Request;
         let app = axum::Router::new()
             .route("/live", get(ws_handler))
-            .with_state(Arc::new(crate::AppState {
-                db: crate::DbStatus::NotConfigured,
-                redis: None,
-                auth: None,
-                storage: None,
-                sidecar: crate::PythonSidecar::new(
-                    std::path::PathBuf::from("/tmp/nonexistent.sock"),
-                    std::time::Duration::from_secs(1),
-                    0,
-                ),
-                prometheus_handle: metrics::init_metrics_recorder(),
-                gauge_task: None,
-                feature_flags: None,
-                ws_connection_permits: std::sync::Arc::new(tokio::sync::Semaphore::new(100)),
-                ws_idle_timeout: std::time::Duration::from_secs(300),
-                ws_shutdown: std::sync::Arc::new(tokio::sync::Notify::new()),
-                ws_user_connections: std::sync::Arc::new(std::sync::Mutex::new(
-                    std::collections::HashMap::new(),
-                )),
-                ws_per_user_max: 10,
-            }));
+            .with_state(Arc::new(test_state()));
 
         // Without Upgrade header, WebSocketUpgrade extractor returns 400
         let resp = app
@@ -481,28 +487,8 @@ mod tests {
     #[test]
     fn broadcast_event_does_not_panic_when_redis_none() {
         // This test validates the fix for D3 (Redis None panic):
-        // broadcast_event must return early when state.redis is None
-        let state = crate::AppState {
-            db: crate::DbStatus::NotConfigured,
-            redis: None,
-            auth: None,
-            storage: None,
-            sidecar: crate::PythonSidecar::new(
-                std::path::PathBuf::from("/tmp/nonexistent.sock"),
-                std::time::Duration::from_secs(1),
-                0,
-            ),
-            prometheus_handle: metrics::init_metrics_recorder(),
-            gauge_task: None,
-            feature_flags: None,
-            ws_connection_permits: std::sync::Arc::new(tokio::sync::Semaphore::new(100)),
-            ws_idle_timeout: std::time::Duration::from_secs(300),
-            ws_shutdown: std::sync::Arc::new(tokio::sync::Notify::new()),
-            ws_user_connections: std::sync::Arc::new(std::sync::Mutex::new(
-                std::collections::HashMap::new(),
-            )),
-            ws_per_user_max: 10,
-        };
+        // broadcast_event must return early when state.health.redis is None
+        let state = test_state();
 
         let event = LiveEvent::ConnectionStatus {
             status: "connected".into(),
@@ -517,9 +503,9 @@ mod tests {
 
     #[test]
     fn ws_user_guard_decrements_on_drop() {
-        let map: Arc<Mutex<HashMap<String, usize>>> = Arc::new(Mutex::new(HashMap::new()));
+        let map: Arc<RwLock<HashMap<String, usize>>> = Arc::new(RwLock::new(HashMap::new()));
         {
-            let mut m = map.lock().unwrap();
+            let mut m = map.write().unwrap();
             m.insert("user1".into(), 3usize);
         }
         {
@@ -528,14 +514,14 @@ mod tests {
                 connections: map.clone(),
             };
         }
-        assert_eq!(map.lock().unwrap().get("user1"), Some(&2usize));
+        assert_eq!(map.read().unwrap().get("user1"), Some(&2usize));
     }
 
     #[test]
     fn ws_user_guard_removes_key_when_zero() {
-        let map: Arc<Mutex<HashMap<String, usize>>> = Arc::new(Mutex::new(HashMap::new()));
+        let map: Arc<RwLock<HashMap<String, usize>>> = Arc::new(RwLock::new(HashMap::new()));
         {
-            let mut m = map.lock().unwrap();
+            let mut m = map.write().unwrap();
             m.insert("user1".into(), 1usize);
         }
         {
@@ -544,14 +530,14 @@ mod tests {
                 connections: map.clone(),
             };
         }
-        assert!(map.lock().unwrap().get("user1").is_none());
+        assert!(map.read().unwrap().get("user1").is_none());
     }
 
     #[test]
     fn ws_user_guard_is_noop_for_unknown_user() {
-        let map: Arc<Mutex<HashMap<String, usize>>> = Arc::new(Mutex::new(HashMap::new()));
+        let map: Arc<RwLock<HashMap<String, usize>>> = Arc::new(RwLock::new(HashMap::new()));
         {
-            let mut m = map.lock().unwrap();
+            let mut m = map.write().unwrap();
             m.insert("user1".into(), 3usize);
         }
         {
@@ -560,45 +546,25 @@ mod tests {
                 connections: map.clone(),
             };
         }
-        assert_eq!(map.lock().unwrap().get("user1"), Some(&3usize));
+        assert_eq!(map.read().unwrap().get("user1"), Some(&3usize));
     }
 
     #[test]
     fn ws_user_guard_is_noop_on_empty_map() {
-        let map: Arc<Mutex<HashMap<String, usize>>> = Arc::new(Mutex::new(HashMap::new()));
+        let map: Arc<RwLock<HashMap<String, usize>>> = Arc::new(RwLock::new(HashMap::new()));
         {
             let _user_guard = WsUserGuard {
                 user_id: "user1".into(),
                 connections: map.clone(),
             };
         }
-        assert!(map.lock().unwrap().is_empty());
+        assert!(map.read().unwrap().is_empty());
     }
 
     #[tokio::test]
     async fn cookie_authenticated_returns_none_without_cookie() {
         let headers = HeaderMap::new();
-        let state = crate::AppState {
-            db: crate::DbStatus::NotConfigured,
-            redis: None,
-            auth: None,
-            storage: None,
-            sidecar: crate::PythonSidecar::new(
-                std::path::PathBuf::from("/tmp/nonexistent.sock"),
-                std::time::Duration::from_secs(1),
-                0,
-            ),
-            prometheus_handle: metrics::init_metrics_recorder(),
-            gauge_task: None,
-            feature_flags: None,
-            ws_connection_permits: std::sync::Arc::new(tokio::sync::Semaphore::new(100)),
-            ws_idle_timeout: std::time::Duration::from_secs(300),
-            ws_shutdown: std::sync::Arc::new(tokio::sync::Notify::new()),
-            ws_user_connections: std::sync::Arc::new(std::sync::Mutex::new(
-                std::collections::HashMap::new(),
-            )),
-            ws_per_user_max: 10,
-        };
+        let state = test_state();
         assert!(cookie_authenticated(&headers, &state).await.is_none());
     }
 
@@ -606,27 +572,7 @@ mod tests {
     async fn cookie_authenticated_returns_none_when_redis_none() {
         let mut headers = HeaderMap::new();
         headers.insert("cookie", "session=abc123".parse().unwrap());
-        let state = crate::AppState {
-            db: crate::DbStatus::NotConfigured,
-            redis: None,
-            auth: None,
-            storage: None,
-            sidecar: crate::PythonSidecar::new(
-                std::path::PathBuf::from("/tmp/nonexistent.sock"),
-                std::time::Duration::from_secs(1),
-                0,
-            ),
-            prometheus_handle: metrics::init_metrics_recorder(),
-            gauge_task: None,
-            feature_flags: None,
-            ws_connection_permits: std::sync::Arc::new(tokio::sync::Semaphore::new(100)),
-            ws_idle_timeout: std::time::Duration::from_secs(300),
-            ws_shutdown: std::sync::Arc::new(tokio::sync::Notify::new()),
-            ws_user_connections: std::sync::Arc::new(std::sync::Mutex::new(
-                std::collections::HashMap::new(),
-            )),
-            ws_per_user_max: 10,
-        };
+        let state = test_state();
         assert!(cookie_authenticated(&headers, &state).await.is_none());
     }
 
@@ -634,27 +580,161 @@ mod tests {
     async fn cookie_authenticated_returns_none_for_empty_session() {
         let mut headers = HeaderMap::new();
         headers.insert("cookie", "session=".parse().unwrap());
-        let state = crate::AppState {
-            db: crate::DbStatus::NotConfigured,
-            redis: None,
+        let state = test_state();
+        assert!(cookie_authenticated(&headers, &state).await.is_none());
+    }
+
+    #[tokio::test]
+    async fn validate_connection_returns_401_when_auth_configured_no_cookie() {
+        let headers = HeaderMap::new();
+        let state = AppState {
+            health: Arc::new(crate::HealthState {
+                db: crate::DbStatus::NotConfigured,
+                redis: None,
+                sidecar: crate::PythonSidecar::new(
+                    std::path::PathBuf::from("/tmp/nonexistent.sock"),
+                    Duration::from_secs(1),
+                    0,
+                ),
+                gauge_task: None,
+                feature_flags: None,
+            }),
+            ws: Arc::new(crate::WebSocketState {
+                connection_permits: Arc::new(tokio::sync::Semaphore::new(100)),
+                idle_timeout: Duration::from_secs(300),
+                shutdown: Arc::new(tokio::sync::Notify::new()),
+                user_connections: Arc::new(std::sync::RwLock::new(HashMap::new())),
+                per_user_max: 10,
+            }),
+            auth: Some(Arc::new(auth::AuthService::new(auth::AuthConfig {
+                jwt_secret: "test".to_string(),
+                jwt_issuer: "test".to_string(),
+                jwt_expiry: 900,
+                refresh_expiry: 604800,
+                auth_mode: auth::AuthMode::Cookie,
+                google_client_id: None,
+                google_client_secret: None,
+                github_client_id: None,
+                github_client_secret: None,
+                oauth_redirect_url: None,
+                sidecar_shared_secret: None,
+                fail_open_on_redis_error: true,
+                rate_limits: Default::default(),
+                cookie_secure: false,
+            }))),
+            storage: None,
+            prometheus_handle: metrics::init_metrics_recorder(),
+            allowed_origin: None,
+        };
+        match validate_ws_connection(&headers, &state).await {
+            WsConnectionOutcome::Reject(response) => {
+                assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+            }
+            _ => panic!("expected Reject with 401"),
+        }
+    }
+
+    #[tokio::test]
+    async fn validate_connection_returns_404_when_redis_disabled() {
+        let headers = HeaderMap::new();
+        let state = test_state();
+        match validate_ws_connection(&headers, &state).await {
+            WsConnectionOutcome::Reject(response) => {
+                assert_eq!(response.status(), StatusCode::NOT_FOUND);
+            }
+            _ => panic!("expected Reject with 404"),
+        }
+    }
+
+    async fn state_with_redis(permits: usize) -> Option<AppState> {
+        let url = std::env::var("REDIS_URL").ok()?;
+        let redis = cache::RedisClient::new(&url, "test-ws-validate")
+            .await
+            .ok()?;
+        Some(AppState {
+            health: Arc::new(crate::HealthState {
+                db: crate::DbStatus::NotConfigured,
+                redis: Some(Arc::new(redis)),
+                sidecar: crate::PythonSidecar::new(
+                    std::path::PathBuf::from("/tmp/nonexistent.sock"),
+                    Duration::from_secs(1),
+                    0,
+                ),
+                gauge_task: None,
+                feature_flags: None,
+            }),
+            ws: Arc::new(crate::WebSocketState {
+                connection_permits: Arc::new(tokio::sync::Semaphore::new(permits)),
+                idle_timeout: Duration::from_secs(300),
+                shutdown: Arc::new(tokio::sync::Notify::new()),
+                user_connections: Arc::new(std::sync::RwLock::new(HashMap::new())),
+                per_user_max: 10,
+            }),
             auth: None,
             storage: None,
-            sidecar: crate::PythonSidecar::new(
-                std::path::PathBuf::from("/tmp/nonexistent.sock"),
-                std::time::Duration::from_secs(1),
-                0,
-            ),
             prometheus_handle: metrics::init_metrics_recorder(),
-            gauge_task: None,
-            feature_flags: None,
-            ws_connection_permits: std::sync::Arc::new(tokio::sync::Semaphore::new(100)),
-            ws_idle_timeout: std::time::Duration::from_secs(300),
-            ws_shutdown: std::sync::Arc::new(tokio::sync::Notify::new()),
-            ws_user_connections: std::sync::Arc::new(std::sync::Mutex::new(
-                std::collections::HashMap::new(),
-            )),
-            ws_per_user_max: 10,
+            allowed_origin: None,
+        })
+    }
+
+    #[tokio::test]
+    async fn validate_connection_returns_503_when_semaphore_exhausted() {
+        let Some(state) = state_with_redis(0).await else {
+            eprintln!("SKIP: REDIS_URL not set or unreachable");
+            return;
         };
-        assert!(cookie_authenticated(&headers, &state).await.is_none());
+        let headers = HeaderMap::new();
+        match validate_ws_connection(&headers, &state).await {
+            WsConnectionOutcome::Reject(response) => {
+                assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+            }
+            _ => panic!("expected Reject with 503"),
+        }
+    }
+
+    #[tokio::test]
+    async fn validate_connection_returns_permit_when_all_ok() {
+        let Some(state) = state_with_redis(100).await else {
+            eprintln!("SKIP: REDIS_URL not set or unreachable");
+            return;
+        };
+        let headers = HeaderMap::new();
+        match validate_ws_connection(&headers, &state).await {
+            WsConnectionOutcome::Permit { .. } => {}
+            WsConnectionOutcome::Reject(response) => {
+                panic!("expected Permit, got {}", response.status());
+            }
+        }
+    }
+
+    fn test_state() -> crate::AppState {
+        use std::collections::HashMap;
+        use std::sync::Arc;
+        use std::time::Duration;
+
+        crate::AppState {
+            health: Arc::new(crate::HealthState {
+                db: crate::DbStatus::NotConfigured,
+                redis: None,
+                sidecar: crate::PythonSidecar::new(
+                    std::path::PathBuf::from("/tmp/nonexistent.sock"),
+                    Duration::from_secs(1),
+                    0,
+                ),
+                gauge_task: None,
+                feature_flags: None,
+            }),
+            ws: Arc::new(crate::WebSocketState {
+                connection_permits: Arc::new(tokio::sync::Semaphore::new(100)),
+                idle_timeout: Duration::from_secs(300),
+                shutdown: Arc::new(tokio::sync::Notify::new()),
+                user_connections: Arc::new(std::sync::RwLock::new(HashMap::new())),
+                per_user_max: 10,
+            }),
+            auth: None,
+            storage: None,
+            prometheus_handle: metrics::init_metrics_recorder(),
+            allowed_origin: None,
+        }
     }
 }

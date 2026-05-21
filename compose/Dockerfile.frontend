@@ -1,5 +1,5 @@
 # Stage1: Builder - Build the Astro site
-FROM oven/bun:1.3-slim AS builder
+FROM oven/bun:1.3-slim@sha256:d56a2534ffd262e92c12fd3249d3924d296d97086da773f821d7d0477435ea04 AS builder
 
 WORKDIR /app
 
@@ -20,16 +20,16 @@ ENV PUBLIC_API_URL=${PUBLIC_API_URL}
 RUN cd frontend && bun run build
 
 # Stage2: Runtime - Run the Astro SSR Node server
-FROM node:26-slim
+FROM node:26-slim@sha256:424cafd2a035ed2b2d74acc3142b68b426fb62a47742c80a75e7117db02d6b30
 
 WORKDIR /app
 
-# Copy the built SSR output from the builder stage
+# Copy the built SSR output and node_modules from the builder stage
 COPY --from=builder /app/frontend/dist ./dist
+COPY --from=builder /app/frontend/node_modules ./node_modules
 COPY --from=builder /app/frontend/package.json ./
 
-# Install production deps — dist/server/entry.mjs has bare imports
-RUN npm install --production
+# No npm install needed — node_modules bundled from builder via bun
 
 ENV HOST=0.0.0.0
 ENV PORT=4321

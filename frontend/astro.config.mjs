@@ -1,13 +1,14 @@
 // @ts-check
 import { defineConfig } from 'astro/config';
 import node from '@astrojs/node';
-import tailwindcss from '@tailwindcss/vite';
 
 export default defineConfig({
   output: 'server',
   adapter: node({ mode: 'standalone' }),
+  markdown: {
+    syntaxHighlight: false,
+  },
   vite: {
-    plugins: [tailwindcss()],
     server: {
       proxy: {
         '/api': {
@@ -17,6 +18,12 @@ export default defineConfig({
           rewrite: (path) => path.replace(/^\/api/, ''),
         },
       },
+    },
+  },
+  security: {
+    csp: {
+      scriptDirective: { resources: ["'self'"] },
+      styleDirective: { resources: ["'self'"] },
     },
   },
 });

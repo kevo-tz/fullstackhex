@@ -1,0 +1,92 @@
+import { test, expect } from "@playwright/test";
+
+const createdUsers: { email: string; password: string }[] = [];
+
+test.afterAll(async ({ request }) => {
+  for (const user of createdUsers) {
+    try {
+      const loginRes = await request.post("/api/auth/login", {
+        data: { email: user.email, password: user.password },
+      });
+      if (!loginRes.ok) continue;
+      const data = await loginRes.json();
+      await request.delete("/api/auth/me", {
+        headers: { Authorization: `Bearer ${data.access_token}` },
+      });
+    } catch {
+      // Best-effort cleanup
+    }
+  }
+});
+
+test.describe("Security Headers", () => {
+  test("CSP header has no unsafe-inline in script-src", async ({ page }) => {
+    const response = await page.goto("/");
+    if (!response) throw new Error("No response");
+    const csp = response.headers()["content-security-policy"] || "";
+    const scriptSrc = csp.split(";").find((s) => s.trim().startsWith("script-src"));
+    if (scriptSrc) {
+      expect(scriptSrc).not.toContain("unsafe-inline");
+    }
+  });
+});
+
+test.describe("Auth Cookie Security", () => {
+  test("Set-Cookie headers include Secure flag on login", async ({ request }) => {
+    const email = `sec-e2e-${Date.now()}@test.example.com`;
+    const password = "e2e-test-password-123";
+    createdUsers.push({ email, password });
+    await request.post("/api/auth/register", {
+      data: { email, password, name: "Security Test" },
+    });
+    const response = await request.post("/api/auth/login", {
+      data: { email, password },
+    });
+    const setCookie = response.headers()["set-cookie"] || "";
+    // In CI with production config, cookies should have Secure flag
+    if (process.env.COOKIE_SECURE !== "false") {
+      expect(setCookie).toContain("Secure");
+    }
+  });
+});
+
+test.describe("XSS Prevention", () => {
+  test("note created_at with invalid date renders safe text", async ({ page, playwright }) => {
+    const email = `xss-e2e-${Date.now()}@test.example.com`;
+    const password = "e2e-test-password-123";
+    createdUsers.push({ email, password });
+
+    // Use a fresh API context to avoid CSRF from stale cookies in the shared fixture.
+    // Register and extract the token from the response directly — a separate
+    // login call via the same context would carry registration cookies and
+    // fail CSRF validation because the middleware requires X-CSRF-Token on
+    // POST requests that include a session cookie.
+    const ctx = await playwright.request.newContext({ baseURL: "http://localhost:4321" });
+    try {
+      const regRes = await ctx.post("/api/auth/register", {
+        data: { email, password, name: "XSS Test" },
+      });
+      expect(regRes.ok()).toBeTruthy();
+      const regData = await regRes.json();
+      const token = regData.access_token;
+      const noteRes = await ctx.post("/api/notes", {
+        headers: { Authorization: `Bearer ${token}` },
+        data: { title: "Safe", body: "Test note" },
+      });
+      expect(noteRes.ok()).toBeTruthy();
+    } finally {
+      await ctx.dispose();
+    }
+
+    // Auth via browser so the notes page can load with session cookies
+    await page.goto("/login");
+    await page.fill('input[name="email"]', email);
+    await page.fill('input[name="password"]', password);
+    await page.click('button[type="submit"]');
+    await page.waitForURL("/profile", { timeout: 15000 });
+
+    await page.goto("/notes");
+    await expect(page.locator("text=Safe")).toBeVisible();
+    await expect(page.locator("text=<img")).toHaveCount(0);
+  });
+});

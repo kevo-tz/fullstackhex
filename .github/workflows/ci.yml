@@ -77,10 +77,22 @@ jobs:
       - name: Check sqlx offline metadata
         run: cargo sqlx prepare --workspace --check -- --all-features
 
+      - name: Run database migrations
+        env:
+          DATABASE_URL: postgres://postgres:postgres@localhost:5432/testdb
+        run: cargo sqlx migrate run --source db/migrations
+
       - name: cargo test
         env:
           DATABASE_URL: postgres://postgres:postgres@localhost:5432/testdb
           REDIS_URL: redis://localhost:6379
+          RATE_LIMIT_REGISTER_MAX: 50
+          RATE_LIMIT_LOGIN_IP_MAX: 50
+          RATE_LIMIT_LOGIN_EMAIL_MAX: 50
+          RATE_LIMIT_FORGOT_MAX: 20
+          RATE_LIMIT_FORGOT_WINDOW: 10
+          RATE_LIMIT_OAUTH_CALLBACK_MAX: 20
+          RATE_LIMIT_OAUTH_CALLBACK_WINDOW: 10
         run: cargo test --locked --workspace -- --test-threads=1
 
   python:
@@ -228,6 +240,7 @@ jobs:
           REDIS_URL: redis://localhost:6379
           JWT_SECRET: dummy_jwt_secret_for_e2e_tests
           AUTH_MODE: both
+          COOKIE_SECURE: "false"
           RUSTFS_ENDPOINT: ""
           PYTHON_SIDECAR_SOCKET: ""
           RATE_LIMIT_REGISTER_MAX: 20
@@ -235,7 +248,7 @@ jobs:
         working-directory: backend
         run: |
           cargo run --locked -p api &
-          for i in $(seq 1 30); do
+          for i in $(seq 1 60); do
             curl -s http://localhost:8001/health && break
             sleep 1
           done
@@ -243,17 +256,18 @@ jobs:
 
       - name: Validate WebSocket upgrade
         run: |
-          # Register a test user
+          # Register a test user (email includes timestamp to avoid conflicts across runs)
+          ts=$(date +%s)
           resp=$(curl -s -X POST http://localhost:8001/auth/register \
             -H "Content-Type: application/json" \
-            -d '{"email":"ws-ci@test.local","password":"test-pw-12345","name":"WSCi"}')
+            -d "{\"email\":\"ws-ci-${ts}@test.local\",\"password\":\"test-pw-12345\",\"name\":\"WSCi\"}")
           # Login to get a session cookie (cookie-only WS auth, no ?token=)
           cookie_jar=$(mktemp)
           http_code=$(curl -s -o /dev/null -w '%{http_code}' \
             -c "$cookie_jar" \
             -X POST http://localhost:8001/auth/login \
             -H "Content-Type: application/json" \
-            -d '{"email":"ws-ci@test.local","password":"test-pw-12345"}')
+            -d "{\"email\":\"ws-ci-${ts}@test.local\",\"password\":\"test-pw-12345\"}")
           if [ "$http_code" != "200" ]; then
             echo "Login failed with status $http_code"
             exit 1
@@ -310,6 +324,7 @@ jobs:
         working-directory: frontend
         env:
           FRONTEND_URL: http://localhost:4321
+          COOKIE_SECURE: "false"
         run: |
           bun run test:e2e:playwright
 

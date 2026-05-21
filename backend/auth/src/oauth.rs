@@ -231,9 +231,16 @@ async fn fetch_github_user_info(
     // Fetch primary email if not public
     let email = match user.email {
         Some(e) => e,
-        None => fetch_github_primary_email(access_token, http_client)
-            .await
-            .unwrap_or_default(),
+        None => match fetch_github_primary_email(access_token, http_client).await {
+            Ok(Some(e)) => e,
+            Ok(None) => {
+                return Err(ApiError::InternalError(
+                    "GitHub email not available — make sure user:email scope is granted"
+                        .to_string(),
+                ));
+            }
+            Err(e) => return Err(e),
+        },
     };
 
     Ok(OAuthUserInfo {
@@ -247,21 +254,41 @@ async fn fetch_github_user_info(
 async fn fetch_github_primary_email(
     access_token: &str,
     http_client: &reqwest::Client,
-) -> Option<String> {
-    let resp = http_client
+) -> Result<Option<String>, ApiError> {
+    let resp = match http_client
         .get("https://api.github.com/user/emails")
         .header("Authorization", format!("Bearer {access_token}"))
         .header("User-Agent", "fullstackhex")
         .send()
         .await
-        .ok()?;
+    {
+        Ok(r) => r,
+        Err(e) => {
+            tracing::warn!("GitHub email request failed: {e}");
+            return Err(ApiError::InternalError(format!(
+                "GitHub email request failed: {e}"
+            )));
+        }
+    };
 
     if !resp.status().is_success() {
-        return None;
+        tracing::warn!("GitHub email endpoint returned HTTP {}", resp.status());
+        return Err(ApiError::InternalError(format!(
+            "GitHub email request failed: HTTP {}",
+            resp.status()
+        )));
     }
 
-    let emails: Vec<GitHubEmail> = resp.json().await.ok()?;
-    emails.into_iter().find(|e| e.primary).map(|e| e.email)
+    let emails: Vec<GitHubEmail> = match resp.json().await {
+        Ok(e) => e,
+        Err(e) => {
+            tracing::warn!("GitHub email parse failed: {e}");
+            return Err(ApiError::InternalError(format!(
+                "GitHub email parse failed: {e}"
+            )));
+        }
+    };
+    Ok(emails.into_iter().find(|e| e.primary).map(|e| e.email))
 }
 
 #[derive(Debug, Deserialize)]

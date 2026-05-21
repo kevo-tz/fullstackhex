@@ -1,0 +1,43 @@
+---
+import Layout from "../components/Layout.astro";
+---
+
+<Layout title="404 — FullStackHex">
+  <main class="not-found">
+    <h1>404</h1>
+    <p>Page not found.</p>
+    <a href="/" class="btn-primary">Go home</a>
+  </main>
+</Layout>
+
+<style>
+  .not-found {
+    text-align: center;
+    padding: 4rem 1.5rem;
+  }
+  .not-found h1 {
+    font-size: 4rem;
+    color: var(--accent, #22c55e);
+    margin-bottom: 0.5rem;
+  }
+  .not-found p {
+    color: var(--text-muted, #94a3b8);
+    margin-bottom: 1.5rem;
+    font-size: 1rem;
+  }
+  .btn-primary {
+    padding: 0.5rem 1.25rem;
+    border-radius: 6px;
+    background: var(--accent, #22c55e);
+    color: var(--btn-text, #0d0d0d);
+    border: none;
+    font-size: 0.85rem;
+    font-weight: 500;
+    cursor: pointer;
+    font-family: inherit;
+    text-decoration: none;
+    display: inline-block;
+  }
+  .btn-primary:hover { opacity: 0.9; }
+  .btn-primary:focus-visible { outline: 2px solid var(--accent, #22c55e); outline-offset: 2px; }
+</style>

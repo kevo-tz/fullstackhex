@@ -311,11 +311,11 @@ pub fn presigned_url(
     );
 
     // Derive signing key
-    let k_date = hmac_sha256(format!("AWS4{}", config.secret_key).as_bytes(), &date_stamp);
-    let k_region = hmac_sha256(&k_date, &config.region);
-    let k_service = hmac_sha256(&k_region, "s3");
-    let k_signing = hmac_sha256(&k_service, "aws4_request");
-    let signature = hex(&hmac_sha256(&k_signing, &string_to_sign));
+    let k_date = hmac_sha256(format!("AWS4{}", config.secret_key).as_bytes(), &date_stamp)?;
+    let k_region = hmac_sha256(&k_date, &config.region)?;
+    let k_service = hmac_sha256(&k_region, "s3")?;
+    let k_signing = hmac_sha256(&k_service, "aws4_request")?;
+    let signature = hex(&hmac_sha256(&k_signing, &string_to_sign)?);
 
     Ok(format!(
         "{}?{}&X-Amz-Signature={}",
@@ -643,13 +643,13 @@ fn sign_request_inner(
     );
 
     // Signing key
-    let k_date = hmac_sha256(format!("AWS4{}", config.secret_key).as_bytes(), &date_stamp);
-    let k_region = hmac_sha256(&k_date, &config.region);
-    let k_service = hmac_sha256(&k_region, "s3");
-    let k_signing = hmac_sha256(&k_service, "aws4_request");
+    let k_date = hmac_sha256(format!("AWS4{}", config.secret_key).as_bytes(), &date_stamp)?;
+    let k_region = hmac_sha256(&k_date, &config.region)?;
+    let k_service = hmac_sha256(&k_region, "s3")?;
+    let k_signing = hmac_sha256(&k_service, "aws4_request")?;
 
     // Signature
-    let signature = hex(&hmac_sha256(&k_signing, &string_to_sign));
+    let signature = hex(&hmac_sha256(&k_signing, &string_to_sign)?);
 
     let authorization = format!(
         "{} Credential={}/{}, SignedHeaders={}, Signature={}",
@@ -672,10 +672,11 @@ fn sha256_hex(data: &[u8]) -> String {
 }
 
 /// Compute HMAC-SHA256.
-fn hmac_sha256(key: &[u8], data: &str) -> Vec<u8> {
-    let mut mac = Hmac::<Sha256>::new_from_slice(key).expect("HMAC can take any key");
+fn hmac_sha256(key: &[u8], data: &str) -> Result<Vec<u8>, domain::error::ApiError> {
+    let mut mac = Hmac::<Sha256>::new_from_slice(key)
+        .map_err(|e| domain::error::ApiError::InternalError(format!("HMAC key error: {e}")))?;
     mac.update(data.as_bytes());
-    mac.finalize().into_bytes().to_vec()
+    Ok(mac.finalize().into_bytes().to_vec())
 }
 
 /// Convert bytes to hex string.
@@ -697,7 +698,7 @@ mod tests {
 
     #[test]
     fn hmac_sha256_produces_output() {
-        let result = hmac_sha256(b"secret", "data");
+        let result = hmac_sha256(b"secret", "data").unwrap();
         assert_eq!(result.len(), 32);
     }
 
@@ -828,7 +829,7 @@ mod tests {
 
     #[test]
     fn hmac_sha256_with_empty_data() {
-        let result = hmac_sha256(b"secret", "");
+        let result = hmac_sha256(b"secret", "").unwrap();
         assert_eq!(result.len(), 32);
     }
 

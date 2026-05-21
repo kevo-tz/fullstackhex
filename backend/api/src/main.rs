@@ -48,10 +48,10 @@ async fn main() {
             _ = tokio::signal::ctrl_c() => {},
         }
         tracing::info!("received shutdown signal, draining connections");
-        graceful_state.ws_shutdown.notify_waiters();
+        graceful_state.ws.shutdown.notify_waiters();
     };
 
-    axum::serve(listener, app)
+    axum::serve(listener, app.into_make_service())
         .with_graceful_shutdown(shutdown)
         .await
         .unwrap_or_else(|e| {
@@ -59,7 +59,7 @@ async fn main() {
             std::process::exit(1);
         });
 
-    if let Some(handle) = &state.gauge_task {
+    if let Some(handle) = &state.health.gauge_task {
         handle.abort();
     }
 }

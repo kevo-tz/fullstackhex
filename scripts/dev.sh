@@ -76,6 +76,7 @@ save 60 10000
 maxmemory ${REDIS_MAX_MEMORY:-512mb}
 maxmemory-policy ${REDIS_MAXMEMORY_POLICY:-allkeys-lru}
 REDIS_CONF
+chmod 644 .tmp/redis.conf
 
 log_info "Starting infrastructure (PostgreSQL, Redis)..."
 $COMPOSE_DEV up -d
@@ -119,8 +120,8 @@ cd "$REPO_ROOT"
 
 sleep "$POST_START_DELAY"
 
-log_info "Verifying service health (timeout: 30s)..."
-TIMEOUT=30
+log_info "Verifying service health (timeout: 300s)..."
+TIMEOUT=300
 START=$(date +%s)
 while true; do
     NOW=$(date +%s)

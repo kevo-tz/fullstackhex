@@ -136,35 +136,50 @@ impl RedisClient {
     /// Returns an error with the remaining cooldown seconds if the IP is blocked.
     /// Call this BEFORE the rate limit check on login endpoints.
     ///
+    /// Uses a Lua script to atomically GET and TTL the backoff key.
+    ///
     /// # Errors
     ///
     /// Returns `CacheError::BackoffBlocked` when the IP is blocked,
     /// or `CacheError::CommandFailed` on Redis errors.
     pub async fn backoff_check(&self, ip: &str, endpoint: &str) -> Result<(), CacheError> {
         let key = self.make_key("backoff", &format!("{ip}:{endpoint}"));
-        let count: Option<u64> = self
+
+        // KEYS[1] = backoff:<ip:endpoint>
+        // Returns: {count, ttl} or {-1, -1} if key missing or expired
+        let script = r#"
+            local count = redis.call('GET', KEYS[1])
+            if count then
+                local ttl = redis.call('TTL', KEYS[1])
+                if ttl == -1 then
+                    redis.call('DEL', KEYS[1])
+                    return {-1, -1}
+                end
+                return {count, ttl}
+            end
+            return {-1, -1}
+        "#;
+
+        let result: Vec<i64> = self
             .client
-            .get::<Option<u64>, _>(&key)
+            .eval(script, vec![key], Vec::<String>::new())
             .await
             .map_err(CacheError::CommandFailed)?;
 
-        let Some(count) = count else {
-            return Ok(());
-        };
+        let count = result[0];
+        let remaining_ttl = result[1];
 
-        let (_ttl, label) = backoff_params(count);
-
-        // Counts below 5 are tracking-only — never block, just let failures
-        // accumulate until the threshold is reached.
-        if count < 5 {
+        if count < 0 {
             return Ok(());
         }
 
-        let remaining_ttl: i64 = self
-            .client
-            .ttl(&key)
-            .await
-            .map_err(CacheError::CommandFailed)?;
+        let count = count as u64;
+        let (_ttl, label) = backoff_params(count);
+
+        // Counts below 5 are tracking-only — never block
+        if count < 5 {
+            return Ok(());
+        }
 
         if remaining_ttl > 0 {
             return Err(CacheError::BackoffBlocked {
@@ -174,10 +189,6 @@ impl RedisClient {
             });
         }
 
-        // TTL expired — clean up the stale key
-        if let Err(e) = self.client.del::<(), _>(&key).await {
-            tracing::warn!(key = %key, error = %e, "backoff stale key cleanup failed");
-        }
         Ok(())
     }
 
@@ -193,25 +204,37 @@ impl RedisClient {
     pub async fn backoff_increment(&self, ip: &str, endpoint: &str) -> Result<(), CacheError> {
         let key = self.make_key("backoff", &format!("{ip}:{endpoint}"));
 
-        // Lua script: atomic INCR + EXPIRE to prevent key leak without TTL
+        // Lua script: atomic INCR + EXPIRE with correct TTL based on count.
         // KEYS[1] = backoff key
-        // ARGV[1] = tracking TTL (60s for first attempt)
-        // ARGV[2] = threshold TTL (higher values for repeated failures)
+        // ARGV[1-4] = TTL thresholds: tracking, 60s, 5min, 30min
         let script = r#"
             local count = redis.call('INCR', KEYS[1])
+            local ttl
             if count == 1 then
-                redis.call('EXPIRE', KEYS[1], ARGV[1])
+                ttl = tonumber(ARGV[1])
+            elseif count < 5 then
+                ttl = tonumber(ARGV[2])
+            elseif count < 10 then
+                ttl = tonumber(ARGV[3])
             else
-                redis.call('EXPIRE', KEYS[1], ARGV[2])
+                ttl = tonumber(ARGV[4])
             end
+            redis.call('EXPIRE', KEYS[1], ttl)
             return count
         "#;
 
-        let (tracking_ttl, _) = backoff_params(1);
-        let (ttl_secs, _) = backoff_params(2);
+        let (t1, _) = backoff_params(1);
+        let (t2, _) = backoff_params(5);
+        let (t3, _) = backoff_params(10);
+        let (t4, _) = backoff_params(20);
 
         let keys = vec![key];
-        let args = vec![tracking_ttl.to_string(), ttl_secs.to_string()];
+        let args = vec![
+            t1.to_string(),
+            t2.to_string(),
+            t3.to_string(),
+            t4.to_string(),
+        ];
 
         let _count: u64 = self
             .client

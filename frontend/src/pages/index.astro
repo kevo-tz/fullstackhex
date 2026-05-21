@@ -100,39 +100,15 @@ make status</pre>
       </div>
 
     <script>
-      import { SERVICE_IDS, isFullOutage, type HealthEntry } from "../lib/health";
+      import { SERVICE_IDS, isFullOutage, createRetryController, type HealthEntry } from "../lib/health";
       import { connectLiveStream } from "../lib/live";
+      import { setStatus, setDetail, setDiagnostic, showOutage } from "../lib/health-ui";
 
       let wsFallbackTimer: ReturnType<typeof setTimeout> | null = null;
       let wsDisconnected = true;
       let wsEverConnected = false;
 
-      import { setStatus, setDetail, setDiagnostic, showOutage } from "../lib/health-ui";
-
-      let retryTimer: ReturnType<typeof setTimeout> | null = null;
-      let retryDelay = 1000;
-
-      function startRetry() {
-        cancelRetry();
-        if (retryDelay > 30000) retryDelay = 30000;
-        retryTimer = setTimeout(() => {
-          fetchHealth();
-          retryDelay = Math.min(retryDelay * 2, 30000);
-          startRetry();
-        }, retryDelay);
-      }
-
-      function cancelRetry() {
-        if (retryTimer !== null) {
-          clearTimeout(retryTimer);
-          retryTimer = null;
-        }
-      }
-
-      function resetRetry() {
-        cancelRetry();
-        retryDelay = 1000;
-      }
+      const retry = createRetryController(() => fetchHealth());
 
       async function fetchHealth() {
         const rawJson = document.getElementById("raw-json");
@@ -212,7 +188,7 @@ make status</pre>
 
           if (isFullOutage(data)) {
             showOutage(true);
-            startRetry();
+            retry.start();
           }
 
         } catch (err) {
@@ -225,7 +201,7 @@ make status</pre>
           if (rawJson) rawJson.textContent =
             "Error: could not reach /api/health — backend may be down\n\n" + msg +
             "\n\nTry: make down-dev && make dev";
-          startRetry();
+          retry.start();
         }
       }
 
@@ -252,7 +228,7 @@ make status</pre>
             if (event.data.status === "connected") {
               wsDisconnected = false;
               wsEverConnected = true;
-              cancelRetry();
+              retry.cancel();
               if (wsFallbackTimer !== null) {
                 clearTimeout(wsFallbackTimer);
                 wsFallbackTimer = null;
@@ -283,15 +259,15 @@ make status</pre>
 
       document.addEventListener("visibilitychange", () => {
         if (document.hidden) {
-          cancelRetry();
+          retry.cancel();
         } else {
-          resetRetry();
+          retry.reset();
           fetchHealth();
         }
       });
 
       document.getElementById("refresh-btn")?.addEventListener("click", () => {
-        resetRetry();
+        retry.reset();
         fetchHealth();
       });
 

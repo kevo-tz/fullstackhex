@@ -10,7 +10,8 @@ requires-python = ">=3.14"
 dependencies = [
   "fastapi>=0.116.0",
   "uvicorn>=0.35.0",
-  "prometheus-client>=0.21,<0.27"
+  "prometheus-client>=0.21,<0.27",
+  "redis>=5.3.0"
 ]
 
 [tool.hatch.build.targets.wheel]
@@ -19,6 +20,7 @@ packages = ["app"]
 [dependency-groups]
 dev = [
   "pytest>=8.4.0",
+  "pytest-asyncio>=0.26.0",
   "ruff>=0.8.0",
   "httpx>=0.28.0",
   "pytest-cov>=7.1.0",
@@ -27,6 +29,7 @@ dev = [
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
+asyncio_mode = "auto"
 markers = ["integration: requires live sidecar running on the Unix socket"]
 addopts = "-m 'not integration'"
 

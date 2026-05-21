@@ -12,8 +12,6 @@ pub mod time;
 /// Flags are loaded once at startup and are NOT hot-reloadable.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct FeatureFlags {
-    pub chat_enabled: bool,
-    pub storage_readonly: bool,
     pub maintenance_mode: bool,
 }
 
@@ -21,8 +19,6 @@ impl FeatureFlags {
     /// Load feature flags from environment variables.
     pub fn from_env() -> Self {
         Self {
-            chat_enabled: Self::env_bool("FEATURE_CHAT"),
-            storage_readonly: Self::env_bool("FEATURE_STORAGE_READONLY"),
             maintenance_mode: Self::env_bool("FEATURE_MAINTENANCE"),
         }
     }

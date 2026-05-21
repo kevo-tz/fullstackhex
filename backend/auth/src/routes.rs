@@ -163,7 +163,7 @@ pub async fn register(
     let password_hash = password::hash_password(&body.password)?;
 
     // Insert user
-    let user_id: (String,) = sqlx::query_as(
+    let user_id: String = sqlx::query_scalar(
         "INSERT INTO users (email, name, provider, password_hash) VALUES ($1, $2, 'local', $3) RETURNING id::text",
     )
     .bind(&body.email)
@@ -181,16 +181,19 @@ pub async fn register(
         state
             .auth
             .jwt
-            .create_token(&user_id.0, &body.email, body.name.as_deref(), "local")?;
+            .create_token(&user_id, &body.email, body.name.as_deref(), "local")?;
 
     // Create refresh token in Redis
-    let refresh_token = uuid::Uuid::new_v4().to_string();
+    let mut refresh_token_bytes = [0u8; 32];
+    getrandom::fill(&mut refresh_token_bytes)
+        .map_err(|e| ApiError::InternalError(format!("failed to generate refresh token: {e}")))?;
+    let refresh_token = hex::encode(refresh_token_bytes);
     state
         .redis
         .cache_set(
             "refresh",
             &refresh_token,
-            &user_id.0,
+            &user_id,
             std::time::Duration::from_secs(state.auth.config.refresh_expiry),
         )
         .await?;
@@ -198,62 +201,53 @@ pub async fn register(
     let jwt_expiry = state.auth.config.jwt_expiry;
     let refresh_expiry = state.auth.config.refresh_expiry;
     let mut headers = HeaderMap::new();
-    super::cookies::set_cookie(
+    let csrf_token = super::cookies::set_auth_cookies(
         &mut headers,
-        "access_token",
         &access_token,
-        jwt_expiry,
-        true,
-        true,
-    )?;
-    super::cookies::set_cookie(
-        &mut headers,
-        "refresh_token",
         &refresh_token,
-        refresh_expiry,
-        true,
-        true,
-    )?;
-    let csrf_token = super::csrf::generate_csrf_token();
-    super::cookies::set_cookie(
-        &mut headers,
-        "csrf_token",
-        &csrf_token,
+        None,
         jwt_expiry,
-        false,
-        false,
+        refresh_expiry,
+        state.auth.config.cookie_secure,
     )?;
-
-    let response = TokenResponse {
-        access_token: access_token.clone(),
-        refresh_token,
-        token_type: "Bearer".to_string(),
-        expires_in: state.auth.config.jwt_expiry,
-        csrf_token: csrf_token.clone(),
-        user: UserInfo {
-            id: user_id.0,
-            email: body.email,
-            name: body.name,
-            provider: "local".to_string(),
-        },
-    };
 
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_err(|_| ApiError::InternalError("Time went backwards".to_string()))?
         .as_secs();
     let session = cache::session::Session {
-        user_id: response.user.id.clone(),
-        email: response.user.email.clone(),
-        name: response.user.name.clone(),
-        provider: response.user.provider.clone(),
+        user_id: user_id.clone(),
+        email: body.email.clone(),
+        name: body.name.clone(),
+        provider: "local".to_string(),
         created_at: now,
     };
     let session_id = state
         .redis
         .session_create(&session, std::time::Duration::from_secs(jwt_expiry))
         .await?;
-    super::cookies::set_cookie(&mut headers, "session", &session_id, jwt_expiry, true, true)?;
+    super::cookies::set_cookie(
+        &mut headers,
+        "session",
+        &session_id,
+        jwt_expiry,
+        true,
+        state.auth.config.cookie_secure,
+    )?;
+
+    let response = TokenResponse {
+        access_token,
+        refresh_token,
+        token_type: "Bearer".to_string(),
+        expires_in: state.auth.config.jwt_expiry,
+        csrf_token: csrf_token.clone(),
+        user: UserInfo {
+            id: user_id.clone(),
+            email: body.email,
+            name: body.name,
+            provider: "local".to_string(),
+        },
+    };
 
     Ok((StatusCode::CREATED, headers, Json(response)))
 }
@@ -357,7 +351,10 @@ pub async fn login(
         .create_token(&user_id, &email, name.as_deref(), &provider)?;
 
     // Create refresh token in Redis
-    let refresh_token = uuid::Uuid::new_v4().to_string();
+    let mut refresh_token_bytes = [0u8; 32];
+    getrandom::fill(&mut refresh_token_bytes)
+        .map_err(|e| ApiError::InternalError(format!("failed to generate refresh token: {e}")))?;
+    let refresh_token = hex::encode(refresh_token_bytes);
     state
         .redis
         .cache_set(
@@ -370,7 +367,17 @@ pub async fn login(
 
     let jwt_expiry = state.auth.config.jwt_expiry;
     let refresh_expiry = state.auth.config.refresh_expiry;
-    let csrf_token = super::csrf::generate_csrf_token();
+
+    let mut headers = HeaderMap::new();
+    let csrf_token = super::cookies::set_auth_cookies(
+        &mut headers,
+        &access_token,
+        &refresh_token,
+        None,
+        jwt_expiry,
+        refresh_expiry,
+        state.auth.config.cookie_secure,
+    )?;
 
     let response = TokenResponse {
         access_token: access_token.clone(),
@@ -385,32 +392,6 @@ pub async fn login(
             provider,
         },
     };
-
-    let mut headers = HeaderMap::new();
-    super::cookies::set_cookie(
-        &mut headers,
-        "access_token",
-        &response.access_token,
-        jwt_expiry,
-        true,
-        true,
-    )?;
-    super::cookies::set_cookie(
-        &mut headers,
-        "refresh_token",
-        &response.refresh_token,
-        refresh_expiry,
-        true,
-        true,
-    )?;
-    super::cookies::set_cookie(
-        &mut headers,
-        "csrf_token",
-        &csrf_token,
-        jwt_expiry,
-        false,
-        false,
-    )?;
 
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -427,7 +408,14 @@ pub async fn login(
         .redis
         .session_create(&session, std::time::Duration::from_secs(jwt_expiry))
         .await?;
-    super::cookies::set_cookie(&mut headers, "session", &session_id, jwt_expiry, true, true)?;
+    super::cookies::set_cookie(
+        &mut headers,
+        "session",
+        &session_id,
+        jwt_expiry,
+        true,
+        state.auth.config.cookie_secure,
+    )?;
 
     Ok((headers, Json(response)))
 }
@@ -469,7 +457,7 @@ pub async fn logout(
     tracing::info!(user_id = %auth_user.user_id, jti = %auth_user.jti, "user logged out");
 
     let mut headers = HeaderMap::new();
-    let mut clear = |name: &str, http_only: bool| {
+    let mut clear = |name: &str, http_only: bool| -> Result<(), ApiError> {
         let cookie = if http_only {
             format!("{name}=; HttpOnly; Path=/; Max-Age=0; SameSite=Lax")
         } else {
@@ -477,13 +465,16 @@ pub async fn logout(
         };
         headers.append(
             header::SET_COOKIE,
-            cookie.parse().expect("valid Set-Cookie header"),
+            cookie
+                .parse()
+                .map_err(|_| ApiError::InternalError("failed to parse Set-Cookie header".into()))?,
         );
+        Ok(())
     };
-    clear("session", true);
-    clear("access_token", true);
-    clear("refresh_token", true);
-    clear("csrf_token", false);
+    clear("session", true)?;
+    clear("access_token", true)?;
+    clear("refresh_token", true)?;
+    clear("csrf_token", false)?;
 
     Ok((StatusCode::NO_CONTENT, headers))
 }
@@ -493,6 +484,158 @@ pub async fn logout(
 pub struct RefreshRequest {
     #[serde(default)]
     pub refresh_token: String,
+}
+
+/// Forgot-password request body.
+#[derive(Debug, Deserialize)]
+pub struct ForgotPasswordRequest {
+    pub email: String,
+}
+
+/// Reset-password request body.
+#[derive(Debug, Deserialize)]
+pub struct ResetPasswordRequest {
+    pub token: String,
+    pub password: String,
+}
+
+const RESET_TOKEN_TTL_SECS: u64 = 3600; // 1 hour
+
+/// POST /auth/forgot-password — generate a password reset token.
+///
+/// Always returns 202 to prevent email enumeration. If the email exists,
+/// a reset token is stored in Redis with a 1-hour TTL and the reset URL
+/// is logged server-side.
+pub async fn forgot_password(
+    State(state): State<AuthState>,
+    headers: HeaderMap,
+    Json(body): Json<ForgotPasswordRequest>,
+) -> Result<impl IntoResponse, ApiError> {
+    // Rate limit by IP
+    let ip = client_ip(&headers);
+    check_rate_limit(
+        &state.redis,
+        &format!("forgot:{ip}"),
+        Duration::from_secs(state.auth.config.rate_limits.forgot_window_secs),
+        state.auth.config.rate_limits.forgot_max,
+    )
+    .await?;
+
+    // Basic email validation
+    if body.email.is_empty() || !body.email.contains('@') {
+        return Err(ApiError::ValidationError("Invalid email".to_string()));
+    }
+
+    // Look up user by email
+    let user: Option<(String,)> = sqlx::query_as("SELECT id::text FROM users WHERE email = $1")
+        .bind(&body.email)
+        .fetch_optional(&state.db)
+        .await
+        .map_err(|e| {
+            tracing::error!(error = %e, "forgot-password query failed");
+            ApiError::InternalError("Internal server error".to_string())
+        })?;
+
+    if let Some((user_id,)) = user {
+        // Generate reset token and store in Redis with TTL
+        let reset_token = uuid::Uuid::new_v4().to_string();
+        state
+            .redis
+            .cache_set(
+                "reset",
+                &reset_token,
+                &user_id,
+                std::time::Duration::from_secs(RESET_TOKEN_TTL_SECS),
+            )
+            .await?;
+
+        tracing::info!(
+            user_id = %user_id,
+            reset_token = %reset_token,
+            "password reset token generated"
+        );
+
+        // In development, log the reset URL for testing
+        if std::env::var("PRODUCTION").is_err() {
+            tracing::info!(
+                reset_token = %reset_token,
+                "dev mode: password reset URL: /reset-password?token={reset_token}"
+            );
+        }
+    }
+
+    let resp = serde_json::json!({
+        "message": "If the email exists, a reset link has been generated",
+    });
+
+    // Always return 202 to prevent email enumeration
+    Ok((StatusCode::ACCEPTED, Json(resp)))
+}
+
+/// POST /auth/reset-password — reset password using a reset token.
+///
+/// Validates the token, updates the password hash, and deletes the token.
+pub async fn reset_password(
+    State(state): State<AuthState>,
+    Json(body): Json<ResetPasswordRequest>,
+) -> Result<impl IntoResponse, ApiError> {
+    // Validate password
+    if body.password.len() < 8 {
+        return Err(ApiError::ValidationError(
+            "Password must be at least 8 characters".to_string(),
+        ));
+    }
+    if body.password.len() > 1024 {
+        return Err(ApiError::ValidationError(
+            "Password must be at most 1024 characters".to_string(),
+        ));
+    }
+
+    if body.token.is_empty() {
+        return Err(ApiError::ValidationError(
+            "Reset token is required".to_string(),
+        ));
+    }
+
+    // Look up token in Redis
+    let user_id: Option<String> = state.redis.cache_get("reset", &body.token).await?;
+
+    let user_id = user_id
+        .ok_or_else(|| ApiError::Unauthorized("Invalid or expired reset token".to_string()))?;
+
+    // Hash the new password
+    let password_hash = password::hash_password(&body.password)?;
+
+    // Update password in DB (only local provider users — OAuth users don't have password_hash)
+    let result = sqlx::query(
+        "UPDATE users SET password_hash = $1, updated_at = NOW() WHERE id = $2::uuid AND provider = 'local'",
+    )
+    .bind(&password_hash)
+    .bind(&user_id)
+    .execute(&state.db)
+    .await
+    .map_err(|e| {
+        tracing::error!(error = %e, "reset-password update failed");
+        ApiError::InternalError("Internal server error".to_string())
+    })?;
+
+    // Delete the token regardless
+    state.redis.cache_delete("reset", &body.token).await?;
+
+    if result.rows_affected() == 0 {
+        return Err(ApiError::Unauthorized(
+            "Cannot reset password for OAuth-linked accounts".to_string(),
+        ));
+    }
+
+    // Invalidate all existing sessions for this user
+    state.redis.session_destroy_all_for_user(&user_id).await;
+
+    tracing::info!(user_id = %user_id, "password reset completed");
+
+    Ok(Json(
+        serde_json::json!({ "message": "Password updated successfully" }),
+    ))
 }
 
 /// POST /auth/refresh — refresh access token using refresh token.
@@ -556,7 +699,10 @@ pub async fn refresh(
         .map_err(|_| ApiError::InternalError("Failed to create token".to_string()))?;
 
     // Create new refresh token
-    let new_refresh_token = uuid::Uuid::new_v4().to_string();
+    let mut refresh_token_bytes = [0u8; 32];
+    getrandom::fill(&mut refresh_token_bytes)
+        .map_err(|e| ApiError::InternalError(format!("failed to generate refresh token: {e}")))?;
+    let new_refresh_token = hex::encode(refresh_token_bytes);
     state
         .redis
         .cache_set(
@@ -570,30 +716,14 @@ pub async fn refresh(
     metrics::counter!("token_refresh_total", "status" => "success").increment(1);
 
     let mut resp_headers = HeaderMap::new();
-    super::cookies::set_cookie(
+    let csrf_token = super::cookies::set_auth_cookies(
         &mut resp_headers,
-        "access_token",
         &access_token,
-        state.auth.config.jwt_expiry,
-        true,
-        true,
-    )?;
-    super::cookies::set_cookie(
-        &mut resp_headers,
-        "refresh_token",
         &new_refresh_token,
-        state.auth.config.refresh_expiry,
-        true,
-        true,
-    )?;
-    let csrf_token = super::csrf::generate_csrf_token();
-    super::cookies::set_cookie(
-        &mut resp_headers,
-        "csrf_token",
-        &csrf_token,
+        None,
         state.auth.config.jwt_expiry,
-        false,
-        false,
+        state.auth.config.refresh_expiry,
+        state.auth.config.cookie_secure,
     )?;
 
     Ok((
@@ -645,9 +775,66 @@ pub async fn me(auth_user: AuthUser) -> impl IntoResponse {
     }))
 }
 
+/// DELETE /auth/me — delete the authenticated user's account.
+///
+/// Removes the user from the database, blacklists their tokens, and destroys
+/// all sessions. Returns 204 on success. Idempotent — subsequent calls with
+/// expired tokens return 401.
+///
+/// # Errors
+///
+/// Returns `Unauthorized` if auth token is missing, invalid, or expired.
+/// Returns `InternalError` on database failure.
+pub async fn delete_account(
+    State(state): State<AuthState>,
+    auth_user: AuthUser,
+) -> Result<impl IntoResponse, ApiError> {
+    // Blacklist the current JWT so it cannot be reused
+    let blacklist_ttl = std::time::Duration::from_secs(state.auth.config.jwt_expiry);
+    state
+        .redis
+        .cache_set("blacklist", &auth_user.jti, &true, blacklist_ttl)
+        .await?;
+
+    // Destroy session if present
+    if let Some(ref session_id) = auth_user.session_id
+        && let Err(e) = state.redis.session_destroy(session_id).await
+    {
+        tracing::warn!(session = %session_id, error = %e, "session_destroy failed");
+    }
+
+    // Delete the user's notes first (foreign key constraint)
+    let _ = sqlx::query("DELETE FROM notes WHERE user_id = $1::uuid")
+        .bind(&auth_user.user_id)
+        .execute(&state.db)
+        .await
+        .map_err(|e| {
+            tracing::error!(error = %e, "delete notes failed during account deletion");
+            ApiError::InternalError("Failed to delete account data".to_string())
+        })?;
+
+    // Delete the user
+    let result = sqlx::query("DELETE FROM users WHERE id = $1::uuid")
+        .bind(&auth_user.user_id)
+        .execute(&state.db)
+        .await
+        .map_err(|e| {
+            tracing::error!(error = %e, "delete user failed");
+            ApiError::InternalError("Failed to delete account".to_string())
+        })?;
+
+    if result.rows_affected() == 0 {
+        return Err(ApiError::NotFound("User not found".to_string()));
+    }
+
+    tracing::info!(user_id = %auth_user.user_id, "account deleted");
+    Ok(StatusCode::NO_CONTENT)
+}
+
 /// GET /auth/oauth/{provider} — redirect to OAuth provider.
 pub async fn oauth_redirect(
     State(state): State<AuthState>,
+    headers: HeaderMap,
     Path(provider): Path<String>,
 ) -> Result<impl IntoResponse, ApiError> {
     let provider = parse_provider(&provider)?;
@@ -667,13 +854,26 @@ pub async fn oauth_redirect(
 
     let (url, csrf) = state.oauth.get_redirect_url(&provider, &redirect_url)?;
 
-    // Store CSRF token in Redis with 10-minute TTL for callback validation
+    // Bind CSRF to provider + session_id if available
+    let session_id = headers
+        .get("cookie")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|cookies| {
+            cookies.split(';').find_map(|c| {
+                let c = c.trim();
+                c.strip_prefix("session=").map(|s| s.to_string())
+            })
+        });
+    let csrf_value = serde_json::json!({
+        "provider": provider.to_string(),
+        "session_id": session_id,
+    });
     state
         .redis
         .cache_set(
             "oauth_csrf",
             csrf.secret(),
-            &provider.to_string(),
+            &csrf_value.to_string(),
             std::time::Duration::from_secs(600),
         )
         .await?;
@@ -688,27 +888,125 @@ pub struct OAuthCallbackQuery {
     pub state: String,
 }
 
+/// Parsed and validated OAuth state from Redis.
+#[derive(Debug)]
+struct StoredOAuthState {
+    pub provider: String,
+    pub session_id: Option<String>,
+}
+
+/// Parse and validate the JSON value stored in Redis for OAuth CSRF state.
+///
+/// Returns the provider and optional bound session_id.
+/// Falls back to treating the stored value as a plain provider string for
+/// backward compatibility with CSRF tokens created before the JSON format.
+fn parse_stored_oauth_state(stored: &str) -> Result<StoredOAuthState, ApiError> {
+    if let Ok(stored_data) = serde_json::from_str::<serde_json::Value>(stored) {
+        match stored_data["provider"].as_str() {
+            Some(provider) => {
+                let session_id = stored_data["session_id"]
+                    .as_str()
+                    .filter(|s| !s.is_empty())
+                    .map(|s| s.to_string());
+                return Ok(StoredOAuthState {
+                    provider: provider.to_string(),
+                    session_id,
+                });
+            }
+            None => {
+                return Err(ApiError::Unauthorized(
+                    "Invalid OAuth state: JSON without provider".to_string(),
+                ));
+            }
+        }
+    }
+
+    let provider = stored.to_string();
+    if provider.is_empty() {
+        return Err(ApiError::Unauthorized("Invalid OAuth state".to_string()));
+    }
+    Ok(StoredOAuthState {
+        provider,
+        session_id: None,
+    })
+}
+
+/// Validate that the provider from the stored OAuth state matches the expected provider,
+/// and that an optional session binding is still active.
+fn validate_oauth_state_match(
+    stored: &StoredOAuthState,
+    expected_provider: &str,
+    current_session_id: Option<&str>,
+) -> Result<(), ApiError> {
+    if stored.provider != expected_provider {
+        return Err(ApiError::Unauthorized(
+            "OAuth provider mismatch".to_string(),
+        ));
+    }
+
+    if let Some(ref bound_session_id) = stored.session_id {
+        match current_session_id {
+            Some(sid) if sid == bound_session_id => {}
+            Some(_) => {
+                return Err(ApiError::Unauthorized("OAuth session mismatch".to_string()));
+            }
+            None => {
+                return Err(ApiError::Unauthorized(
+                    "OAuth requires an active session".to_string(),
+                ));
+            }
+        }
+    }
+
+    Ok(())
+}
+
 /// GET /auth/oauth/{provider}/callback — handle OAuth callback.
 pub async fn oauth_callback(
     State(state): State<AuthState>,
+    headers: HeaderMap,
     Path(provider): Path<String>,
     Query(query): Query<OAuthCallbackQuery>,
 ) -> Result<impl IntoResponse, ApiError> {
     let provider = parse_provider(&provider)?;
 
-    // Validate CSRF state token — delete immediately (one-time use)
-    // to prevent replay attacks even on provider mismatch
-    let stored_provider: Option<String> = state.redis.cache_get("oauth_csrf", &query.state).await?;
-    state.redis.cache_delete("oauth_csrf", &query.state).await?;
+    // Rate limit by IP
+    let ip = client_ip(&headers);
+    check_rate_limit(
+        &state.redis,
+        &format!("oauth_callback:{ip}"),
+        Duration::from_secs(state.auth.config.rate_limits.oauth_callback_window_secs),
+        state.auth.config.rate_limits.oauth_callback_max,
+    )
+    .await?;
 
-    let stored_provider = stored_provider
+    // Validate CSRF state token — atomic GETDEL prevents replay attacks
+    // even when multiple callbacks race for the same state value
+    let stored: Option<String> = state
+        .redis
+        .cache_get_delete("oauth_csrf", &query.state)
+        .await?;
+
+    let stored = stored
         .ok_or_else(|| ApiError::Unauthorized("Invalid or expired OAuth state".to_string()))?;
 
-    if stored_provider != provider.to_string() {
-        return Err(ApiError::Unauthorized(
-            "OAuth provider mismatch".to_string(),
-        ));
-    }
+    let stored_state = parse_stored_oauth_state(&stored)?;
+
+    let current_session_id = headers
+        .get("cookie")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|cookies| {
+            cookies.split(';').find_map(|c| {
+                let c = c.trim();
+                c.strip_prefix("session=").map(|s| s.to_string())
+            })
+        });
+
+    validate_oauth_state_match(
+        &stored_state,
+        &provider.to_string(),
+        current_session_id.as_deref(),
+    )?;
 
     // Exchange code for access token
     let user_info = state
@@ -745,7 +1043,10 @@ pub async fn oauth_callback(
         &provider.to_string(),
     )?;
 
-    let refresh_token = uuid::Uuid::new_v4().to_string();
+    let mut refresh_token_bytes = [0u8; 32];
+    getrandom::fill(&mut refresh_token_bytes)
+        .map_err(|e| ApiError::InternalError(format!("failed to generate refresh token: {e}")))?;
+    let refresh_token = hex::encode(refresh_token_bytes);
     state
         .redis
         .cache_set(
@@ -756,9 +1057,38 @@ pub async fn oauth_callback(
         )
         .await?;
 
+    let jwt_expiry = state.auth.config.jwt_expiry;
+    let refresh_expiry = state.auth.config.refresh_expiry;
+
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_err(|_| ApiError::InternalError("Time went backwards".to_string()))?
+        .as_secs();
+    let session = cache::session::Session {
+        user_id: user_id.clone(),
+        email: user_info.email.clone(),
+        name: user_info.name.clone(),
+        provider: provider.to_string(),
+        created_at: now,
+    };
+    let session_id = state
+        .redis
+        .session_create(&session, std::time::Duration::from_secs(jwt_expiry))
+        .await?;
+
+    let mut cookie_headers = HeaderMap::new();
+    let csrf_token = super::cookies::set_auth_cookies(
+        &mut cookie_headers,
+        &access_token,
+        &refresh_token,
+        Some(&session_id),
+        jwt_expiry,
+        refresh_expiry,
+        state.auth.config.cookie_secure,
+    )?;
+
     metrics::counter!("oauth_callbacks_total", "provider" => provider.to_string()).increment(1);
 
-    let csrf_token = super::csrf::generate_csrf_token();
     let response = TokenResponse {
         access_token,
         refresh_token,
@@ -773,7 +1103,7 @@ pub async fn oauth_callback(
         },
     };
 
-    Ok(Json(response))
+    Ok((StatusCode::OK, cookie_headers, Json(response)))
 }
 
 fn parse_provider(s: &str) -> Result<super::oauth::OAuthProvider, ApiError> {
@@ -946,6 +1276,7 @@ mod route_tests {
             sidecar_shared_secret: None,
             fail_open_on_redis_error: true,
             rate_limits: Default::default(),
+            cookie_secure: true,
         };
         let list = list_providers(&config);
         assert!(list.is_empty());
@@ -967,6 +1298,7 @@ mod route_tests {
             sidecar_shared_secret: None,
             fail_open_on_redis_error: true,
             rate_limits: Default::default(),
+            cookie_secure: true,
         };
         let list = list_providers(&config);
         assert_eq!(list, vec!["google"]);
@@ -988,6 +1320,7 @@ mod route_tests {
             sidecar_shared_secret: None,
             fail_open_on_redis_error: true,
             rate_limits: Default::default(),
+            cookie_secure: true,
         };
         let list = list_providers(&config);
         assert_eq!(list, vec!["github"]);
@@ -1009,9 +1342,96 @@ mod route_tests {
             sidecar_shared_secret: None,
             fail_open_on_redis_error: true,
             rate_limits: Default::default(),
+            cookie_secure: true,
         };
         let list = list_providers(&config);
         assert_eq!(list, vec!["google", "github"]);
+    }
+
+    #[test]
+    fn parse_stored_oauth_state_valid() {
+        let stored = r#"{"provider":"google","session_id":"sess-1"}"#;
+        let result = parse_stored_oauth_state(stored).unwrap();
+        assert_eq!(result.provider, "google");
+        assert_eq!(result.session_id.unwrap(), "sess-1");
+    }
+
+    #[test]
+    fn parse_stored_oauth_state_no_session_id() {
+        let stored = r#"{"provider":"github"}"#;
+        let result = parse_stored_oauth_state(stored).unwrap();
+        assert_eq!(result.provider, "github");
+        assert!(result.session_id.is_none());
+    }
+
+    #[test]
+    fn parse_stored_oauth_state_empty_session_id() {
+        let stored = r#"{"provider":"github","session_id":""}"#;
+        let result = parse_stored_oauth_state(stored).unwrap();
+        assert_eq!(result.provider, "github");
+        assert!(result.session_id.is_none());
+    }
+
+    #[test]
+    fn non_json_falls_back_to_plain_string() {
+        let result = parse_stored_oauth_state("not-json").unwrap();
+        assert_eq!(result.provider, "not-json");
+        assert!(result.session_id.is_none());
+    }
+
+    #[test]
+    fn parse_stored_oauth_state_missing_provider() {
+        let stored = r#"{"session_id":"sess-1"}"#;
+        let err = parse_stored_oauth_state(stored).unwrap_err();
+        assert!(matches!(err, ApiError::Unauthorized(_)));
+    }
+
+    #[test]
+    fn validate_oauth_state_match_provider_mismatch() {
+        let stored = StoredOAuthState {
+            provider: "google".to_string(),
+            session_id: None,
+        };
+        let err = validate_oauth_state_match(&stored, "github", None).unwrap_err();
+        assert!(matches!(err, ApiError::Unauthorized(_)));
+    }
+
+    #[test]
+    fn validate_oauth_state_match_no_session_binding() {
+        let stored = StoredOAuthState {
+            provider: "google".to_string(),
+            session_id: None,
+        };
+        assert!(validate_oauth_state_match(&stored, "google", None).is_ok());
+    }
+
+    #[test]
+    fn validate_oauth_state_match_session_mismatch() {
+        let stored = StoredOAuthState {
+            provider: "google".to_string(),
+            session_id: Some("sess-1".to_string()),
+        };
+        let err = validate_oauth_state_match(&stored, "google", Some("sess-2")).unwrap_err();
+        assert!(matches!(err, ApiError::Unauthorized(_)));
+    }
+
+    #[test]
+    fn validate_oauth_state_match_missing_session_when_bound() {
+        let stored = StoredOAuthState {
+            provider: "google".to_string(),
+            session_id: Some("sess-1".to_string()),
+        };
+        let err = validate_oauth_state_match(&stored, "google", None).unwrap_err();
+        assert!(matches!(err, ApiError::Unauthorized(_)));
+    }
+
+    #[test]
+    fn validate_oauth_state_match_session_match() {
+        let stored = StoredOAuthState {
+            provider: "google".to_string(),
+            session_id: Some("sess-1".to_string()),
+        };
+        assert!(validate_oauth_state_match(&stored, "google", Some("sess-1")).is_ok());
     }
 
     #[test]

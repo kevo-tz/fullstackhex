@@ -11,6 +11,7 @@ pub mod middleware;
 pub mod oauth;
 pub mod password;
 pub mod routes;
+pub mod util;
 
 /// Rate limit thresholds for auth endpoints.
 ///
@@ -29,6 +30,14 @@ pub struct RateLimitConfig {
     pub login_ip_max: u64,
     /// Login IP window in seconds (default: 300 = 5 min).
     pub login_ip_window_secs: u64,
+    /// Max forgot-password requests per IP per window (default: 3).
+    pub forgot_max: u64,
+    /// Forgot-password window in seconds (default: 900 = 15 min).
+    pub forgot_window_secs: u64,
+    /// Max OAuth callback requests per IP per window (default: 10).
+    pub oauth_callback_max: u64,
+    /// OAuth callback window in seconds (default: 60 = 1 min).
+    pub oauth_callback_window_secs: u64,
 }
 
 impl Default for RateLimitConfig {
@@ -40,6 +49,10 @@ impl Default for RateLimitConfig {
             login_email_window_secs: 300,
             login_ip_max: 10,
             login_ip_window_secs: 300,
+            forgot_max: 3,
+            forgot_window_secs: 900,
+            oauth_callback_max: 10,
+            oauth_callback_window_secs: 60,
         }
     }
 }
@@ -53,6 +66,10 @@ impl RateLimitConfig {
             login_email_window_secs: Self::env_or("RATE_LIMIT_LOGIN_EMAIL_WINDOW", 300),
             login_ip_max: Self::env_or("RATE_LIMIT_LOGIN_IP_MAX", 10),
             login_ip_window_secs: Self::env_or("RATE_LIMIT_LOGIN_IP_WINDOW", 300),
+            forgot_max: Self::env_or("RATE_LIMIT_FORGOT_MAX", 3),
+            forgot_window_secs: Self::env_or("RATE_LIMIT_FORGOT_WINDOW", 900),
+            oauth_callback_max: Self::env_or("RATE_LIMIT_OAUTH_CALLBACK_MAX", 10),
+            oauth_callback_window_secs: Self::env_or("RATE_LIMIT_OAUTH_CALLBACK_WINDOW", 60),
         }
     }
 
@@ -94,6 +111,9 @@ pub struct AuthConfig {
     pub fail_open_on_redis_error: bool,
     /// Rate limit configuration for auth endpoints.
     pub rate_limits: RateLimitConfig,
+    /// Whether to set the `Secure` flag on cookies. Default true.
+    /// Set to false in dev without HTTPS.
+    pub cookie_secure: bool,
 }
 
 /// Auth mode determines how authentication is extracted from requests.
@@ -159,6 +179,10 @@ impl AuthConfig {
                 .and_then(|v| v.to_lowercase().parse::<bool>().ok())
                 .unwrap_or(true),
             rate_limits: RateLimitConfig::from_env(),
+            cookie_secure: std::env::var("COOKIE_SECURE")
+                .ok()
+                .and_then(|v| v.to_lowercase().parse::<bool>().ok())
+                .unwrap_or(true),
         })
     }
 }
@@ -193,11 +217,26 @@ mod proptests;
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serial_test::serial;
 
     #[test]
+    #[serial]
     fn auth_config_from_env_env_variants() {
+        // Save all env vars this test touches
         let secret_old = std::env::var("JWT_SECRET").ok();
         let mode_old = std::env::var("AUTH_MODE").ok();
+        let rate_register_max = std::env::var("RATE_LIMIT_REGISTER_MAX").ok();
+        let rate_register_window = std::env::var("RATE_LIMIT_REGISTER_WINDOW").ok();
+        let rate_login_email_max = std::env::var("RATE_LIMIT_LOGIN_EMAIL_MAX").ok();
+        let rate_login_ip_window = std::env::var("RATE_LIMIT_LOGIN_IP_WINDOW").ok();
+
+        // Unset CI/outer env vars that would override defaults
+        unsafe {
+            std::env::remove_var("RATE_LIMIT_REGISTER_MAX");
+            std::env::remove_var("RATE_LIMIT_REGISTER_WINDOW");
+            std::env::remove_var("RATE_LIMIT_LOGIN_EMAIL_MAX");
+            std::env::remove_var("RATE_LIMIT_LOGIN_IP_WINDOW");
+        }
 
         // 1. Missing JWT_SECRET => None
         unsafe { std::env::remove_var("JWT_SECRET") };
@@ -224,6 +263,7 @@ mod tests {
         assert_eq!(c.rate_limits.login_email_max, 5);
         assert_eq!(c.rate_limits.login_ip_window_secs, 300);
 
+        // Restore everything
         if let Some(v) = secret_old {
             unsafe { std::env::set_var("JWT_SECRET", v) };
         } else {
@@ -233,6 +273,18 @@ mod tests {
             unsafe { std::env::set_var("AUTH_MODE", v) };
         } else {
             unsafe { std::env::remove_var("AUTH_MODE") };
+        }
+        if let Some(v) = rate_register_max {
+            unsafe { std::env::set_var("RATE_LIMIT_REGISTER_MAX", v) };
+        }
+        if let Some(v) = rate_register_window {
+            unsafe { std::env::set_var("RATE_LIMIT_REGISTER_WINDOW", v) };
+        }
+        if let Some(v) = rate_login_email_max {
+            unsafe { std::env::set_var("RATE_LIMIT_LOGIN_EMAIL_MAX", v) };
+        }
+        if let Some(v) = rate_login_ip_window {
+            unsafe { std::env::set_var("RATE_LIMIT_LOGIN_IP_WINDOW", v) };
         }
     }
 
@@ -252,6 +304,7 @@ mod tests {
             sidecar_shared_secret: None,
             fail_open_on_redis_error: true,
             rate_limits: Default::default(),
+            cookie_secure: true,
         };
         let svc = AuthService::new(config);
         let token = svc

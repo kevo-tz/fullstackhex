@@ -2,7 +2,7 @@ use axum::http::{HeaderMap, StatusCode, header};
 use axum::response::IntoResponse;
 use axum::{
     Json, Router,
-    extract::{DefaultBodyLimit, Extension, State},
+    extract::{DefaultBodyLimit, Extension, FromRef, State},
     http::Request,
     middleware,
     routing::get,
@@ -14,7 +14,7 @@ use sqlx::PgPool;
 use sqlx::postgres::PgPoolOptions;
 use std::collections::HashMap;
 use std::sync::Arc;
-use std::sync::Mutex;
+use std::sync::RwLock;
 use std::time::Duration;
 use tokio::sync::Notify;
 use tokio::sync::Semaphore;
@@ -53,32 +53,30 @@ fn db_err(e: sqlx::Error, context: &'static str) -> domain::error::ApiError {
     domain::error::ApiError::InternalError(context.into())
 }
 
+/// Newtype to carry DEV_USER_ID via request extensions.
+#[derive(Clone)]
+struct DevUserId(String);
+
 /// Status of the database connection pool.
+#[derive(Clone)]
 pub enum DbStatus {
     NotConfigured,
     Connected(PgPool),
     ConnectionFailed(String),
 }
 
-pub struct AppState {
+/// Health-check related state.
+#[derive(Clone)]
+pub struct HealthState {
     pub db: DbStatus,
     pub redis: Option<Arc<cache::RedisClient>>,
-    pub auth: Option<Arc<auth::AuthService>>,
-    pub storage: Option<storage::StorageClient>,
     pub sidecar: PythonSidecar,
-    pub prometheus_handle: PrometheusHandle,
     pub gauge_task: Option<tokio::task::AbortHandle>,
     pub feature_flags: Option<domain::FeatureFlags>,
-    pub ws_connection_permits: Arc<Semaphore>,
-    pub ws_idle_timeout: Duration,
-    pub ws_shutdown: Arc<Notify>,
-    pub ws_user_connections: Arc<Mutex<HashMap<String, usize>>>,
-    pub ws_per_user_max: usize,
 }
 
-impl AppState {
-    /// Returns a reference to the PgPool, or an `ApiError::ServiceUnavailable`
-    /// if the database is not configured or not connected.
+impl HealthState {
+    /// Returns a reference to the PgPool, or an `ApiError::ServiceUnavailable`.
     fn db_pool(&self) -> Result<&sqlx::PgPool, domain::error::ApiError> {
         match &self.db {
             DbStatus::Connected(pool) => Ok(pool),
@@ -86,6 +84,48 @@ impl AppState {
                 "database not configured".into(),
             )),
         }
+    }
+}
+
+/// WebSocket connection tracking state.
+#[derive(Clone)]
+pub struct WebSocketState {
+    pub connection_permits: Arc<Semaphore>,
+    pub idle_timeout: Duration,
+    pub shutdown: Arc<Notify>,
+    pub user_connections: Arc<RwLock<HashMap<String, usize>>>,
+    pub per_user_max: usize,
+}
+
+/// Application root state.
+///
+/// Sub-structs (`HealthState`, `WebSocketState`) enable Axum sub-state extraction
+/// so handlers only receive the fields they need.
+pub struct AppState {
+    pub health: Arc<HealthState>,
+    pub ws: Arc<WebSocketState>,
+    pub auth: Option<Arc<auth::AuthService>>,
+    pub storage: Option<storage::StorageClient>,
+    pub prometheus_handle: PrometheusHandle,
+    pub allowed_origin: Option<String>,
+}
+
+impl AppState {
+    /// Convenience accessor for db_pool (delegates to HealthState).
+    fn db_pool(&self) -> Result<&sqlx::PgPool, domain::error::ApiError> {
+        self.health.db_pool()
+    }
+}
+
+impl FromRef<AppState> for Arc<HealthState> {
+    fn from_ref(app: &AppState) -> Self {
+        app.health.clone()
+    }
+}
+
+impl FromRef<AppState> for Arc<WebSocketState> {
+    fn from_ref(app: &AppState) -> Self {
+        app.ws.clone()
     }
 }
 
@@ -154,21 +194,29 @@ pub async fn router(
 
     let ws_shutdown = Arc::new(Notify::new());
     let ws_per_user_max: usize = parse_env_or("WS_PER_USER_MAX", 10);
+    let allowed_origin: Option<String> = std::env::var("ALLOWED_ORIGIN")
+        .ok()
+        .filter(|v| !v.is_empty());
 
     let state = Arc::new(AppState {
-        db,
-        redis,
+        health: Arc::new(HealthState {
+            db,
+            redis,
+            sidecar: PythonSidecar::from_env(),
+            gauge_task,
+            feature_flags: Some(domain::FeatureFlags::from_env()),
+        }),
+        ws: Arc::new(WebSocketState {
+            connection_permits: Arc::new(Semaphore::new(ws_max_connections)),
+            idle_timeout: Duration::from_secs(ws_idle_timeout_secs),
+            shutdown: ws_shutdown,
+            user_connections: Arc::new(RwLock::new(HashMap::new())),
+            per_user_max: ws_per_user_max,
+        }),
         auth,
         storage,
-        sidecar: PythonSidecar::from_env(),
         prometheus_handle,
-        gauge_task,
-        feature_flags: Some(domain::FeatureFlags::from_env()),
-        ws_connection_permits: Arc::new(Semaphore::new(ws_max_connections)),
-        ws_idle_timeout: Duration::from_secs(ws_idle_timeout_secs),
-        ws_shutdown,
-        ws_user_connections: Arc::new(Mutex::new(HashMap::new())),
-        ws_per_user_max,
+        allowed_origin,
     });
 
     Ok((build_router(state.clone()), state))
@@ -180,48 +228,139 @@ pub fn router_with_state(state: AppState) -> Router {
 
 fn build_router(state: Arc<AppState>) -> Router {
     let mut router = Router::new()
-        .route("/health", get(health))
-        .route("/health/db", get(health_db))
-        .route("/health/redis", get(health_redis))
-        .route("/health/storage", get(health_storage))
-        .route("/health/python", get(health_python))
-        .route("/health/auth", get(health_auth))
+        .merge(health_routes())
         .route("/metrics", get(metrics_handler))
         .route("/metrics/python", get(metrics_python_proxy))
         .route("/live", get(live::ws_handler))
         .layer(middleware::from_fn(metrics::track_metrics))
         .with_state(state.clone());
 
-    // Maintenance mode middleware — checks FeatureFlags.maintenance_mode
-    if let Some(flags) = state.feature_flags {
+    if let Some(flags) = state.health.feature_flags {
         router = router
             .layer(middleware::from_fn(maintenance_middleware))
             .layer(Extension(flags));
     }
 
-    // Nest auth routes with their own state
-    if let (Some(auth_svc), Some(redis)) = (&state.auth, &state.redis)
-        && let DbStatus::Connected(ref pool) = state.db
-    {
-        let auth_state = auth::routes::AuthState {
-            auth: auth_svc.clone(),
-            db: pool.clone(),
-            redis: redis.clone(),
-            oauth: Arc::new(auth::oauth::OAuthService::new(
-                auth_svc.config.google_client_id.clone(),
-                auth_svc.config.google_client_secret.clone(),
-                auth_svc.config.github_client_id.clone(),
-                auth_svc.config.github_client_secret.clone(),
-                reqwest::Client::new(),
-            )),
-        };
-        let auth_router = Router::new()
+    if let Some(auth_router) = auth_routes(&state) {
+        router = router.nest("/auth", auth_router);
+    }
+
+    if let Some(storage_router) = storage_routes(&state) {
+        router = router.nest("/storage", storage_router);
+    }
+
+    let db_connected = matches!(state.health.db, DbStatus::Connected(_));
+    let dev_user_id = std::env::var("DEV_USER_ID").ok().and_then(|v| {
+        if v.is_empty() {
+            None
+        } else {
+            uuid::Uuid::parse_str(&v).ok().map(|_| v)
+        }
+    });
+    if let Some(ref uid) = dev_user_id {
+        if std::env::var("PRODUCTION").is_ok() {
+            tracing::warn!(dev_user_id = %uid, "DEV_USER_ID is set in PRODUCTION mode — notes bypass authentication");
+        } else {
+            tracing::info!(dev_user_id = %uid, "DEV_USER_ID set — notes available without auth");
+        }
+    }
+
+    let mount_notes = state.auth.is_some() || dev_user_id.is_some();
+    if mount_notes && db_connected {
+        let mut notes_router = Router::new()
+            .route("/", axum::routing::get(notes::list_notes))
+            .route("/", axum::routing::post(notes::create_note))
+            .route("/{id}", axum::routing::get(notes::get_note))
+            .route("/{id}", axum::routing::put(notes::update_note))
+            .route("/{id}", axum::routing::delete(notes::delete_note))
+            .layer(DefaultBodyLimit::max(128 * 1024))
+            .with_state(state.clone());
+
+        if state.auth.is_none() {
+            let uid = dev_user_id.clone().unwrap();
+            notes_router = notes_router
+                .layer(Extension(DevUserId(uid)))
+                .layer(middleware::from_fn(dev_user_middleware));
+        }
+
+        router = router.nest("/notes", notes_router);
+    } else {
+        let fb = Router::new()
+            .route("/", get(notes_fallback).post(notes_fallback))
+            .route(
+                "/{id}",
+                get(notes_fallback)
+                    .put(notes_fallback)
+                    .delete(notes_fallback),
+            );
+        router = router.nest("/notes", fb);
+    }
+    if state.auth.is_none() {
+        router = router.route("/auth/me", get(auth_me_disabled));
+    }
+
+    if let Some(ref auth_svc) = state.auth {
+        router = router
+            .layer(middleware::from_fn(auth::middleware::auth_middleware))
+            .layer(Extension(auth_svc.clone()));
+        if let Some(ref redis) = state.health.redis {
+            router = router.layer(Extension(redis.clone()));
+        }
+    }
+
+    router
+}
+
+fn health_routes() -> Router<Arc<AppState>> {
+    Router::new()
+        .route("/health", get(health))
+        .route("/health/db", get(health_db))
+        .route("/health/redis", get(health_redis))
+        .route("/health/storage", get(health_storage))
+        .route("/health/python", get(health_python))
+        .route("/health/auth", get(health_auth))
+}
+
+fn auth_routes(state: &Arc<AppState>) -> Option<Router> {
+    let (auth_svc, redis) = (&state.auth, &state.health.redis);
+    let pool = match &state.health.db {
+        DbStatus::Connected(p) => p,
+        _ => return None,
+    };
+    let auth_svc = auth_svc.as_ref()?;
+    let redis = redis.as_ref()?;
+
+    let auth_state = auth::routes::AuthState {
+        auth: auth_svc.clone(),
+        db: pool.clone(),
+        redis: redis.clone(),
+        oauth: Arc::new(auth::oauth::OAuthService::new(
+            auth_svc.config.google_client_id.clone(),
+            auth_svc.config.google_client_secret.clone(),
+            auth_svc.config.github_client_id.clone(),
+            auth_svc.config.github_client_secret.clone(),
+            reqwest::Client::new(),
+        )),
+    };
+    Some(
+        Router::new()
             .route("/register", axum::routing::post(auth::routes::register))
             .route("/login", axum::routing::post(auth::routes::login))
             .route("/logout", axum::routing::post(auth::routes::logout))
+            .route(
+                "/forgot-password",
+                axum::routing::post(auth::routes::forgot_password),
+            )
+            .route(
+                "/reset-password",
+                axum::routing::post(auth::routes::reset_password),
+            )
             .route("/refresh", axum::routing::post(auth::routes::refresh))
             .route("/providers", axum::routing::get(auth::routes::providers))
-            .route("/me", axum::routing::get(auth::routes::me))
+            .route(
+                "/me",
+                axum::routing::get(auth::routes::me).delete(auth::routes::delete_account),
+            )
             .route(
                 "/oauth/{provider}",
                 axum::routing::get(auth::routes::oauth_redirect),
@@ -231,17 +370,18 @@ fn build_router(state: Arc<AppState>) -> Router {
                 axum::routing::get(auth::routes::oauth_callback),
             )
             .layer(middleware::from_fn(auth::metrics::track_auth_metrics))
-            .with_state(auth_state);
-        router = router.nest("/auth", auth_router);
-    }
+            .with_state(auth_state),
+    )
+}
 
-    // Nest storage routes with their own state
-    if let Some(ref storage_svc) = state.storage {
-        let storage_state = storage::routes::StorageState {
-            client: reqwest::Client::new(),
-            config: storage_svc.config.clone(),
-        };
-        let storage_router = Router::new()
+fn storage_routes(state: &Arc<AppState>) -> Option<Router> {
+    let storage_svc = state.storage.as_ref()?;
+    let storage_state = storage::routes::StorageState {
+        client: reqwest::Client::new(),
+        config: storage_svc.config.clone(),
+    };
+    Some(
+        Router::new()
             .route("/{key}", axum::routing::put(storage::routes::upload))
             .route("/{key}", axum::routing::get(storage::routes::download))
             .route("/{key}", axum::routing::delete(storage::routes::delete))
@@ -263,56 +403,9 @@ fn build_router(state: Arc<AppState>) -> Router {
                 "/multipart/{key}/{upload_id}",
                 axum::routing::delete(storage::routes::abort_multipart),
             )
-            .layer(DefaultBodyLimit::max(10 * 1024 * 1024)) // 10MB upload limit
-            .with_state(storage_state);
-        router = router.nest("/storage", storage_router);
-    }
-
-    // Nest notes CRUD routes — requires auth + database
-    if state.auth.is_some()
-        && let DbStatus::Connected(ref _pool) = state.db
-    {
-        let notes_router = Router::new()
-            .route("/", axum::routing::get(notes::list_notes))
-            .route("/", axum::routing::post(notes::create_note))
-            .route("/{id}", axum::routing::get(notes::get_note))
-            .route("/{id}", axum::routing::put(notes::update_note))
-            .route("/{id}", axum::routing::delete(notes::delete_note))
-            .layer(DefaultBodyLimit::max(128 * 1024))
-            .with_state(state.clone());
-        router = router.nest("/notes", notes_router);
-    }
-
-    // Fallback /auth/me when auth not configured — returns 200 to avoid browser 404 noise
-    if state.auth.is_none() {
-        router = router.route("/auth/me", get(auth_me_disabled));
-    }
-
-    // Fallback notes routes when deps not available
-    if state.auth.is_none() || !matches!(state.db, DbStatus::Connected(_)) {
-        let fb = Router::new()
-            .route("/", get(notes_fallback).post(notes_fallback))
-            .route(
-                "/{id}",
-                get(notes_fallback)
-                    .put(notes_fallback)
-                    .delete(notes_fallback),
-            );
-        router = router.nest("/notes", fb);
-    }
-
-    // Add auth middleware globally when auth is configured
-    if let Some(ref auth_svc) = state.auth {
-        router = router
-            .layer(middleware::from_fn(auth::middleware::auth_middleware))
-            .layer(Extension(auth_svc.clone()));
-        // Also inject Redis so the middleware can check JWT blacklist
-        if let Some(ref redis) = state.redis {
-            router = router.layer(Extension(redis.clone()));
-        }
-    }
-
-    router
+            .layer(DefaultBodyLimit::max(10 * 1024 * 1024))
+            .with_state(storage_state),
+    )
 }
 
 /// Maintenance mode middleware — returns 503 when FEATURE_MAINTENANCE is enabled,
@@ -355,13 +448,12 @@ async fn health(State(state): State<Arc<AppState>>) -> impl IntoResponse {
     let rust = json!({
         "status": "ok",
         "service": "api",
-        "version": env!("CARGO_PKG_VERSION")
     });
 
-    let db = health_db_value(&state).await;
-    let redis = health_redis_value(&state).await;
+    let db = health_db_value(&state.health).await;
+    let redis = health_redis_value(&state.health).await;
     let storage = health_storage_value(&state);
-    let python = health_python_value(&state).await;
+    let python = health_python_value(&state.health).await;
     let auth = health_auth_value(&state);
 
     // Truncate error details before broadcasting to WS clients (prevents
@@ -444,10 +536,8 @@ async fn health(State(state): State<Arc<AppState>>) -> impl IntoResponse {
         .await;
     });
 
-    let flags = state.feature_flags.map(|f| {
+    let flags = state.health.feature_flags.map(|f| {
         json!({
-            "chat_enabled": f.chat_enabled,
-            "storage_readonly": f.storage_readonly,
             "maintenance_mode": f.maintenance_mode,
         })
     });
@@ -471,10 +561,7 @@ fn health_auth_value(state: &AppState) -> serde_json::Value {
     if state.auth.is_some() {
         json!({ "status": "ok" })
     } else {
-        json!({
-            "status": "disabled",
-            "fix": "JWT_SECRET not set or is CHANGE_ME — auth disabled. Set a secure JWT_SECRET in .env and restart."
-        })
+        json!({ "status": "disabled" })
     }
 }
 
@@ -482,47 +569,30 @@ async fn health_auth(State(state): State<Arc<AppState>>) -> impl IntoResponse {
     (StatusCode::OK, no_cache(), Json(health_auth_value(&state)))
 }
 
-async fn health_db_value(state: &AppState) -> serde_json::Value {
+async fn health_db_value(state: &HealthState) -> serde_json::Value {
     let pool = match &state.db {
         DbStatus::Connected(pool) => Some(pool),
-        DbStatus::NotConfigured => None,
+        DbStatus::NotConfigured => {
+            tracing::info!("health check: database not configured");
+            return json!({ "status": "error" });
+        }
         DbStatus::ConnectionFailed(msg) => {
-            return json!({
-                "status": "error",
-                "error": msg,
-                "fix": "Check that PostgreSQL is running and DATABASE_URL is correct in .env. Then restart the backend."
-            });
+            tracing::warn!(error = %msg, "health check: database connection failed");
+            return json!({ "status": "error" });
         }
     };
 
     match db::health_check(pool).await {
         Ok(()) => json!({ "status": "ok" }),
         Err(e) => {
-            let (error, fix) = match &e {
-                db::DbError::NotConfigured => (
-                    "database not configured",
-                    "Set DATABASE_URL in .env and restart the backend.",
-                ),
-                db::DbError::PoolTimeout(_) => (
-                    "database pool timeout",
-                    "The database pool is exhausted. Check PostgreSQL connection and increase DB_MAX_CONNECTIONS if needed.",
-                ),
-                db::DbError::QueryFailed(_) => (
-                    "database query failed",
-                    "Check that PostgreSQL is running and the database exists.",
-                ),
-                db::DbError::MigrationFailed(_) => (
-                    "database migration failed",
-                    "Check the migration files in backend/db/migrations/ and run: make migrate",
-                ),
-            };
-            json!({ "status": "error", "error": error, "fix": fix })
+            tracing::warn!(error = %e, "health check: database unhealthy");
+            json!({ "status": "error" })
         }
     }
 }
 
 async fn health_db(State(state): State<Arc<AppState>>) -> impl IntoResponse {
-    let value = health_db_value(&state).await;
+    let value = health_db_value(&state.health).await;
     let status = if value["status"] == "ok" {
         StatusCode::OK
     } else {
@@ -531,22 +601,24 @@ async fn health_db(State(state): State<Arc<AppState>>) -> impl IntoResponse {
     (status, no_cache(), Json(value))
 }
 
-async fn health_redis_value(state: &AppState) -> serde_json::Value {
+async fn health_redis_value(state: &HealthState) -> serde_json::Value {
     match &state.redis {
         Some(redis) => match redis.ping().await {
             Ok(()) => json!({ "status": "ok" }),
-            Err(e) => json!({ "status": "error", "error": e.to_string() }),
+            Err(e) => {
+                tracing::warn!(error = %e, "health check: Redis ping failed");
+                json!({ "status": "error" })
+            }
         },
-        None => json!({
-            "status": "error",
-            "error": "Redis not configured",
-            "fix": "Set REDIS_URL in .env and restart the backend."
-        }),
+        None => {
+            tracing::info!("health check: Redis not configured");
+            json!({ "status": "error" })
+        }
     }
 }
 
 async fn health_redis(State(state): State<Arc<AppState>>) -> impl IntoResponse {
-    let value = health_redis_value(&state).await;
+    let value = health_redis_value(&state.health).await;
     let status = if value["status"] == "ok" {
         StatusCode::OK
     } else {
@@ -557,12 +629,11 @@ async fn health_redis(State(state): State<Arc<AppState>>) -> impl IntoResponse {
 
 fn health_storage_value(state: &AppState) -> serde_json::Value {
     match &state.storage {
-        Some(s) => json!({ "status": "ok", "bucket": s.config.bucket }),
-        None => json!({
-            "status": "error",
-            "error": "Storage not configured",
-            "fix": "Set RUSTFS_ENDPOINT, RUSTFS_ACCESS_KEY, and RUSTFS_SECRET_KEY in .env."
-        }),
+        Some(_) => json!({ "status": "ok" }),
+        None => {
+            tracing::info!("health check: storage not configured");
+            json!({ "status": "error" })
+        }
     }
 }
 
@@ -580,11 +651,10 @@ fn format_health_value(v: &serde_json::Value) -> serde_json::Value {
     json!({
         "status": v.get("status").and_then(|s| s.as_str()).unwrap_or("unknown"),
         "service": v.get("service").and_then(|s| s.as_str()).unwrap_or("unknown"),
-        "version": v.get("version").and_then(|s| s.as_str()).unwrap_or("unknown"),
     })
 }
 
-async fn health_python_value(state: &AppState) -> serde_json::Value {
+async fn health_python_value(state: &HealthState) -> serde_json::Value {
     match state.sidecar.health().await {
         Ok(v) => format_health_value(&v),
         Err(e) => sidecar_error_json(&e, state.sidecar.socket_path()),
@@ -593,43 +663,10 @@ async fn health_python_value(state: &AppState) -> serde_json::Value {
 
 fn sidecar_error_json(
     e: &py_sidecar::SidecarError,
-    socket_path: &std::path::Path,
+    _socket_path: &std::path::Path,
 ) -> serde_json::Value {
-    let sock_display = socket_path.display();
-    let (error_msg, fix_msg) = match e {
-        py_sidecar::SidecarError::SocketNotFound(_) => (
-            "socket not found".to_string(),
-            format!(
-                "Start the Python sidecar: make dev starts it automatically, or run: cd py-api && uv run uvicorn app.main:app --uds {sock_display}"
-            ),
-        ),
-        py_sidecar::SidecarError::ConnectionFailed(msg) => (
-            format!("connection failed: {msg}"),
-            format!(
-                "Check that the Python sidecar is running. Run: cd py-api && uv run uvicorn app.main:app --uds {sock_display}"
-            ),
-        ),
-        py_sidecar::SidecarError::Timeout(d) => (
-            format!("request timed out after {d:?}"),
-            format!(
-                "The Python sidecar is not responding. Restart it with: cd py-api && uv run uvicorn app.main:app --uds {sock_display}"
-            ),
-        ),
-        py_sidecar::SidecarError::InvalidInput(msg) => (
-            format!("invalid input: {msg}"),
-            "The request contains invalid characters.".to_string(),
-        ),
-        py_sidecar::SidecarError::InvalidResponse(msg) => (
-            format!("invalid response: {msg}"),
-            "The Python sidecar returned an unexpected response. Check its logs for errors."
-                .to_string(),
-        ),
-        py_sidecar::SidecarError::HttpError { status, body } => (
-            format!("HTTP {status}: {body}"),
-            "The Python sidecar returned an HTTP error. Check its logs for details.".to_string(),
-        ),
-    };
-    json!({ "status": "unavailable", "error": error_msg, "fix": fix_msg })
+    tracing::warn!(error = %e, "health check: Python sidecar unavailable");
+    json!({ "status": "unavailable" })
 }
 
 async fn health_python(
@@ -647,15 +684,16 @@ async fn health_python(
     }
 
     let value = if trace_id.is_empty() {
-        health_python_value(&state).await
+        health_python_value(&state.health).await
     } else {
         match state
+            .health
             .sidecar
             .get_with_trace_id("/health", trace_id, None)
             .await
         {
             Ok(v) => format_health_value(&v),
-            Err(e) => sidecar_error_json(&e, state.sidecar.socket_path()),
+            Err(e) => sidecar_error_json(&e, state.health.sidecar.socket_path()),
         }
     };
 
@@ -677,7 +715,7 @@ async fn metrics_handler(State(state): State<Arc<AppState>>) -> impl IntoRespons
 }
 
 async fn metrics_python_proxy(State(state): State<Arc<AppState>>) -> impl IntoResponse {
-    match state.sidecar.get_raw("/metrics").await {
+    match state.health.sidecar.get_raw("/metrics").await {
         Ok(body) => (
             StatusCode::OK,
             [(header::CONTENT_TYPE, "text/plain; charset=utf-8")],
@@ -721,6 +759,29 @@ async fn notes_fallback() -> impl IntoResponse {
     )
 }
 
+/// Middleware that injects a mock `AuthUser` using the `DEV_USER_ID` from
+/// request extensions.  Only applied on the notes sub-router when auth is
+/// disabled but `DEV_USER_ID` is set.
+async fn dev_user_middleware(
+    mut req: axum::http::Request<axum::body::Body>,
+    next: axum::middleware::Next,
+) -> axum::response::Response {
+    let dev_user_id = req.extensions().get::<DevUserId>().map(|d| d.0.clone());
+    if let Some(uid) = dev_user_id {
+        req.extensions_mut().insert(auth::middleware::AuthUser {
+            user_id: uid,
+            email: "dev@local.dev".into(),
+            name: Some("Dev User".into()),
+            provider: "dev".into(),
+            jti: String::new(),
+            session_id: None,
+        });
+    }
+    next.run(req).await
+}
+
+pub mod test_helpers;
+
 #[cfg(test)]
 mod proptests;
 
@@ -732,27 +793,30 @@ mod tests {
 
     fn test_state() -> AppState {
         AppState {
-            db: DbStatus::NotConfigured,
-            redis: None,
+            health: Arc::new(HealthState {
+                db: DbStatus::NotConfigured,
+                redis: None,
+                sidecar: PythonSidecar::new(
+                    "/tmp/__nonexistent_test_socket__.sock",
+                    Duration::from_secs(1),
+                    0,
+                ),
+                gauge_task: None,
+                feature_flags: Some(domain::FeatureFlags {
+                    maintenance_mode: false,
+                }),
+            }),
+            ws: Arc::new(WebSocketState {
+                connection_permits: Arc::new(Semaphore::new(100)),
+                idle_timeout: Duration::from_secs(300),
+                shutdown: Arc::new(Notify::new()),
+                user_connections: Arc::new(RwLock::new(HashMap::new())),
+                per_user_max: 10,
+            }),
             auth: None,
             storage: None,
-            sidecar: PythonSidecar::new(
-                "/tmp/__nonexistent_test_socket__.sock",
-                Duration::from_secs(1),
-                0,
-            ),
             prometheus_handle: metrics::init_metrics_recorder(),
-            gauge_task: None,
-            feature_flags: Some(domain::FeatureFlags {
-                chat_enabled: false,
-                storage_readonly: false,
-                maintenance_mode: false,
-            }),
-            ws_connection_permits: Arc::new(Semaphore::new(100)),
-            ws_idle_timeout: Duration::from_secs(300),
-            ws_shutdown: Arc::new(Notify::new()),
-            ws_user_connections: Arc::new(Mutex::new(HashMap::new())),
-            ws_per_user_max: 10,
+            allowed_origin: None,
         }
     }
 

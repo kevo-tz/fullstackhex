@@ -31,7 +31,10 @@ const { id } = Astro.params;
           <h1 id="note-title" class="text-2xl font-bold text-[#e2e8f0]"></h1>
           <p id="note-date" class="text-sm text-[#475569] mt-1"></p>
         </div>
-        <button id="delete-btn" class="delete-btn">Delete</button>
+        <div class="flex gap-2">
+          <a id="edit-btn" href={"/notes/edit/" + encodeURIComponent(id || "")} class="edit-btn">Edit</a>
+          <button id="delete-btn" class="delete-btn">Delete</button>
+        </div>
       </div>
       <div id="note-body" class="note-body"></div>
     </article>
@@ -104,7 +107,7 @@ const { id } = Astro.params;
     confirmBtn.textContent = "Deleting…";
     modal?.close();
     try {
-      const csrf = sessionStorage.getItem("csrf_token") || document.cookie.split("; ").find(r => r.startsWith("csrf_token="))?.split("=")[1] || "";
+      const csrf = (await import("../../lib/csrf")).getCsrfToken();
       const res = await fetch(`/api/notes/${noteId}`, {
         method: "DELETE",
         headers: csrf ? { "X-CSRF-Token": csrf } : {},
@@ -140,6 +143,21 @@ const { id } = Astro.params;
     white-space: pre-wrap;
     word-break: break-word;
   }
+  .edit-btn {
+    padding: 0.8rem 0.9rem;
+    border-radius: 6px;
+    background: transparent;
+    border: 1px solid var(--border, #1e293b);
+    color: var(--accent, #22c55e);
+    text-decoration: none;
+    font-size: 0.8rem;
+    font-family: inherit;
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+  }
+  .edit-btn:hover { background: rgba(34, 197, 94, 0.1); }
+  .edit-btn:focus-visible { outline: 2px solid var(--accent, #22c55e); outline-offset: 2px; }
   .delete-btn {
     padding: 0.8rem 0.9rem;
     border-radius: 6px;

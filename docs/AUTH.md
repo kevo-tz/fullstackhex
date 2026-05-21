@@ -33,6 +33,9 @@ Auth is disabled when `JWT_SECRET` is unset or `CHANGE_ME`. The health dashboard
 | POST | `/auth/logout` | Required | Blacklists JTI, destroys session. |
 | POST | `/auth/refresh` | None | Exchange refresh token for new JWT. |
 | GET | `/auth/me` | Required | Return current user info. |
+| DELETE | `/auth/me` | Required | Delete account and all sessions. |
+| POST | `/auth/forgot-password` | None | Request password reset (Redis token, 1h TTL, rate-limited). |
+| POST | `/auth/reset-password` | None | Reset password with token from email. |
 | GET | `/auth/providers` | None | List configured OAuth providers. |
 | GET | `/auth/oauth/{provider}` | None | Start OAuth login (google, github). |
 | GET | `/auth/oauth/{provider}/callback` | None | OAuth callback. |

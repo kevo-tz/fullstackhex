@@ -10,7 +10,5 @@
     "src/**/*.astro",
     "tests/**/*.test.ts"
   ],
-  "ignoreDependencies": [
-    "tailwindcss"
-  ]
+  "ignoreDependencies": []
 }

@@ -7,6 +7,60 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.14.4] - 2026-05-20
+
+### Security
+- **CSRF mismatch now returns 403**: Cookie auth failure (missing/wrong CSRF token) no longer silently falls through to bearer auth — returns `403 Forbidden` immediately
+- **OAuth state validation**: `parse_stored_oauth_state` rejects valid JSON without a `"provider"` field — prevents state injection attacks
+- **Refresh token entropy**: All refresh token generators now use `getrandom(32)` + hex (256-bit cryptographic entropy) instead of `uuid::Uuid::new_v4()`
+- **CSP lockdown**: nginx adds `frame-src 'none'`, `object-src 'none'`, `connect-src`, `img-src`, `base-uri`, `form-action`, `report-uri`; Astro `styleDirective` drops `'unsafe-inline'`
+- **CSP default-src removed**: removed from nginx to prevent blocking Astro nonce-based inline scripts/styles — dual-policy CSP enforced independently by browser
+
+### Added
+- **sqlx error conversion**: `From<sqlx::Error>` for `ApiError` behind `sqlx-conv` feature — `RowNotFound→NotFound`, `PoolTimedOut/PoolClosed→ServiceUnavailable`
+- **Integration tests**: 13 new tests for forgot_password, reset_password, delete_account, oauth_callback — verify error paths and success flows
+
+### Changed
+- **Cookie dedup**: extracted `set_auth_cookies()` helper — removed ~60 lines of duplicate cookie-set logic across register, login, refresh, oauth_callback
+
+### Performance
+- **Redis Lua scripts**: `session_create` now atomic (SET+SADD+EXPIRE in one round-trip); `backoff_check` uses Lua (GET+TTL) with stale-key cleanup
+- **Batch session destroy**: `session_destroy_all_for_user` uses RENAME + SMEMBERS + batch DEL instead of per-session loop
+
+### Fixed
+- **Stale backoff keys**: `backoff_check` Lua handles TTL=-1 (key with no expiry) — deletes and returns -1 instead of leaking stale keys
+
+## [0.14.3] - 2026-05-18
+
+### Fixed
+- **Health disclosure**: `version`, `fix`, and detailed `error` messages stripped from all health endpoints (`/health`, `/health/db`, `/health/redis`, `/health/storage`, `/health/python`, `/health/auth`); detailed errors logged server-side with `tracing::warn!`
+- **`axum::serve` type error**: `build_router` now returns `Router<()>` (via early `.with_state()`) instead of `Router<Arc<AppState>>` — Axum 0.8.9 requires a unit-state router for `serve`
+
+### Changed
+- **Health values**: `format_health_value` and `sidecar_error_json` strip infrastructure fields at value-construction level, ensuring all response paths are safe
+- **Tests**: 4 health-route integration tests updated to match stripped response shape (no more `version`/`error` field assertions)
+
+## [0.14.2] - 2026-05-18
+
+### Fixed
+- **Prometheus label cardinality**: Python sidecar endpoint label normalized via `_UUID_PATTERN` regex — prevents explosion from dynamic path segments
+- **`register_metrics()` ordering**: moved from module level into `lifespan` — safe startup sequence, no duplicate-call errors
+
+### Changed
+- **py-api tests**: all converted from `def test_*` + `asyncio.run(...)` to `async def test_*` + `await` using `pytest-asyncio` with `asyncio_mode = "auto"`
+
+## [0.14.1] - 2026-05-18
+
+### Changed
+- **AppState split**: factored into `HealthState` (db, redis, sidecar, gauge_task, feature_flags) and `WebSocketState` (connection_permits, idle_timeout, shutdown, user_connections, per_user_max); `FromRef` impls for Axum sub-state extraction
+- **Router modularization**: `build_router` split into `health_routes()`, `auth_routes()`, `storage_routes()`, `notes_routes()` — each produces a typed sub-router
+- **WS user tracking**: `Arc<Mutex<HashMap>>` → `Arc<RwLock<HashMap>>` — async-friendly, no lock contention for readers
+
+## [0.14.0] - 2026-05-18
+
+### Changed
+- **Domain decoupling**: `From<cache::CacheError>` / `From<db::DbError>` moved behind optional feature gates `cache-conv` / `db-conv` in the domain crate; domain compiles without cache/db when features disabled
+
 ## [0.13.7] - 2026-05-17
 
 ### Fixed

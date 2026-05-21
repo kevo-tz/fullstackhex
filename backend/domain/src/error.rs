@@ -31,6 +31,7 @@ pub enum ApiError {
     ServiceUnavailable(String),
 }
 
+#[cfg(feature = "cache-conv")]
 impl From<cache::CacheError> for ApiError {
     fn from(e: cache::CacheError) -> Self {
         match e {
@@ -62,6 +63,23 @@ impl From<cache::CacheError> for ApiError {
     }
 }
 
+#[cfg(feature = "sqlx-conv")]
+impl From<sqlx::Error> for ApiError {
+    fn from(e: sqlx::Error) -> Self {
+        match &e {
+            sqlx::Error::RowNotFound => ApiError::NotFound(e.to_string()),
+            sqlx::Error::PoolTimedOut => {
+                ApiError::ServiceUnavailable("Database pool timeout".to_string())
+            }
+            sqlx::Error::PoolClosed => {
+                ApiError::ServiceUnavailable("Database pool closed".to_string())
+            }
+            _ => ApiError::InternalError(format!("Database query failed: {e}")),
+        }
+    }
+}
+
+#[cfg(feature = "db-conv")]
 impl From<db::DbError> for ApiError {
     fn from(e: db::DbError) -> Self {
         match e {
@@ -176,6 +194,18 @@ mod tests {
     }
 
     #[test]
+    fn conflict_returns_409() {
+        let err = ApiError::Conflict("Email already registered".to_string());
+        let resp = err.into_response();
+        assert_eq!(resp.status(), StatusCode::CONFLICT);
+    }
+}
+
+#[cfg(all(test, feature = "cache-conv"))]
+mod cache_conv_tests {
+    use super::ApiError;
+
+    #[test]
     fn cache_error_not_configured_converts_to_service_unavailable() {
         let err = ApiError::from(cache::CacheError::NotConfigured);
         assert!(matches!(err, ApiError::ServiceUnavailable(_)));
@@ -185,13 +215,6 @@ mod tests {
     fn cache_error_connection_failed_converts_to_service_unavailable() {
         let err = ApiError::from(cache::CacheError::ConnectionFailed("timeout".into()));
         assert!(matches!(err, ApiError::ServiceUnavailable(_)));
-    }
-
-    #[test]
-    fn conflict_returns_409() {
-        let err = ApiError::Conflict("Email already registered".to_string());
-        let resp = err.into_response();
-        assert_eq!(resp.status(), StatusCode::CONFLICT);
     }
 
     #[test]
@@ -209,6 +232,11 @@ mod tests {
         let err = ApiError::from(cache::CacheError::SessionNotFound);
         assert!(matches!(err, ApiError::Unauthorized(_)));
     }
+}
+
+#[cfg(all(test, feature = "db-conv"))]
+mod db_conv_tests {
+    use super::ApiError;
 
     #[test]
     fn db_error_not_configured_converts_to_service_unavailable() {
@@ -220,5 +248,28 @@ mod tests {
     fn db_error_pool_timeout_converts_to_service_unavailable() {
         let err = ApiError::from(db::DbError::PoolTimeout(std::time::Duration::from_secs(3)));
         assert!(matches!(err, ApiError::ServiceUnavailable(_)));
+    }
+}
+
+#[cfg(all(test, feature = "sqlx-conv"))]
+mod sqlx_conv_tests {
+    use super::ApiError;
+
+    #[test]
+    fn sqlx_error_not_found_converts_to_not_found() {
+        let err = ApiError::from(sqlx::Error::RowNotFound);
+        assert!(matches!(err, ApiError::NotFound(_)));
+    }
+
+    #[test]
+    fn sqlx_error_pool_timed_out_converts_to_service_unavailable() {
+        let err = ApiError::from(sqlx::Error::PoolTimedOut);
+        assert!(matches!(err, ApiError::ServiceUnavailable(_)));
+    }
+
+    #[test]
+    fn sqlx_error_database_converts_to_internal_error() {
+        let err = ApiError::from(sqlx::Error::Protocol("test protocol error".into()));
+        assert!(matches!(err, ApiError::InternalError(_)));
     }
 }

@@ -4,6 +4,7 @@
 //! No PostgreSQL sessions table — Redis is the sole session store.
 
 use super::{CacheError, RedisClient};
+use fred::interfaces::LuaInterface;
 use fred::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
@@ -20,6 +21,9 @@ pub struct Session {
 
 impl RedisClient {
     /// Create a new session and return the session ID.
+    ///
+    /// Uses a Lua script to atomically SET the session JSON, SADD to the
+    /// user→sessions set, and EXPIRE both keys in a single round-trip.
     pub async fn session_create(
         &self,
         session: &Session,
@@ -27,21 +31,61 @@ impl RedisClient {
     ) -> Result<String, CacheError> {
         let session_id = uuid::Uuid::new_v4().to_string();
         let key = self.make_key("session", &session_id);
+        let user_key = self.make_key("user_sessions", &session.user_id);
         let json = serde_json::to_string(session)
             .map_err(|e| CacheError::SerializationFailed(e.to_string()))?;
 
+        // KEYS[1] = session:<id>, KEYS[2] = user_sessions:<uid>
+        // ARGV[1] = session JSON, ARGV[2] = session_id, ARGV[3] = TTL seconds
+        let script = r#"
+            redis.call('SET', KEYS[1], ARGV[1], 'EX', ARGV[3])
+            redis.call('SADD', KEYS[2], ARGV[2])
+            redis.call('EXPIRE', KEYS[2], ARGV[3])
+            return ARGV[2]
+        "#;
+
         self.client
-            .set::<(), _, _>(
-                &key,
-                json,
-                Some(Expiration::EX(ttl.as_secs() as i64)),
-                None,
-                false,
+            .eval(
+                script,
+                vec![key, user_key],
+                vec![json, session_id.clone(), ttl.as_secs().to_string()],
             )
             .await
-            .map_err(CacheError::CommandFailed)?;
+            .map_err(CacheError::CommandFailed)
+    }
 
-        Ok(session_id)
+    /// Destroy all sessions for a user (used after password reset).
+    ///
+    /// Atomically reads and deletes the user's session set, then deletes each
+    /// individual session key. Uses RENAME to atomically move the set to a
+    /// temp key, eliminating any TOCTOU between reading members and deleting
+    /// the set. Best-effort: logs warnings on individual failures but does not
+    /// return an error — the password reset has already succeeded.
+    pub async fn session_destroy_all_for_user(&self, user_id: &str) {
+        let user_key = self.make_key("user_sessions", user_id);
+        let temp_key = format!("{user_key}:destroying");
+
+        // Atomically rename the set to a temp key. If no key exists (already
+        // deleted or no sessions), RENAME returns an error — bail out early.
+        let renamed: Result<(), _> = self.client.rename(&user_key, &temp_key).await;
+        if renamed.is_err() {
+            return;
+        }
+
+        // Now operate on the temp key — the original key is gone, so no new
+        // sessions can be added to the set we're about to delete.
+        let session_ids: Vec<String> = self.client.smembers(&temp_key).await.unwrap_or_default();
+
+        let _: () = self.client.del(&temp_key).await.unwrap_or_default();
+
+        // Batch delete all session keys in one call
+        let session_keys: Vec<String> = session_ids
+            .iter()
+            .map(|sid| self.make_key("session", sid))
+            .collect();
+        if let Err(e) = self.client.del::<(), _>(session_keys).await {
+            tracing::warn!(error = %e, "failed to delete some sessions during user invalidation");
+        }
     }
 
     /// Get a session by ID.
@@ -64,8 +108,33 @@ impl RedisClient {
     }
 
     /// Destroy a session (logout).
+    ///
+    /// Also removes the session ID from the user→sessions set if the session
+    /// can be read (best-effort — the session may already be expired).
     pub async fn session_destroy(&self, session_id: &str) -> Result<(), CacheError> {
         let key = self.make_key("session", session_id);
+
+        // Best-effort: read the session to find the user_id for set cleanup
+        let user_id: Option<String> = self
+            .client
+            .get::<Option<String>, _>(&key)
+            .await
+            .ok()
+            .and_then(|json| json)
+            .and_then(|json| {
+                serde_json::from_str::<Session>(&json)
+                    .ok()
+                    .map(|s| s.user_id)
+            });
+        if let Some(uid) = user_id {
+            let user_key = self.make_key("user_sessions", &uid);
+            let _: () = self
+                .client
+                .srem(&user_key, session_id)
+                .await
+                .unwrap_or_default();
+        }
+
         self.client
             .del::<(), _>(&key)
             .await

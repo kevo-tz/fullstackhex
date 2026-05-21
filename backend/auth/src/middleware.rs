@@ -99,17 +99,19 @@ pub async fn auth_middleware(
     // Bearer extraction (sync, always available)
     let bearer_user = extract_bearer(&req, &auth_service);
 
-    // Cookie auth prep: parse session cookie + validate CSRF (sync)
-    let cookie_prep = cookie_auth_prepare(&req);
-
-    // Determine the auth source and resolve the user.  Cookie auth needs Redis
-    // I/O which produces a complex Future type; we box it to keep
-    // axum::middleware::FromFn happy (it has a 16-type-parameter limit).
+    // Determine the auth source and resolve the user.
+    // Cookie auth (including CSRF validation) is only run when we actually
+    // need cookie auth — bearer-authenticated requests skip it entirely.
     let auth_user: Option<AuthUser> = match auth_service.config.auth_mode {
         AuthMode::Bearer => bearer_user,
         AuthMode::Both if bearer_user.is_some() => bearer_user,
         _ => {
-            let (sess, rd) = match (cookie_prep, redis.as_ref()) {
+            // Cookie auth prep: parse session cookie + validate CSRF (sync)
+            let cookie_session = match cookie_auth_prepare(&req) {
+                Ok(s) => s,
+                Err(rejection) => return rejection.into_response(),
+            };
+            let (sess, rd) = match (cookie_session, redis.as_ref()) {
                 (Some(s), Some(r)) => (s, r),
                 _ => return next.run(req).await,
             };
@@ -193,22 +195,21 @@ pub(crate) fn extract_bearer(
 }
 
 /// Sync preparation: parse session cookie and validate CSRF.
-/// Returns the session_id if everything passes.
-fn cookie_auth_prepare(req: &axum::http::Request<axum::body::Body>) -> Option<String> {
-    let session_id = req
-        .headers()
-        .get("cookie")
-        .and_then(|v| v.to_str().ok())
-        .and_then(|cookies| {
-            cookies.split(';').find_map(|c| {
-                let c = c.trim();
-                c.strip_prefix("session=")
-            })
-        })?;
+/// Returns `Ok(Some(session_id))` on success,
+/// `Ok(None)` when no session cookie is present,
+/// `Err(AuthRejection)` when CSRF validation fails.
+fn cookie_auth_prepare(
+    req: &axum::http::Request<axum::body::Body>,
+) -> Result<Option<String>, AuthRejection> {
+    let cookie_header = match req.headers().get("cookie").and_then(|v| v.to_str().ok()) {
+        Some(c) => c,
+        None => return Ok(None),
+    };
 
-    if session_id.is_empty() {
-        return None;
-    }
+    let session_id = match super::cookies::parse_cookie_value(cookie_header, "session") {
+        Some(s) => s,
+        None => return Ok(None),
+    };
 
     // CSRF validation for state-changing methods
     let method = req.method().clone();
@@ -223,24 +224,15 @@ fn cookie_auth_prepare(req: &axum::http::Request<axum::body::Body>) -> Option<St
             .and_then(|v| v.to_str().ok())
             .unwrap_or("");
 
-        let csrf_cookie = req
-            .headers()
-            .get("cookie")
-            .and_then(|v| v.to_str().ok())
-            .and_then(|cookies| {
-                cookies.split(';').find_map(|c| {
-                    let c = c.trim();
-                    c.strip_prefix("csrf_token=")
-                })
-            })
-            .unwrap_or("");
+        let csrf_cookie =
+            super::cookies::parse_cookie_value(cookie_header, "csrf_token").unwrap_or("");
 
         if !super::csrf::validate_csrf_token(csrf_cookie, csrf_header) {
-            return None;
+            return Err(AuthRejection::Forbidden);
         }
     }
 
-    Some(session_id.to_string())
+    Ok(Some(session_id.to_string()))
 }
 
 /// Async: Resolve a cookie session via Redis lookup + JWT validation.
@@ -267,13 +259,16 @@ async fn resolve_cookie_user(
 
 /// Compute HMAC-SHA256 signature for forwarding auth headers to Python sidecar.
 ///
-/// Signs a JSON payload: `{"user_id":"...","email":"...","name":"..."}` sorted by key,
-/// using the shared secret. Returns an error if the secret is empty.
+/// Signs a JSON payload: `{"user_id":"...","email":"...","name":"...","timestamp":...}`
+/// sorted by key, using the shared secret. The timestamp is included so the
+/// Python sidecar can validate against clock skew (±30s window).
+/// Returns an error if the secret is empty.
 pub fn compute_auth_signature(
     secret: &str,
     user_id: &str,
     email: &str,
     name: &str,
+    timestamp: u64,
 ) -> Result<String, domain::error::ApiError> {
     if secret.is_empty() {
         return Err(domain::error::ApiError::InternalError(
@@ -284,6 +279,7 @@ pub fn compute_auth_signature(
         "user_id": user_id,
         "email": email,
         "name": name,
+        "timestamp": timestamp,
     })
     .to_string();
     let mut mac = Hmac::<Sha256>::new_from_slice(secret.as_bytes())
@@ -298,20 +294,13 @@ pub fn verify_auth_signature(
     user_id: &str,
     email: &str,
     name: &str,
+    timestamp: u64,
     signature: &str,
 ) -> bool {
-    let Ok(expected) = compute_auth_signature(secret, user_id, email, name) else {
+    let Ok(expected) = compute_auth_signature(secret, user_id, email, name, timestamp) else {
         return false;
     };
-    // Constant-time comparison
-    if expected.len() != signature.len() {
-        return false;
-    }
-    expected
-        .bytes()
-        .zip(signature.bytes())
-        .fold(0u8, |acc, (a, b)| acc | (a ^ b))
-        == 0
+    super::util::constant_time_str_eq(&expected, signature)
 }
 
 #[cfg(test)]
@@ -334,42 +323,47 @@ mod tests {
             sidecar_shared_secret: None,
             fail_open_on_redis_error: true,
             rate_limits: Default::default(),
+            cookie_secure: true,
         };
         AuthService::new(config)
     }
 
+    const TEST_TS: u64 = 1_712_345_678;
+
     #[test]
     fn hmac_roundtrip() {
         let secret = "test-shared-secret";
-        let sig = compute_auth_signature(secret, "user-123", "test@example.com", "Test").unwrap();
+        let sig = compute_auth_signature(secret, "user-123", "test@example.com", "Test", TEST_TS)
+            .unwrap();
         assert!(verify_auth_signature(
             secret,
             "user-123",
             "test@example.com",
             "Test",
+            TEST_TS,
             &sig
         ));
     }
 
     #[test]
     fn hmac_wrong_secret_fails() {
-        let sig = compute_auth_signature("secret1", "user-123", "a@b.com", "T").unwrap();
+        let sig = compute_auth_signature("secret1", "user-123", "a@b.com", "T", TEST_TS).unwrap();
         assert!(!verify_auth_signature(
-            "secret2", "user-123", "a@b.com", "T", &sig
+            "secret2", "user-123", "a@b.com", "T", TEST_TS, &sig
         ));
     }
 
     #[test]
     fn hmac_wrong_payload_fails() {
-        let sig = compute_auth_signature("secret", "user-123", "a@b.com", "T").unwrap();
+        let sig = compute_auth_signature("secret", "user-123", "a@b.com", "T", TEST_TS).unwrap();
         assert!(!verify_auth_signature(
-            "secret", "user-456", "a@b.com", "T", &sig
+            "secret", "user-456", "a@b.com", "T", TEST_TS, &sig
         ));
     }
 
     #[test]
     fn hmac_empty_secret_fails() {
-        let result = compute_auth_signature("", "user-123", "a@b.com", "T");
+        let result = compute_auth_signature("", "user-123", "a@b.com", "T", TEST_TS);
         assert!(result.is_err());
     }
 
@@ -415,12 +409,14 @@ mod tests {
 
     #[test]
     fn compute_auth_signature_sidecar_secret_roundtrip() {
-        let sig = compute_auth_signature("my-shared-secret", "user-1", "a@b.com", "Alice").unwrap();
+        let sig = compute_auth_signature("my-shared-secret", "user-1", "a@b.com", "Alice", TEST_TS)
+            .unwrap();
         assert!(verify_auth_signature(
             "my-shared-secret",
             "user-1",
             "a@b.com",
             "Alice",
+            TEST_TS,
             &sig,
         ));
         assert!(!verify_auth_signature(
@@ -428,6 +424,7 @@ mod tests {
             "user-1",
             "a@b.com",
             "Eve",
+            TEST_TS,
             &sig,
         ));
     }

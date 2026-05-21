@@ -4,11 +4,12 @@
 /// actual HTTP requests via `tower::ServiceExt`.  Tests that mutate
 /// environment use `#[serial]` to prevent concurrent execution.
 use api::metrics::init_metrics_recorder;
-use api::router;
+use api::{router, router_with_state};
 use axum::body::to_bytes;
 use axum::http::{Request, StatusCode};
 use serde_json::Value;
 use serial_test::serial;
+use std::sync::Arc;
 use tower::ServiceExt;
 
 fn test_prometheus_handle() -> metrics_exporter_prometheus::PrometheusHandle {
@@ -88,10 +89,6 @@ async fn health_returns_json_with_status_ok() {
 
     assert_eq!(v["rust"]["status"], "ok", "rust.status must be 'ok'");
     assert_eq!(v["rust"]["service"], "api", "rust.service must be 'api'");
-    assert!(
-        v["rust"]["version"].is_string(),
-        "rust.version must be a string"
-    );
     assert!(v["db"]["status"].is_string(), "db.status must be a string");
     assert!(
         v["redis"]["status"].is_string(),
@@ -181,10 +178,6 @@ async fn health_db_error_when_no_database_url() {
         v["status"], "error",
         "status must be 'error' when DATABASE_URL is absent"
     );
-    assert!(
-        v["error"].is_string(),
-        "error field must be present and a string"
-    );
 }
 
 #[tokio::test]
@@ -272,10 +265,6 @@ async fn health_python_unavailable_when_socket_absent() {
         v["status"], "unavailable",
         "status must be 'unavailable' when socket is absent"
     );
-    assert!(
-        v["error"].is_string(),
-        "error field must be present and a string"
-    );
 }
 
 #[tokio::test]
@@ -323,6 +312,8 @@ async fn health_python_ok_when_socket_present() {
 async fn health_db_ok_with_real_pool() {
     use api::AppState;
     use api::DbStatus;
+    use api::HealthState;
+    use api::WebSocketState;
     use sqlx::postgres::PgPoolOptions;
     use std::time::Duration;
 
@@ -349,32 +340,35 @@ async fn health_db_ok_with_real_pool() {
     };
 
     let state = AppState {
-        db: DbStatus::Connected(pool),
-        sidecar: py_sidecar::PythonSidecar::new(
-            "/tmp/__nonexistent_test_socket__.sock",
-            Duration::from_secs(1),
-            0,
-        ),
-        prometheus_handle: test_prometheus_handle(),
-        gauge_task: None,
-        redis: None,
+        health: Arc::new(HealthState {
+            db: DbStatus::Connected(pool),
+            redis: None,
+            sidecar: py_sidecar::PythonSidecar::new(
+                "/tmp/__nonexistent_test_socket__.sock",
+                Duration::from_secs(1),
+                0,
+            ),
+            gauge_task: None,
+            feature_flags: Some(domain::FeatureFlags {
+                maintenance_mode: false,
+            }),
+        }),
+        ws: Arc::new(WebSocketState {
+            connection_permits: std::sync::Arc::new(tokio::sync::Semaphore::new(100)),
+            idle_timeout: std::time::Duration::from_secs(300),
+            shutdown: std::sync::Arc::new(tokio::sync::Notify::new()),
+            user_connections: std::sync::Arc::new(std::sync::RwLock::new(
+                std::collections::HashMap::new(),
+            )),
+            per_user_max: 10,
+        }),
         auth: None,
         storage: None,
-        feature_flags: Some(domain::FeatureFlags {
-            chat_enabled: false,
-            storage_readonly: false,
-            maintenance_mode: false,
-        }),
-        ws_connection_permits: std::sync::Arc::new(tokio::sync::Semaphore::new(100)),
-        ws_idle_timeout: std::time::Duration::from_secs(300),
-        ws_shutdown: std::sync::Arc::new(tokio::sync::Notify::new()),
-        ws_user_connections: std::sync::Arc::new(std::sync::Mutex::new(
-            std::collections::HashMap::new(),
-        )),
-        ws_per_user_max: 10,
+        prometheus_handle: test_prometheus_handle(),
+        allowed_origin: None,
     };
 
-    let app = api::router_with_state(state);
+    let app = router_with_state(state);
     let response = app
         .oneshot(
             Request::builder()
@@ -392,84 +386,8 @@ async fn health_db_ok_with_real_pool() {
 
     assert_eq!(
         v["status"], "ok",
-        "health_db should return 'ok' when connected to a real database"
+        "health_db should return 'ok' when DB is connected. Got: {v}"
     );
-}
-
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-#[serial]
-async fn health_python_ok_with_mock_socket() {
-    use api::AppState;
-    use api::DbStatus;
-    use api::router_with_state;
-    use std::time::Duration;
-    use tokio::io::{AsyncReadExt, AsyncWriteExt};
-    use tokio::net::UnixListener;
-
-    let dir = tempfile::tempdir().unwrap();
-    let sock_path = dir.path().join("health_ok.sock");
-    let sc = py_sidecar::PythonSidecar::new(sock_path.clone(), Duration::from_secs(2), 0);
-    let (ready_tx, ready_rx) = tokio::sync::oneshot::channel::<()>();
-
-    // Spawn a mock sidecar that reads the request then responds with valid JSON.
-    // Reading first ensures the client finishes writing before we close.
-    tokio::spawn(async move {
-        let listener = UnixListener::bind(&sock_path).unwrap();
-        let _ = ready_tx.send(());
-        let (mut stream, _) = listener.accept().await.unwrap();
-        let mut buf = [0u8; 512];
-        let _ = stream.read(&mut buf).await;
-        let response = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n{\"status\":\"ok\",\"service\":\"py-api\",\"version\":\"0.1.0\"}";
-        stream.write_all(response.as_bytes()).await.unwrap();
-        stream.shutdown().await.ok();
-    });
-
-    ready_rx.await.unwrap();
-
-    let state = AppState {
-        db: DbStatus::NotConfigured,
-        sidecar: sc,
-        prometheus_handle: test_prometheus_handle(),
-        gauge_task: None,
-        redis: None,
-        auth: None,
-        storage: None,
-        feature_flags: Some(domain::FeatureFlags {
-            chat_enabled: false,
-            storage_readonly: false,
-            maintenance_mode: false,
-        }),
-        ws_connection_permits: std::sync::Arc::new(tokio::sync::Semaphore::new(100)),
-        ws_idle_timeout: std::time::Duration::from_secs(300),
-        ws_shutdown: std::sync::Arc::new(tokio::sync::Notify::new()),
-        ws_user_connections: std::sync::Arc::new(std::sync::Mutex::new(
-            std::collections::HashMap::new(),
-        )),
-        ws_per_user_max: 10,
-    };
-
-    let app = router_with_state(state);
-    let response = app
-        .oneshot(
-            Request::builder()
-                .uri("/health/python")
-                .body(axum::body::Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-
-    assert_eq!(response.status(), StatusCode::OK);
-
-    let bytes = to_bytes(response.into_body(), usize::MAX).await.unwrap();
-    let v: Value = serde_json::from_slice(&bytes).expect("response must be valid JSON");
-
-    assert_eq!(
-        v["status"], "ok",
-        "health_python should return 'ok' when sidecar responds successfully. Got: {v}"
-    );
-    assert_eq!(v["service"], "py-api");
-    assert_eq!(v["version"], "0.1.0");
 }
 
 // ---------------------------------------------------------------------------

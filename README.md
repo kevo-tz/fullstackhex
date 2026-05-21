@@ -6,7 +6,7 @@ A production-ready full-stack template combining a Rust/Axum backend, Python Fas
 
 | Layer | Technology |
 |-------|-----------|
-| Frontend | Astro + Bun + Tailwind CSS |
+| Frontend | Astro + Bun |
 | Backend | Rust (Axum, edition 2024) |
 | Python API (`py-api/`) | FastAPI + uv, connected via Unix domain socket |
 | Cache | Redis 8 |

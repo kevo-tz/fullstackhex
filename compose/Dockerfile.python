@@ -1,21 +1,23 @@
 # Stage1: Builder - Install Python dependencies into a venv
-FROM python:3.14-slim-trixie AS builder
+FROM python:3.14-slim-trixie@sha256:7a500125bc50693f2214e842a621440a1b1b9cbb2188f74ab045d29ed2ea5856 AS builder
 
 WORKDIR /app
 
 # Install uv
 RUN pip install --no-cache-dir uv
 
-# Copy pyproject.toml first (leverage Docker cache)
-COPY py-api/pyproject.toml ./
+# Copy pyproject.toml and lock file first (leverage Docker cache)
+COPY py-api/pyproject.toml py-api/uv.lock ./py-api/
 
-# Install the py-api package with all dependencies from pyproject.toml
-COPY py-api/ ./py-api/
+# Install dependencies in non-editable mode (caches layers independently of source)
 RUN uv venv /app/.venv && \
-    uv pip install --python /app/.venv/bin/python --no-cache -e ./py-api/
+    uv pip install --python /app/.venv/bin/python --no-cache -r ./py-api/pyproject.toml
+
+# Copy application source
+COPY py-api/ ./py-api/
 
 # Stage2: Runtime - Minimal image
-FROM python:3.14-slim-trixie
+FROM python:3.14-slim-trixie@sha256:7a500125bc50693f2214e842a621440a1b1b9cbb2188f74ab045d29ed2ea5856
 
 WORKDIR /app
 

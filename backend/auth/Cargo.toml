@@ -27,9 +27,10 @@ reqwest = { version = "0.13", features = ["json"] }
 cache = { path = "../cache" }
 metrics = { workspace = true }
 db = { path = "../db" }
-domain = { path = "../domain" }
+domain = { path = "../domain", features = ["cache-conv"] }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 tower = { workspace = true }
 proptest = { workspace = true }
+serial_test = { workspace = true }

@@ -133,7 +133,7 @@ import Skeleton from "../../components/Skeleton.astro";
   }
 
   function formatDate(iso: string): string {
-    try { return new Date(iso).toLocaleDateString(); } catch { return iso; }
+    try { return new Date(iso).toLocaleDateString(); } catch { return "Unknown date"; }
   }
 
   document.getElementById("notes-retry-btn")?.addEventListener("click", loadNotes);

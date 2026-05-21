@@ -6,6 +6,8 @@
 
 use api::AppState;
 use api::DbStatus;
+use api::HealthState;
+use api::WebSocketState;
 use api::metrics::init_metrics_recorder;
 use api::router_with_state;
 use axum::body::to_bytes;
@@ -16,6 +18,7 @@ use serial_test::serial;
 use std::sync::Arc;
 use std::time::Duration;
 use tower::ServiceExt;
+use uuid::Uuid;
 
 fn test_prometheus_handle() -> metrics_exporter_prometheus::PrometheusHandle {
     init_metrics_recorder()
@@ -54,34 +57,56 @@ async fn full_state() -> Option<AppState> {
         sidecar_shared_secret: None,
         fail_open_on_redis_error: true,
         rate_limits: Default::default(),
+        cookie_secure: true,
     };
     let auth = Arc::new(auth::AuthService::new(auth_config));
 
     Some(AppState {
-        db: DbStatus::Connected(pool),
-        redis: Some(redis),
+        health: Arc::new(HealthState {
+            db: DbStatus::Connected(pool),
+            redis: Some(redis),
+            sidecar: PythonSidecar::new(
+                "/tmp/__nonexistent_test_socket__.sock",
+                Duration::from_secs(1),
+                0,
+            ),
+            gauge_task: None,
+            feature_flags: Some(domain::FeatureFlags {
+                maintenance_mode: false,
+            }),
+        }),
+        ws: Arc::new(WebSocketState {
+            connection_permits: std::sync::Arc::new(tokio::sync::Semaphore::new(100)),
+            idle_timeout: Duration::from_secs(300),
+            shutdown: std::sync::Arc::new(tokio::sync::Notify::new()),
+            user_connections: std::sync::Arc::new(std::sync::RwLock::new(
+                std::collections::HashMap::new(),
+            )),
+            per_user_max: 10,
+        }),
         auth: Some(auth),
         storage: None,
-        sidecar: PythonSidecar::new(
-            "/tmp/__nonexistent_test_socket__.sock",
-            Duration::from_secs(1),
-            0,
-        ),
         prometheus_handle: test_prometheus_handle(),
-        gauge_task: None,
-        feature_flags: Some(domain::FeatureFlags {
-            chat_enabled: false,
-            storage_readonly: false,
-            maintenance_mode: false,
-        }),
-        ws_connection_permits: std::sync::Arc::new(tokio::sync::Semaphore::new(100)),
-        ws_idle_timeout: Duration::from_secs(300),
-        ws_shutdown: std::sync::Arc::new(tokio::sync::Notify::new()),
-        ws_user_connections: std::sync::Arc::new(std::sync::Mutex::new(
-            std::collections::HashMap::new(),
-        )),
-        ws_per_user_max: 10,
+        allowed_origin: None,
     })
+}
+
+/// Delete a test user by email to prevent database pollution.
+/// Uses a fresh connection so it works independently of the test's `full_state()`.
+async fn cleanup_user(database_url: &str, email: &str) {
+    let pool = match sqlx::postgres::PgPoolOptions::new()
+        .max_connections(1)
+        .acquire_timeout(Duration::from_secs(3))
+        .connect(database_url)
+        .await
+    {
+        Ok(p) => p,
+        Err(_) => return,
+    };
+    let _ = sqlx::query("DELETE FROM users WHERE email = $1")
+        .bind(email)
+        .execute(&pool)
+        .await;
 }
 
 #[tokio::test]
@@ -95,10 +120,14 @@ async fn refresh_token_lifecycle() {
     };
 
     let app = router_with_state(state);
+    let email = format!(
+        "refresh-lifecycle-{}@test.fullstackhex.local",
+        Uuid::new_v4()
+    );
 
     // 1. REGISTER a test user
     let register_body = serde_json::json!({
-        "email": "refresh-lifecycle@example.com",
+        "email": email,
         "password": "SecureP@ss1",
         "name": "Refresh Tester",
     });
@@ -231,6 +260,11 @@ async fn refresh_token_lifecycle() {
         StatusCode::UNAUTHORIZED,
         "refreshing after logout should fail"
     );
+
+    // Cleanup
+    if let Ok(db_url) = std::env::var("DATABASE_URL") {
+        cleanup_user(&db_url, &email).await;
+    }
 }
 
 #[tokio::test]
@@ -270,7 +304,7 @@ async fn refresh_with_invalid_token_returns_401() {
 
 #[tokio::test]
 #[serial]
-async fn refresh_without_body_returns_422() {
+async fn refresh_without_body_returns_401() {
     let Some(state) = full_state().await else {
         eprintln!("SKIP: DATABASE_URL or REDIS_URL not set/unreachable");
         return;

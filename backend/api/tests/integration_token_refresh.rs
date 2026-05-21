@@ -175,7 +175,10 @@ async fn refresh_token_lifecycle() {
     let status = response.status();
     if status != StatusCode::OK {
         let bytes = to_bytes(response.into_body(), usize::MAX).await.unwrap();
-        panic!("refresh should return 200, got {status} body: {}", String::from_utf8_lossy(&bytes));
+        panic!(
+            "refresh should return 200, got {status} body: {}",
+            String::from_utf8_lossy(&bytes)
+        );
     }
 
     let bytes = to_bytes(response.into_body(), usize::MAX).await.unwrap();

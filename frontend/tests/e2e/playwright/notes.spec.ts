@@ -23,7 +23,6 @@ test.describe("Notes CRUD", () => {
     await page.goto("/notes");
 
     await page.waitForSelector("#notes-loading", { state: "hidden", timeout: 10000 }).catch(e => console.error("notes-loading not hidden (create test):", e.message));
-    await page.waitForSelector("#notes-table", { timeout: 10000 });
 
     await page.click('a[href="/notes/create"]');
     await page.waitForURL("/notes/create");

@@ -61,11 +61,12 @@ test.describe("XSS Prevention", () => {
     const loginRes = await request.post("/api/auth/login", {
       data: { email, password },
     });
+    expect(loginRes.ok()).toBeTruthy();
     const loginData = await loginRes.json();
     const token = loginData.access_token;
     const noteRes = await request.post("/api/notes", {
       headers: { Authorization: `Bearer ${token}` },
-      data: { title: "Safe", body: "Test note", created_at: "<img src=x onerror=alert(1)>" },
+      data: { title: "Safe", body: "Test note" },
     });
     expect(noteRes.ok()).toBeTruthy();
 

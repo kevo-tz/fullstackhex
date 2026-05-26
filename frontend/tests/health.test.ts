@@ -206,7 +206,7 @@ describe("aggregateHealth", () => {
 
   test("x-trace-id header is sent in the fetch call", async () => {
     const capturedHeaders: Record<string, string>[] = [];
-    const fetchImpl = vi.fn(async (url: string, init?: RequestInit) => {
+    const fetchImpl = vi.fn(async (_url: string, init?: RequestInit) => {
       capturedHeaders.push((init?.headers as Record<string, string>) || {});
       return makeMockResponse(MOCK_HEALTH_OK);
     });

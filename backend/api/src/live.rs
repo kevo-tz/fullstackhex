@@ -70,7 +70,10 @@ pub enum LiveEvent {
 pub async fn broadcast_event(state: &AppState, event: &LiveEvent) {
     let redis = match &state.health.redis {
         Some(r) => r,
-        None => return, // Redis not configured — event is dropped (polling fallback handles this)
+        None => {
+            tracing::warn!("broadcast_event: Redis not configured — dropping event");
+            return;
+        }
     };
 
     let payload = match serde_json::to_string(event) {
@@ -597,7 +600,7 @@ mod tests {
                     0,
                 ),
                 gauge_task: None,
-                feature_flags: None,
+                feature_flags: domain::FeatureFlags { maintenance_mode: false },
             }),
             ws: Arc::new(crate::WebSocketState {
                 connection_permits: Arc::new(tokio::sync::Semaphore::new(100)),
@@ -661,7 +664,7 @@ mod tests {
                     0,
                 ),
                 gauge_task: None,
-                feature_flags: None,
+                feature_flags: domain::FeatureFlags { maintenance_mode: false },
             }),
             ws: Arc::new(crate::WebSocketState {
                 connection_permits: Arc::new(tokio::sync::Semaphore::new(permits)),
@@ -722,7 +725,7 @@ mod tests {
                     0,
                 ),
                 gauge_task: None,
-                feature_flags: None,
+                feature_flags: domain::FeatureFlags { maintenance_mode: false },
             }),
             ws: Arc::new(crate::WebSocketState {
                 connection_permits: Arc::new(tokio::sync::Semaphore::new(100)),

@@ -23,6 +23,11 @@ function backoffForAttempt(attempt: number): number {
   return Math.random() * cap;
 }
 
+export interface LiveStreamOptions {
+  /** Optional auth token passed as ?token= query param for JWT-based WS auth. */
+  token?: string;
+}
+
 /**
  * Connect to the live WebSocket endpoint, returning a LiveStream handle.
  *
@@ -30,10 +35,13 @@ function backoffForAttempt(attempt: number): number {
  * Rust backend). If the connection fails or the endpoint returns 404 (Redis
  * disabled), the caller should fall back to HTTP polling.
  *
+ * Auth: session cookies are sent automatically on same-origin WS upgrade.
+ * Pass `token` option for bearer-mode auth (appended as ?token= query param).
+ *
  * Auto-reconnect: exponential backoff with jitter, max 10 retries.
  * On reconnect: creates a brand new connection (full re-subscribe).
  */
-export function connectLiveStream(): LiveStream {
+export function connectLiveStream(opts: LiveStreamOptions = {}): LiveStream {
   const listeners: Array<(event: LiveEvent) => void> = [];
   let ws: WebSocket | null = null;
   let closed = false;
@@ -77,7 +85,10 @@ export function connectLiveStream(): LiveStream {
 
     // Determine WS URL from current page location
     const protocol = location.protocol === "https:" ? "wss:" : "ws:";
-    const url = `${protocol}//${location.host}/api/live`;
+    let url = `${protocol}//${location.host}/api/live`;
+    if (opts.token) {
+      url += `?token=${encodeURIComponent(opts.token)}`;
+    }
 
     try {
       ws = new WebSocket(url);

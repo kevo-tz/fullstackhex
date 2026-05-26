@@ -68,9 +68,9 @@ async fn connect_db() -> Option<(AppState, PgPool)> {
                 0,
             ),
             gauge_task: None,
-            feature_flags: Some(domain::FeatureFlags {
+            feature_flags: domain::FeatureFlags {
                 maintenance_mode: false,
-            }),
+            },
         }),
         ws: Arc::new(WebSocketState {
             connection_permits: std::sync::Arc::new(tokio::sync::Semaphore::new(100)),

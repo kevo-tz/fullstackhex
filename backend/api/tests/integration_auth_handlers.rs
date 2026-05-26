@@ -79,9 +79,9 @@ async fn full_state() -> Option<AppState> {
                 0,
             ),
             gauge_task: None,
-            feature_flags: Some(domain::FeatureFlags {
+            feature_flags: domain::FeatureFlags {
                 maintenance_mode: false,
-            }),
+            },
         }),
         ws: Arc::new(WebSocketState {
             connection_permits: Arc::new(tokio::sync::Semaphore::new(100)),

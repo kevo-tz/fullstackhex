@@ -1,8 +1,11 @@
-use axum::extract::Request;
-use axum::middleware::Next;
-use axum::response::Response;
+use crate::AppState;
+use axum::http::{StatusCode, header};
+use axum::response::IntoResponse;
+use axum::{extract::State, middleware::Next};
+use axum::{extract::Request, response::Response};
 use metrics_exporter_prometheus::{Matcher, PrometheusBuilder, PrometheusHandle};
 use sqlx::PgPool;
+use std::sync::Arc;
 use std::sync::OnceLock;
 use std::time::Instant;
 
@@ -119,6 +122,42 @@ pub async fn track_metrics(request: Request, next: Next) -> Response {
     .record(duration);
 
     response
+}
+
+pub async fn metrics_handler(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+    let body = render_metrics(&state.prometheus_handle);
+    (
+        StatusCode::OK,
+        [(header::CONTENT_TYPE, "text/plain; charset=utf-8")],
+        body,
+    )
+}
+
+pub async fn metrics_python_proxy(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+    match state.health.sidecar.get_raw("/metrics").await {
+        Ok(body) => (
+            StatusCode::OK,
+            [(header::CONTENT_TYPE, "text/plain; charset=utf-8")],
+            body,
+        ),
+        Err(py_sidecar::SidecarError::HttpError { status, body }) => {
+            let code = StatusCode::from_u16(status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
+            tracing::warn!(status = %status, "Python sidecar returned HTTP error for /metrics");
+            (
+                code,
+                [(header::CONTENT_TYPE, "text/plain; charset=utf-8")],
+                format!("# Python metrics error: {body}").into_bytes(),
+            )
+        }
+        Err(e) => {
+            tracing::warn!(error = %e, "failed to proxy Python metrics");
+            (
+                StatusCode::SERVICE_UNAVAILABLE,
+                [(header::CONTENT_TYPE, "text/plain; charset=utf-8")],
+                format!("# Python metrics unavailable: {e}").into_bytes(),
+            )
+        }
+    }
 }
 
 /// Spawn a background task that updates the `db_pool_connections` gauge

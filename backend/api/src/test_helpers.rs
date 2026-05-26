@@ -17,7 +17,7 @@ pub fn new_test_state() -> AppState {
                 0,
             ),
             gauge_task: None,
-            feature_flags: None,
+            feature_flags: domain::FeatureFlags { maintenance_mode: false },
         }),
         ws: Arc::new(WebSocketState {
             connection_permits: Arc::new(tokio::sync::Semaphore::new(100)),

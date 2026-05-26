@@ -167,7 +167,11 @@ async fn validate_ws_connection(headers: &HeaderMap, state: &AppState) -> WsConn
     };
 
     if let Some(ref uid) = maybe_user_id {
-        let mut conns = state.ws.user_connections.lock().unwrap_or_else(|e| e.into_inner());
+        let mut conns = state
+            .ws
+            .user_connections
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         let current = *conns.get(uid).unwrap_or(&0);
         if current >= state.ws.per_user_max {
             return WsConnectionOutcome::Reject(

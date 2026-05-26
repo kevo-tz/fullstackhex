@@ -90,7 +90,7 @@ async fn full_state() -> Option<AppState> {
             connection_permits: Arc::new(tokio::sync::Semaphore::new(100)),
             idle_timeout: Duration::from_secs(300),
             shutdown: Arc::new(tokio::sync::Notify::new()),
-            user_connections: Arc::new(std::sync::RwLock::new(std::collections::HashMap::new())),
+            user_connections: Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
             per_user_max: 10,
         }),
         auth: Some(auth),

@@ -600,7 +600,9 @@ mod tests {
                     0,
                 ),
                 gauge_task: None,
-                feature_flags: domain::FeatureFlags { maintenance_mode: false },
+                feature_flags: domain::FeatureFlags {
+                    maintenance_mode: false,
+                },
             }),
             ws: Arc::new(crate::WebSocketState {
                 connection_permits: Arc::new(tokio::sync::Semaphore::new(100)),
@@ -664,7 +666,9 @@ mod tests {
                     0,
                 ),
                 gauge_task: None,
-                feature_flags: domain::FeatureFlags { maintenance_mode: false },
+                feature_flags: domain::FeatureFlags {
+                    maintenance_mode: false,
+                },
             }),
             ws: Arc::new(crate::WebSocketState {
                 connection_permits: Arc::new(tokio::sync::Semaphore::new(permits)),
@@ -725,7 +729,9 @@ mod tests {
                     0,
                 ),
                 gauge_task: None,
-                feature_flags: domain::FeatureFlags { maintenance_mode: false },
+                feature_flags: domain::FeatureFlags {
+                    maintenance_mode: false,
+                },
             }),
             ws: Arc::new(crate::WebSocketState {
                 connection_permits: Arc::new(tokio::sync::Semaphore::new(100)),

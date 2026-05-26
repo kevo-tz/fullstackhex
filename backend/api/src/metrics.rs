@@ -1,8 +1,8 @@
 use crate::AppState;
 use axum::http::{StatusCode, header};
 use axum::response::IntoResponse;
-use axum::{extract::State, middleware::Next};
 use axum::{extract::Request, response::Response};
+use axum::{extract::State, middleware::Next};
 use metrics_exporter_prometheus::{Matcher, PrometheusBuilder, PrometheusHandle};
 use sqlx::PgPool;
 use std::sync::Arc;

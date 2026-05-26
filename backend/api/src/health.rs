@@ -37,8 +37,7 @@ pub(crate) async fn health(State(state): State<std::sync::Arc<AppState>>) -> imp
     let python = health_python_value(&state.health).await;
     let auth = health_auth_value(&state);
 
-    let truncate =
-        |s: &str| -> String { s.chars().take(MAX_DETAIL_LENGTH).collect::<String>() };
+    let truncate = |s: &str| -> String { s.chars().take(MAX_DETAIL_LENGTH).collect::<String>() };
 
     let (db_clone, redis_clone, storage_clone, python_clone, auth_clone) = (
         db.clone(),
@@ -144,11 +143,7 @@ pub(crate) fn health_auth_value(state: &AppState) -> serde_json::Value {
 pub(crate) async fn health_auth(
     State(state): State<std::sync::Arc<AppState>>,
 ) -> impl IntoResponse {
-    (
-        StatusCode::OK,
-        no_cache(),
-        Json(health_auth_value(&state)),
-    )
+    (StatusCode::OK, no_cache(), Json(health_auth_value(&state)))
 }
 
 pub(crate) async fn health_db_value(state: &HealthState) -> serde_json::Value {
@@ -173,9 +168,7 @@ pub(crate) async fn health_db_value(state: &HealthState) -> serde_json::Value {
     }
 }
 
-pub(crate) async fn health_db(
-    State(state): State<std::sync::Arc<AppState>>,
-) -> impl IntoResponse {
+pub(crate) async fn health_db(State(state): State<std::sync::Arc<AppState>>) -> impl IntoResponse {
     let value = health_db_value(&state.health).await;
     let status = if value["status"] == "ok" {
         StatusCode::OK

@@ -1,6 +1,6 @@
+use axum::Json;
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
-use axum::Json;
 
 /// Fallback /auth/me when auth not configured.
 /// Returns 200 with `{"status":"disabled"}` so browser doesn't log 404.

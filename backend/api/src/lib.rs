@@ -230,7 +230,9 @@ fn build_router(state: Arc<AppState>) -> Router {
 
     let flags = state.health.feature_flags;
     router = router
-        .layer(axum::middleware::from_fn(middleware::maintenance_middleware))
+        .layer(axum::middleware::from_fn(
+            middleware::maintenance_middleware,
+        ))
         .layer(Extension(flags));
 
     if let Some(auth_router) = auth_routes(&state) {
@@ -278,7 +280,10 @@ fn build_router(state: Arc<AppState>) -> Router {
         router = router.nest("/notes", notes_router);
     } else {
         let fb = Router::new()
-            .route("/", get(fallback::notes_fallback).post(fallback::notes_fallback))
+            .route(
+                "/",
+                get(fallback::notes_fallback).post(fallback::notes_fallback),
+            )
             .route(
                 "/{id}",
                 get(fallback::notes_fallback)

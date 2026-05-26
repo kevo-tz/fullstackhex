@@ -4,6 +4,7 @@ use axum::response::IntoResponse;
 use axum::{Json, extract::State, http::Request};
 use serde_json::json;
 use std::sync::OnceLock;
+use std::time::Instant;
 
 use crate::live::{LiveEvent, broadcast_event};
 
@@ -31,10 +32,12 @@ pub(crate) async fn health(State(state): State<std::sync::Arc<AppState>>) -> imp
         "service": "api",
     });
 
-    let db = health_db_value(&state.health).await;
-    let redis = health_redis_value(&state.health).await;
+    let (db, redis, python) = tokio::join!(
+        health_db_value(&state.health),
+        health_redis_value(&state.health),
+        health_python_value(&state.health),
+    );
     let storage = health_storage_value(&state);
-    let python = health_python_value(&state.health).await;
     let auth = health_auth_value(&state);
 
     let truncate = |s: &str| -> String { s.chars().take(MAX_DETAIL_LENGTH).collect::<String>() };
@@ -147,25 +150,30 @@ pub(crate) async fn health_auth(
 }
 
 pub(crate) async fn health_db_value(state: &HealthState) -> serde_json::Value {
-    let pool = match &state.db {
-        crate::DbStatus::Connected(pool) => Some(pool),
+    if let Some((cached_at, cached_val)) = state.db_health_cache.read().await.as_ref() {
+        if cached_at.elapsed() < std::time::Duration::from_secs(1) {
+            return cached_val.clone();
+        }
+    }
+    let value = match &state.db {
+        crate::DbStatus::Connected(pool) => match db::health_check(Some(pool)).await {
+            Ok(()) => json!({ "status": "ok" }),
+            Err(e) => {
+                tracing::warn!(error = %e, "health check: database unhealthy");
+                json!({ "status": "error" })
+            }
+        },
         crate::DbStatus::NotConfigured => {
             tracing::info!("health check: database not configured");
-            return json!({ "status": "error" });
+            json!({ "status": "error" })
         }
         crate::DbStatus::ConnectionFailed(msg) => {
             tracing::warn!(error = %msg, "health check: database connection failed");
-            return json!({ "status": "error" });
-        }
-    };
-
-    match db::health_check(pool).await {
-        Ok(()) => json!({ "status": "ok" }),
-        Err(e) => {
-            tracing::warn!(error = %e, "health check: database unhealthy");
             json!({ "status": "error" })
         }
-    }
+    };
+    *state.db_health_cache.write().await = Some((Instant::now(), value.clone()));
+    value
 }
 
 pub(crate) async fn health_db(State(state): State<std::sync::Arc<AppState>>) -> impl IntoResponse {
@@ -179,7 +187,12 @@ pub(crate) async fn health_db(State(state): State<std::sync::Arc<AppState>>) -> 
 }
 
 pub(crate) async fn health_redis_value(state: &HealthState) -> serde_json::Value {
-    match &state.redis {
+    if let Some((cached_at, cached_val)) = state.redis_health_cache.read().await.as_ref() {
+        if cached_at.elapsed() < std::time::Duration::from_secs(1) {
+            return cached_val.clone();
+        }
+    }
+    let value = match &state.redis {
         Some(redis) => match redis.ping().await {
             Ok(()) => json!({ "status": "ok" }),
             Err(e) => {
@@ -191,7 +204,9 @@ pub(crate) async fn health_redis_value(state: &HealthState) -> serde_json::Value
             tracing::info!("health check: Redis not configured");
             json!({ "status": "error" })
         }
-    }
+    };
+    *state.redis_health_cache.write().await = Some((Instant::now(), value.clone()));
+    value
 }
 
 pub(crate) async fn health_redis(
@@ -236,10 +251,18 @@ fn format_health_value(v: &serde_json::Value) -> serde_json::Value {
 }
 
 pub(crate) async fn health_python_value(state: &HealthState) -> serde_json::Value {
-    match state.sidecar.health().await {
+    // Cache Python health for 1s to reduce load on single-worker sidecar
+    if let Some((cached_at, cached_val)) = state.py_health_cache.read().await.as_ref() {
+        if cached_at.elapsed() < std::time::Duration::from_secs(1) {
+            return cached_val.clone();
+        }
+    }
+    let value = match state.sidecar.health().await {
         Ok(v) => format_health_value(&v),
         Err(e) => sidecar_error_json(&e),
-    }
+    };
+    *state.py_health_cache.write().await = Some((Instant::now(), value.clone()));
+    value
 }
 
 fn sidecar_error_json(e: &py_sidecar::SidecarError) -> serde_json::Value {

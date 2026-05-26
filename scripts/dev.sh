@@ -100,7 +100,7 @@ $COMPOSE_NO_ENV exec -T postgres psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" \
 }
 
 log_info "Starting Python sidecar..."
-(cd py-api && uv run uvicorn app.main:app --uds "$PYTHON_SOCK") &
+(cd py-api && uv run uvicorn app.main:app --uds "$PYTHON_SOCK" --workers 4) &
 echo $! > "$PID_DIR/python.pid"
 
 log_info "Starting frontend..."

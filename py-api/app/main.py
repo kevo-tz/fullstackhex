@@ -265,11 +265,12 @@ async def trace_id_middleware(
             "status_code": response.status_code,
         },
     )
-    # Record Prometheus metrics
-    endpoint = _normalize_endpoint(request.url.path)
-    status = str(response.status_code)
-    PYTHON_REQUESTS_TOTAL.labels(method=request.method, endpoint=endpoint, status=status).inc()
-    PYTHON_REQUEST_DURATION.labels(method=request.method, endpoint=endpoint).observe(duration)
+    # Record Prometheus metrics (skip /health to reduce lock contention)
+    if request.url.path != "/health":
+        endpoint = _normalize_endpoint(request.url.path)
+        status = str(response.status_code)
+        PYTHON_REQUESTS_TOTAL.labels(method=request.method, endpoint=endpoint, status=status).inc()
+        PYTHON_REQUEST_DURATION.labels(method=request.method, endpoint=endpoint).observe(duration)
     return response
 
 

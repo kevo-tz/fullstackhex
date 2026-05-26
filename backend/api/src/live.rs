@@ -603,6 +603,9 @@ mod tests {
                 feature_flags: domain::FeatureFlags {
                     maintenance_mode: false,
                 },
+                py_health_cache: Arc::new(tokio::sync::RwLock::new(None)),
+                db_health_cache: Arc::new(tokio::sync::RwLock::new(None)),
+                redis_health_cache: Arc::new(tokio::sync::RwLock::new(None)),
             }),
             ws: Arc::new(crate::WebSocketState {
                 connection_permits: Arc::new(tokio::sync::Semaphore::new(100)),
@@ -669,6 +672,9 @@ mod tests {
                 feature_flags: domain::FeatureFlags {
                     maintenance_mode: false,
                 },
+                py_health_cache: Arc::new(tokio::sync::RwLock::new(None)),
+                db_health_cache: Arc::new(tokio::sync::RwLock::new(None)),
+                redis_health_cache: Arc::new(tokio::sync::RwLock::new(None)),
             }),
             ws: Arc::new(crate::WebSocketState {
                 connection_permits: Arc::new(tokio::sync::Semaphore::new(permits)),
@@ -732,6 +738,9 @@ mod tests {
                 feature_flags: domain::FeatureFlags {
                     maintenance_mode: false,
                 },
+                py_health_cache: Arc::new(tokio::sync::RwLock::new(None)),
+                db_health_cache: Arc::new(tokio::sync::RwLock::new(None)),
+                redis_health_cache: Arc::new(tokio::sync::RwLock::new(None)),
             }),
             ws: Arc::new(crate::WebSocketState {
                 connection_permits: Arc::new(tokio::sync::Semaphore::new(100)),

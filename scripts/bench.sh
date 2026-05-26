@@ -205,7 +205,7 @@ benchmark_frontend_ttfb() {
 # Main
 main() {
     # Check for --help flag
-    if [[ "$1" == "--help" || "$1" == "-h" ]]; then
+    if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
         echo "Usage: $0 [--json] [--compare]"
         echo ""
         echo "Options:"
@@ -220,7 +220,7 @@ main() {
     JSON_OUTPUT=false
     local COMPARE
     COMPARE=false
-    while [[ "$1" == --* ]]; do
+    while [[ "${1:-}" == --* ]]; do
         case "$1" in
             --json) JSON_OUTPUT=true; shift ;;
             --compare) COMPARE=true; shift ;;

@@ -66,6 +66,9 @@ pub struct HealthState {
     pub sidecar: PythonSidecar,
     pub gauge_task: Option<tokio::task::AbortHandle>,
     pub feature_flags: domain::FeatureFlags,
+    pub py_health_cache: Arc<tokio::sync::RwLock<Option<(std::time::Instant, serde_json::Value)>>>,
+    pub db_health_cache: Arc<tokio::sync::RwLock<Option<(std::time::Instant, serde_json::Value)>>>,
+    pub redis_health_cache: Arc<tokio::sync::RwLock<Option<(std::time::Instant, serde_json::Value)>>>,
 }
 
 impl HealthState {
@@ -198,6 +201,9 @@ pub async fn router(
             sidecar: PythonSidecar::from_env(),
             gauge_task,
             feature_flags: domain::FeatureFlags::from_env(),
+            py_health_cache: Arc::new(tokio::sync::RwLock::new(None)),
+            db_health_cache: Arc::new(tokio::sync::RwLock::new(None)),
+            redis_health_cache: Arc::new(tokio::sync::RwLock::new(None)),
         }),
         ws: Arc::new(WebSocketState {
             connection_permits: Arc::new(Semaphore::new(ws_max_connections)),
@@ -430,6 +436,9 @@ mod tests {
                 feature_flags: domain::FeatureFlags {
                     maintenance_mode: false,
                 },
+                py_health_cache: Arc::new(tokio::sync::RwLock::new(None)),
+            db_health_cache: Arc::new(tokio::sync::RwLock::new(None)),
+            redis_health_cache: Arc::new(tokio::sync::RwLock::new(None)),
             }),
             ws: Arc::new(WebSocketState {
                 connection_permits: Arc::new(Semaphore::new(100)),

@@ -150,10 +150,10 @@ pub(crate) async fn health_auth(
 }
 
 pub(crate) async fn health_db_value(state: &HealthState) -> serde_json::Value {
-    if let Some((cached_at, cached_val)) = state.db_health_cache.read().await.as_ref() {
-        if cached_at.elapsed() < std::time::Duration::from_secs(1) {
-            return cached_val.clone();
-        }
+    if let Some((cached_at, cached_val)) = state.db_health_cache.read().await.as_ref()
+        && cached_at.elapsed() < std::time::Duration::from_secs(1)
+    {
+        return cached_val.clone();
     }
     let value = match &state.db {
         crate::DbStatus::Connected(pool) => match db::health_check(Some(pool)).await {
@@ -187,10 +187,10 @@ pub(crate) async fn health_db(State(state): State<std::sync::Arc<AppState>>) -> 
 }
 
 pub(crate) async fn health_redis_value(state: &HealthState) -> serde_json::Value {
-    if let Some((cached_at, cached_val)) = state.redis_health_cache.read().await.as_ref() {
-        if cached_at.elapsed() < std::time::Duration::from_secs(1) {
-            return cached_val.clone();
-        }
+    if let Some((cached_at, cached_val)) = state.redis_health_cache.read().await.as_ref()
+        && cached_at.elapsed() < std::time::Duration::from_secs(1)
+    {
+        return cached_val.clone();
     }
     let value = match &state.redis {
         Some(redis) => match redis.ping().await {
@@ -252,10 +252,10 @@ fn format_health_value(v: &serde_json::Value) -> serde_json::Value {
 
 pub(crate) async fn health_python_value(state: &HealthState) -> serde_json::Value {
     // Cache Python health for 1s to reduce load on single-worker sidecar
-    if let Some((cached_at, cached_val)) = state.py_health_cache.read().await.as_ref() {
-        if cached_at.elapsed() < std::time::Duration::from_secs(1) {
-            return cached_val.clone();
-        }
+    if let Some((cached_at, cached_val)) = state.py_health_cache.read().await.as_ref()
+        && cached_at.elapsed() < std::time::Duration::from_secs(1)
+    {
+        return cached_val.clone();
     }
     let value = match state.sidecar.health().await {
         Ok(v) => format_health_value(&v),

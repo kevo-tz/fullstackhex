@@ -71,6 +71,9 @@ async fn connect_db() -> Option<(AppState, PgPool)> {
             feature_flags: domain::FeatureFlags {
                 maintenance_mode: false,
             },
+            db_health_cache: Arc::new(tokio::sync::RwLock::new(None)),
+            redis_health_cache: Arc::new(tokio::sync::RwLock::new(None)),
+            py_health_cache: Arc::new(tokio::sync::RwLock::new(None)),
         }),
         ws: Arc::new(WebSocketState {
             connection_permits: std::sync::Arc::new(tokio::sync::Semaphore::new(100)),

@@ -68,7 +68,8 @@ pub struct HealthState {
     pub feature_flags: domain::FeatureFlags,
     pub py_health_cache: Arc<tokio::sync::RwLock<Option<(std::time::Instant, serde_json::Value)>>>,
     pub db_health_cache: Arc<tokio::sync::RwLock<Option<(std::time::Instant, serde_json::Value)>>>,
-    pub redis_health_cache: Arc<tokio::sync::RwLock<Option<(std::time::Instant, serde_json::Value)>>>,
+    pub redis_health_cache:
+        Arc<tokio::sync::RwLock<Option<(std::time::Instant, serde_json::Value)>>>,
 }
 
 impl HealthState {
@@ -437,8 +438,8 @@ mod tests {
                     maintenance_mode: false,
                 },
                 py_health_cache: Arc::new(tokio::sync::RwLock::new(None)),
-            db_health_cache: Arc::new(tokio::sync::RwLock::new(None)),
-            redis_health_cache: Arc::new(tokio::sync::RwLock::new(None)),
+                db_health_cache: Arc::new(tokio::sync::RwLock::new(None)),
+                redis_health_cache: Arc::new(tokio::sync::RwLock::new(None)),
             }),
             ws: Arc::new(WebSocketState {
                 connection_permits: Arc::new(Semaphore::new(100)),

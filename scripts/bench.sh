@@ -176,6 +176,7 @@ benchmark_frontend_ttfb() {
     # Store for summary
     BENCH_NAMES+=("Frontend TTFB")
     BENCH_NAMES_SAFE+=("frontend_ttfb")
+    # shellcheck disable=SC2034 # accessed via get_var eval in print_summary
     declare -g frontend_ttfb_ttfb="$ttfb" frontend_ttfb_target="$expected_s" frontend_ttfb_passed="$passed"
 }
 
@@ -268,7 +269,8 @@ main() {
     while [[ "${1:-}" == --* ]]; do
         case "$1" in
             --json) JSON_OUTPUT=true; shift ;;
-            --compare) COMPARE=true; shift ;;
+            --compare) # shellcheck disable=SC2034 # reserved for baseline comparison
+                COMPARE=true; shift ;;
             *) break ;;
         esac
     done

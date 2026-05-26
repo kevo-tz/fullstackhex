@@ -64,11 +64,16 @@ Key routing rules:
 
 ## Health Stack
 
-- typecheck: cd frontend && bunx astro check
-- lint: cd backend && cargo clippy -- -D warnings
-- lint: cd frontend && bunx eslint .
-- test: cd backend && cargo test
-- test: cd frontend && bunx vitest run
+All commands match CI exactly. Run `make check` before pushing for full CI preflight.
+
+- lint: cd backend && cargo fmt --all -- --check
+- lint: cd backend && cargo clippy --locked --all-targets --all-features -- -D warnings
+- lint: cd py-api && uv run ruff check .
+- lint: cd py-api && uv run ruff format --check .
+- lint: cd frontend && bun run lint
+- typecheck: cd frontend && bun run typecheck
+- test: cd backend && cargo test --locked --workspace
 - test: cd py-api && uv run pytest
+- test: cd frontend && bun run test
 - deadcode: cd frontend && bunx knip
 - shell: shellcheck -x --source-path=scripts/ scripts/*.sh

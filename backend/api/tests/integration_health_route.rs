@@ -175,8 +175,8 @@ async fn health_db_error_when_no_database_url() {
     let v: Value = serde_json::from_slice(&bytes).expect("response must be valid JSON");
 
     assert_eq!(
-        v["status"], "error",
-        "status must be 'error' when DATABASE_URL is absent"
+        v["status"], "disabled",
+        "status must be 'disabled' when DATABASE_URL is absent"
     );
 }
 

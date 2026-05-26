@@ -12,7 +12,8 @@ pub async fn maintenance_middleware(
         || path.starts_with("/health/")
         || path == "/metrics"
         || path.starts_with("/metrics/")
-        || path == "/live";
+        || path == "/live"
+        || path == "/auth/me";
 
     if !is_whitelisted
         && let Some(flags) = req.extensions().get::<domain::FeatureFlags>()

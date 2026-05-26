@@ -11,6 +11,9 @@ use crate::live::{LiveEvent, broadcast_event};
 /// Max length for health error details broadcast to WS clients.
 const MAX_DETAIL_LENGTH: usize = 500;
 
+/// How long to cache health check results before re-checking.
+const HEALTH_CACHE_TTL: std::time::Duration = std::time::Duration::from_secs(1);
+
 static NO_CACHE_HEADERS: OnceLock<HeaderMap> = OnceLock::new();
 
 fn no_cache() -> HeaderMap {
@@ -150,8 +153,16 @@ pub(crate) async fn health_auth(
 }
 
 pub(crate) async fn health_db_value(state: &HealthState) -> serde_json::Value {
+    // Fast path: cache hit (read lock, no contention with other readers)
     if let Some((cached_at, cached_val)) = state.db_health_cache.read().await.as_ref()
-        && cached_at.elapsed() < std::time::Duration::from_secs(1)
+        && cached_at.elapsed() < HEALTH_CACHE_TTL
+    {
+        return cached_val.clone();
+    }
+    // Cache miss or expired: acquire write lock and double-check
+    let mut cache = state.db_health_cache.write().await;
+    if let Some((cached_at, cached_val)) = cache.as_ref()
+        && cached_at.elapsed() < HEALTH_CACHE_TTL
     {
         return cached_val.clone();
     }
@@ -165,14 +176,17 @@ pub(crate) async fn health_db_value(state: &HealthState) -> serde_json::Value {
         },
         crate::DbStatus::NotConfigured => {
             tracing::info!("health check: database not configured");
-            json!({ "status": "error" })
+            json!({ "status": "disabled" })
         }
         crate::DbStatus::ConnectionFailed(msg) => {
             tracing::warn!(error = %msg, "health check: database connection failed");
             json!({ "status": "error" })
         }
     };
-    *state.db_health_cache.write().await = Some((Instant::now(), value.clone()));
+    // Only cache successful checks — don't amplify transient failures
+    if value["status"] == "ok" {
+        *cache = Some((Instant::now(), value.clone()));
+    }
     value
 }
 
@@ -188,7 +202,13 @@ pub(crate) async fn health_db(State(state): State<std::sync::Arc<AppState>>) -> 
 
 pub(crate) async fn health_redis_value(state: &HealthState) -> serde_json::Value {
     if let Some((cached_at, cached_val)) = state.redis_health_cache.read().await.as_ref()
-        && cached_at.elapsed() < std::time::Duration::from_secs(1)
+        && cached_at.elapsed() < HEALTH_CACHE_TTL
+    {
+        return cached_val.clone();
+    }
+    let mut cache = state.redis_health_cache.write().await;
+    if let Some((cached_at, cached_val)) = cache.as_ref()
+        && cached_at.elapsed() < HEALTH_CACHE_TTL
     {
         return cached_val.clone();
     }
@@ -202,10 +222,12 @@ pub(crate) async fn health_redis_value(state: &HealthState) -> serde_json::Value
         },
         None => {
             tracing::info!("health check: Redis not configured");
-            json!({ "status": "error" })
+            json!({ "status": "disabled" })
         }
     };
-    *state.redis_health_cache.write().await = Some((Instant::now(), value.clone()));
+    if value["status"] == "ok" {
+        *cache = Some((Instant::now(), value.clone()));
+    }
     value
 }
 
@@ -226,7 +248,7 @@ pub(crate) fn health_storage_value(state: &AppState) -> serde_json::Value {
         Some(_) => json!({ "status": "ok" }),
         None => {
             tracing::info!("health check: storage not configured");
-            json!({ "status": "error" })
+            json!({ "status": "disabled" })
         }
     }
 }
@@ -251,9 +273,14 @@ fn format_health_value(v: &serde_json::Value) -> serde_json::Value {
 }
 
 pub(crate) async fn health_python_value(state: &HealthState) -> serde_json::Value {
-    // Cache Python health for 1s to reduce load on single-worker sidecar
     if let Some((cached_at, cached_val)) = state.py_health_cache.read().await.as_ref()
-        && cached_at.elapsed() < std::time::Duration::from_secs(1)
+        && cached_at.elapsed() < HEALTH_CACHE_TTL
+    {
+        return cached_val.clone();
+    }
+    let mut cache = state.py_health_cache.write().await;
+    if let Some((cached_at, cached_val)) = cache.as_ref()
+        && cached_at.elapsed() < HEALTH_CACHE_TTL
     {
         return cached_val.clone();
     }
@@ -261,7 +288,9 @@ pub(crate) async fn health_python_value(state: &HealthState) -> serde_json::Valu
         Ok(v) => format_health_value(&v),
         Err(e) => sidecar_error_json(&e),
     };
-    *state.py_health_cache.write().await = Some((Instant::now(), value.clone()));
+    if value["status"] == "ok" {
+        *cache = Some((Instant::now(), value.clone()));
+    }
     value
 }
 
@@ -284,19 +313,7 @@ pub(crate) async fn health_python(
         tracing::info!(%trace_id, "health check via sidecar with propagated trace_id");
     }
 
-    let value = if trace_id.is_empty() {
-        health_python_value(&state.health).await
-    } else {
-        match state
-            .health
-            .sidecar
-            .get_with_trace_id("/health", trace_id, None)
-            .await
-        {
-            Ok(v) => format_health_value(&v),
-            Err(e) => sidecar_error_json(&e),
-        }
-    };
+    let value = health_python_value(&state.health).await;
 
     let status = if value["status"] == "ok" {
         StatusCode::OK

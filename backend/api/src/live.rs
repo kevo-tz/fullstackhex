@@ -28,7 +28,7 @@ use serde::{Deserialize, Serialize};
 use futures_util::sink::SinkExt;
 use std::collections::HashMap;
 use std::sync::Arc;
-use std::sync::RwLock;
+use std::sync::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 use tokio::sync::Notify;
@@ -71,7 +71,7 @@ pub async fn broadcast_event(state: &AppState, event: &LiveEvent) {
     let redis = match &state.health.redis {
         Some(r) => r,
         None => {
-            tracing::warn!("broadcast_event: Redis not configured — dropping event");
+            tracing::info!("broadcast_event: Redis not configured — dropping event");
             return;
         }
     };
@@ -167,7 +167,7 @@ async fn validate_ws_connection(headers: &HeaderMap, state: &AppState) -> WsConn
     };
 
     if let Some(ref uid) = maybe_user_id {
-        let mut conns = state.ws.user_connections.write().unwrap();
+        let mut conns = state.ws.user_connections.lock().unwrap_or_else(|e| e.into_inner());
         let current = *conns.get(uid).unwrap_or(&0);
         if current >= state.ws.per_user_max {
             return WsConnectionOutcome::Reject(
@@ -279,13 +279,13 @@ impl Drop for WsGuard {
 /// Drop guard that decrements the per-user connection count.
 struct WsUserGuard {
     user_id: String,
-    connections: Arc<RwLock<HashMap<String, usize>>>,
+    connections: Arc<Mutex<HashMap<String, usize>>>,
 }
 
 impl Drop for WsUserGuard {
     fn drop(&mut self) {
         let uid = &self.user_id;
-        let mut map = self.connections.write().unwrap();
+        let mut map = self.connections.lock().unwrap_or_else(|e| e.into_inner());
         if let Some(count) = map.get_mut(uid) {
             *count = count.saturating_sub(1);
             if *count == 0 {
@@ -301,7 +301,7 @@ async fn handle_socket(
     redis: Arc<cache::RedisClient>,
     ws_idle_timeout: Duration,
     ws_shutdown: Arc<Notify>,
-    user_connections: Arc<RwLock<HashMap<String, usize>>>,
+    user_connections: Arc<Mutex<HashMap<String, usize>>>,
     user_id: Option<String>,
     _permit: tokio::sync::OwnedSemaphorePermit,
 ) {
@@ -506,9 +506,9 @@ mod tests {
 
     #[test]
     fn ws_user_guard_decrements_on_drop() {
-        let map: Arc<RwLock<HashMap<String, usize>>> = Arc::new(RwLock::new(HashMap::new()));
+        let map: Arc<Mutex<HashMap<String, usize>>> = Arc::new(Mutex::new(HashMap::new()));
         {
-            let mut m = map.write().unwrap();
+            let mut m = map.lock().unwrap();
             m.insert("user1".into(), 3usize);
         }
         {
@@ -517,14 +517,14 @@ mod tests {
                 connections: map.clone(),
             };
         }
-        assert_eq!(map.read().unwrap().get("user1"), Some(&2usize));
+        assert_eq!(map.lock().unwrap().get("user1"), Some(&2usize));
     }
 
     #[test]
     fn ws_user_guard_removes_key_when_zero() {
-        let map: Arc<RwLock<HashMap<String, usize>>> = Arc::new(RwLock::new(HashMap::new()));
+        let map: Arc<Mutex<HashMap<String, usize>>> = Arc::new(Mutex::new(HashMap::new()));
         {
-            let mut m = map.write().unwrap();
+            let mut m = map.lock().unwrap();
             m.insert("user1".into(), 1usize);
         }
         {
@@ -533,14 +533,14 @@ mod tests {
                 connections: map.clone(),
             };
         }
-        assert!(map.read().unwrap().get("user1").is_none());
+        assert!(map.lock().unwrap().get("user1").is_none());
     }
 
     #[test]
     fn ws_user_guard_is_noop_for_unknown_user() {
-        let map: Arc<RwLock<HashMap<String, usize>>> = Arc::new(RwLock::new(HashMap::new()));
+        let map: Arc<Mutex<HashMap<String, usize>>> = Arc::new(Mutex::new(HashMap::new()));
         {
-            let mut m = map.write().unwrap();
+            let mut m = map.lock().unwrap();
             m.insert("user1".into(), 3usize);
         }
         {
@@ -549,19 +549,19 @@ mod tests {
                 connections: map.clone(),
             };
         }
-        assert_eq!(map.read().unwrap().get("user1"), Some(&3usize));
+        assert_eq!(map.lock().unwrap().get("user1"), Some(&3usize));
     }
 
     #[test]
     fn ws_user_guard_is_noop_on_empty_map() {
-        let map: Arc<RwLock<HashMap<String, usize>>> = Arc::new(RwLock::new(HashMap::new()));
+        let map: Arc<Mutex<HashMap<String, usize>>> = Arc::new(Mutex::new(HashMap::new()));
         {
             let _user_guard = WsUserGuard {
                 user_id: "user1".into(),
                 connections: map.clone(),
             };
         }
-        assert!(map.read().unwrap().is_empty());
+        assert!(map.lock().unwrap().is_empty());
     }
 
     #[tokio::test]
@@ -611,7 +611,7 @@ mod tests {
                 connection_permits: Arc::new(tokio::sync::Semaphore::new(100)),
                 idle_timeout: Duration::from_secs(300),
                 shutdown: Arc::new(tokio::sync::Notify::new()),
-                user_connections: Arc::new(std::sync::RwLock::new(HashMap::new())),
+                user_connections: Arc::new(std::sync::Mutex::new(HashMap::new())),
                 per_user_max: 10,
             }),
             auth: Some(Arc::new(auth::AuthService::new(auth::AuthConfig {
@@ -680,7 +680,7 @@ mod tests {
                 connection_permits: Arc::new(tokio::sync::Semaphore::new(permits)),
                 idle_timeout: Duration::from_secs(300),
                 shutdown: Arc::new(tokio::sync::Notify::new()),
-                user_connections: Arc::new(std::sync::RwLock::new(HashMap::new())),
+                user_connections: Arc::new(std::sync::Mutex::new(HashMap::new())),
                 per_user_max: 10,
             }),
             auth: None,
@@ -746,7 +746,7 @@ mod tests {
                 connection_permits: Arc::new(tokio::sync::Semaphore::new(100)),
                 idle_timeout: Duration::from_secs(300),
                 shutdown: Arc::new(tokio::sync::Notify::new()),
-                user_connections: Arc::new(std::sync::RwLock::new(HashMap::new())),
+                user_connections: Arc::new(std::sync::Mutex::new(HashMap::new())),
                 per_user_max: 10,
             }),
             auth: None,

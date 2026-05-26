@@ -175,7 +175,7 @@ async def hmac_auth_middleware(
                 status_code=401,
                 media_type="application/json",
             )
-    except ValueError, TypeError:
+    except (ValueError, TypeError):
         logger.warning(
             "HMAC rejection: missing or invalid timestamp",
             extra={"trace_id": trace_id},
@@ -202,10 +202,14 @@ async def hmac_auth_middleware(
             )
     elif nonce and redis_client is None:
         logger.warning(
-            "HMAC nonce check skipped: Redis unavailable",
+            "HMAC rejection: nonce provided but Redis unavailable — rejecting",
             extra={"trace_id": trace_id},
         )
-
+        return Response(
+            content=json.dumps({"error": "Auth service degraded"}),
+            status_code=401,
+            media_type="application/json",
+        )
     # Compute expected signature: HMAC-SHA256(secret, JSON payload)
     # Compact separators match serde_json::to_string() from Rust side
     payload = json.dumps(

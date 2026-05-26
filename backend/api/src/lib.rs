@@ -9,7 +9,7 @@ use sqlx::PgPool;
 use sqlx::postgres::PgPoolOptions;
 use std::collections::HashMap;
 use std::sync::Arc;
-use std::sync::RwLock;
+use std::sync::Mutex;
 use std::time::Duration;
 use tokio::sync::Notify;
 use tokio::sync::Semaphore;
@@ -90,7 +90,7 @@ pub struct WebSocketState {
     pub connection_permits: Arc<Semaphore>,
     pub idle_timeout: Duration,
     pub shutdown: Arc<Notify>,
-    pub user_connections: Arc<RwLock<HashMap<String, usize>>>,
+    pub user_connections: Arc<Mutex<HashMap<String, usize>>>,
     pub per_user_max: usize,
 }
 
@@ -210,7 +210,7 @@ pub async fn router(
             connection_permits: Arc::new(Semaphore::new(ws_max_connections)),
             idle_timeout: Duration::from_secs(ws_idle_timeout_secs),
             shutdown: ws_shutdown,
-            user_connections: Arc::new(RwLock::new(HashMap::new())),
+            user_connections: Arc::new(Mutex::new(HashMap::new())),
             per_user_max: ws_per_user_max,
         }),
         auth,
@@ -445,7 +445,7 @@ mod tests {
                 connection_permits: Arc::new(Semaphore::new(100)),
                 idle_timeout: Duration::from_secs(300),
                 shutdown: Arc::new(Notify::new()),
-                user_connections: Arc::new(RwLock::new(HashMap::new())),
+                user_connections: Arc::new(Mutex::new(HashMap::new())),
                 per_user_max: 10,
             }),
             auth: None,

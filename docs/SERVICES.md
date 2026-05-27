@@ -74,7 +74,7 @@ GET /health
 Response (aggregated — all sub-services checked in a single call):
 ```json
 {
-  "rust":    { "status": "ok", "service": "api", "version": "0.14.4" },
+  "rust":    { "status": "ok", "service": "api", "version": "0.14.5" },
   "db":      { "status": "ok" },
   "redis":   { "status": "ok" },
   "storage": { "status": "ok", "bucket": "fullstackhex" },
@@ -144,7 +144,7 @@ app = FastAPI()
 
 @app.get("/health")
 def health() -> dict[str, str]:
-    return {"status": "ok", "service": "py-api", "version": "0.14.4"}
+    return {"status": "ok", "service": "py-api", "version": "0.14.5"}
 ```
 
 > **Note:** Add new routes here as Python business logic grows. py-api runs
@@ -163,7 +163,7 @@ def health() -> dict[str, str]:
 
 ### Implementation Goal
 
-The frontend is a template-ready Astro application managed by **Bun**. It serves a single `index.astro` page, uses **Tailwind** for styling, and keeps backend integration behind Astro-owned server routes when possible.
+The frontend is a template-ready Astro application managed by **Bun**. It serves multiple pages (dashboard, login, register, notes, profile, 404), and keeps backend integration behind Astro-owned server routes when possible.
 
 ### Recommended Structure
 
@@ -175,14 +175,16 @@ frontend/
 ├── public/
 └── src/
         ├── components/
-        ├── layouts/
         └── pages/
                 ├── index.astro
+                ├── login.astro
+                ├── register.astro
+                ├── dashboard.astro
                 └── api/
                         └── health.ts
 ```
 
-> **Note:** Tailwind v4 uses `@tailwindcss/vite` as a Vite plugin — no `tailwind.config.mjs` is needed.
+
 
 ### Scaffold Frontend
 
@@ -192,27 +194,23 @@ bun create astro@latest frontend -- --template minimal --no-install --no-git --y
 
 cd frontend
 
-# Install Tailwind v4 and the Node SSR adapter
-bun add @tailwindcss/vite tailwindcss @astrojs/node
+# Install the Node SSR adapter
+bun add @astrojs/node
 
 # Install all dependencies
 bun install
 ```
 
-`astro.config.mjs` must enable SSR and add the Tailwind vite plugin:
+`astro.config.mjs` must enable SSR:
 
 ```javascript
 // astro.config.mjs
 import { defineConfig } from 'astro/config';
 import node from '@astrojs/node';
-import tailwindcss from '@tailwindcss/vite';
 
 export default defineConfig({
   output: 'server',
   adapter: node({ mode: 'standalone' }),
-  vite: {
-    plugins: [tailwindcss()]
-  }
 });
 ```
 

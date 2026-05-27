@@ -34,7 +34,7 @@ For production, enable WAL archiving in `postgresql.conf` and use `pg_basebackup
 ./scripts/restore.sh .backup <timestamp>
 ```
 
-Copies the RDB file back into the container and reloads via `DEBUG RELOAD`.
+Copies the RDB file back into the container and restarts Redis via `docker compose restart redis`.
 
 ### AOF persistence
 

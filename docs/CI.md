@@ -8,8 +8,8 @@ FullStackHex uses GitHub Actions for continuous integration and deployment. The 
 
 ### 1. Lint and Format Check
 - **Rust**: `cargo fmt --check` and `cargo clippy`
-- **TypeScript/Frontend**: `bun run lint` (if configured)
-- **Python**: `ruff check` (if configured)
+- **TypeScript/Frontend**: `bun run lint`
+- **Python**: `ruff check`
 
 ### 2. Build
 - **Rust**: `cargo build --workspace`
@@ -86,7 +86,7 @@ ruff check .
 
 # Frontend
 cd frontend
-bun run lint  # If configured
+bun run lint
 ```
 
 ### Test Failures

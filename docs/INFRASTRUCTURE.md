@@ -240,8 +240,8 @@ The canonical dev configuration is at [`compose/dev.yml`](../compose/dev.yml). K
 | postgres | postgres:18-alpine | 5432 | `POSTGRES_PASSWORD` required |
 | redis | redis:8-alpine | 6379 | `REDIS_PASSWORD` required, AOF enabled |
 | rustfs | rustfs/rustfs:1.0.0-beta.4 | 9000, 9001 | S3-compatible, browser UI |
-| adminer | adminer:5.1.0 | 8080 (tools profile) | DB admin UI |
-| redis-commander | rediscommander/redis-commander:0.8.0 | 8081 (tools profile) | Redis admin UI |
+| adminer | adminer:5.4.2 | 8080 (tools profile) | DB admin UI |
+| redis-commander | rediscommander/redis-commander:0.9.1 | 8081 (tools profile) | Redis admin UI |
 | redis-exporter | oliver006/redis_exporter:v1.83.0 | 9121 | Prometheus Redis metrics |
 | postgres-exporter | prometheuscommunity/postgres-exporter:v0.19.1 | 9187 | Prometheus PG metrics |
 
@@ -368,7 +368,7 @@ services:
         max-file: "3"
 
   adminer:
-    image: adminer:5.1.0
+    image: adminer:5.4.2
     container_name: fullstackhex_adminer
     restart: unless-stopped
     ports:
@@ -382,7 +382,7 @@ services:
       - tools
 
   redis-commander:
-    image: rediscommander/redis-commander:0.8.0
+    image: rediscommander/redis-commander:0.9.1
     container_name: fullstackhex_redis_commander
     restart: unless-stopped
     ports:
@@ -634,7 +634,7 @@ Use `compose/prod.yml` to run all services as Docker containers with no external
 | frontend | `Dockerfile.frontend` | 4321 | Astro SSR node adapter |
 | postgres | `postgres:18-alpine` | 5432 | Internal only (no host binding) |
 | redis | `redis:8-alpine` | 6379 | Internal only |
-| rustfs | `rustfs/rustfs:1.0.0-beta.3` | 9000 / 9001 | Internal only |
+| rustfs | `rustfs/rustfs:1.0.0-beta.4` | 9000 / 9001 | Internal only |
 
 ### Unix Socket in Production
 

@@ -78,6 +78,9 @@ chmod +x scripts/*.sh
 | [docs/DISASTER_RECOVERY.md](docs/DISASTER_RECOVERY.md) | Backup and recovery procedures |
 | [docs/SECRETS_ROTATION.md](docs/SECRETS_ROTATION.md) | Secrets rotation for all services |
 | [docs/TLS.md](docs/TLS.md) | TLS certificate management |
+| [docs/performance-budget.md](docs/performance-budget.md) | Performance targets and CI gates |
+| [docs/logging-conventions.md](docs/logging-conventions.md) | Structured log format schema |
+| [docs/DOC_STYLE_GUIDE.md](docs/DOC_STYLE_GUIDE.md) | Documentation writing style guide |
 | [docs/INDEX.md](docs/INDEX.md) | Full documentation index |
 
 ## Contributing
@@ -92,7 +95,7 @@ To report a vulnerability, follow the policy in [.github/SECURITY.md](.github/SE
 
 - `CI` runs Rust/Python/frontend checks, smoke tests, and security scans.
 - `Dependabot` configuration lives at `.github/dependabot.yml`.
-- Local secret scanning is configured via `.pre-commit-config.yaml` and `.github/.secrets.baseline`.
+- Local secret scanning is configured via `.github/.secrets.baseline`.
 
 ## License
 

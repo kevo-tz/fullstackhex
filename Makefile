@@ -1,14 +1,16 @@
-.PHONY: dev watch down test logs bench status clean help
+.PHONY: dev watch down test lint check logs bench status clean help
 
 .DEFAULT_GOAL := help
 
 help:
-	@echo "Usage: make [dev|watch|down|test|logs|bench|status|clean]"
+	@echo "Usage: make [dev|watch|down|test|lint|check|logs|bench|status|clean]"
 	@echo ""
 	@echo "  dev     Start full stack (infra + python + rust + frontend)"
 	@echo "  watch   Start full stack with Rust hot reload (cargo watch)"
 	@echo "  down    Stop all services"
-	@echo "  test    Run all test suites"
+	@echo "  test    Run all test suites (matches CI test commands)"
+	@echo "  lint    Run all lint/format/typecheck (matches CI lint steps)"
+	@echo "  check   Full CI preflight: lint + test (what CI gates on)"
 	@echo "  logs    Follow all stack logs"
 	@echo "  bench   Run performance benchmarks"
 	@echo "  status  Show service status (PID, port, health)"
@@ -16,6 +18,8 @@ help:
 	@echo ""
 	@echo "Quick start: make dev"
 	@echo "          -> http://localhost:4321"
+	@echo ""
+	@echo "Before pushing: make check"
 
 dev:
 	@./scripts/dev.sh
@@ -28,6 +32,13 @@ down:
 
 test:
 	@./scripts/test.sh
+
+lint:
+	@./scripts/lint.sh
+
+check: lint test
+	@echo ""
+	@echo "=== CI preflight complete ==="
 
 logs:
 	@./scripts/logs.sh

@@ -11,14 +11,52 @@ groups:
           summary: "Service {{ $labels.job }} is down"
           description: "Service {{ $labels.job }} has been down for more than 5 minutes."
 
+      - alert: HighErrorRate
+        expr: |
+          sum(rate(http_requests_total{status=~"5.."}[5m])) by (job, route)
+          / sum(rate(http_requests_total[5m])) by (job, route) > 0.05
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "High 5xx error rate on {{ $labels.route }}"
+          description: "5xx rate is {{ $value | humanizePercentage }} on {{ $labels.route }} (threshold: 5%)."
+
       - alert: HighLatency
         expr: |
           histogram_quantile(0.99,
             sum(rate(http_request_duration_seconds_bucket[5m])) by (le, job, route)
-          ) > 0.1
+          ) > 1.0
         for: 5m
         labels:
           severity: warning
         annotations:
-          summary: "High p99 latency detected"
-          description: "p99 latency is {{ $value }}s (threshold: 0.1s)."
+          summary: "High p99 latency on {{ $labels.route }}"
+          description: "p99 latency is {{ $value }}s on {{ $labels.route }} (threshold: 1s)."
+
+      - alert: DbPoolExhausted
+        expr: db_pool_connections{state="idle"} == 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Database connection pool exhausted"
+          description: "No idle connections available. Used: {{ with query \"db_pool_connections{state='used'}\" }}{{ . | first | value }}{{ end }}."
+
+      - alert: RedisDown
+        expr: redis_up == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Redis is down"
+          description: "Redis exporter cannot reach the Redis instance."
+
+      - alert: PythonSidecarDown
+        expr: python_sidecar_up == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Python sidecar is down"
+          description: "Unix socket health check failing for Python sidecar."

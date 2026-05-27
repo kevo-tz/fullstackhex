@@ -1,35 +1,28 @@
-use axum::http::{HeaderMap, StatusCode, header};
-use axum::response::IntoResponse;
 use axum::{
-    Json, Router,
-    extract::{DefaultBodyLimit, Extension, FromRef, State},
-    http::Request,
-    middleware,
+    Router,
+    extract::{DefaultBodyLimit, Extension, FromRef},
     routing::get,
 };
 use metrics_exporter_prometheus::PrometheusHandle;
 use py_sidecar::PythonSidecar;
-use serde_json::json;
 use sqlx::PgPool;
 use sqlx::postgres::PgPoolOptions;
 use std::collections::HashMap;
 use std::sync::Arc;
-use std::sync::RwLock;
+use std::sync::Mutex;
 use std::time::Duration;
 use tokio::sync::Notify;
 use tokio::sync::Semaphore;
 
+pub mod fallback;
+pub mod health;
 pub mod live;
 pub mod metrics;
-
-use live::{LiveEvent, broadcast_event};
+pub mod middleware;
 pub mod notes;
 
-/// Max length for health error details broadcast to WS clients.
-const MAX_DETAIL_LENGTH: usize = 500;
-
 /// Parse an env var, logging a warning on parse failure before returning default.
-fn parse_env_or<T: std::str::FromStr>(key: &str, default: T) -> T {
+pub(crate) fn parse_env_or<T: std::str::FromStr>(key: &str, default: T) -> T {
     match std::env::var(key) {
         Ok(val) => match val.parse::<T>() {
             Ok(parsed) => parsed,
@@ -47,7 +40,7 @@ fn parse_env_or<T: std::str::FromStr>(key: &str, default: T) -> T {
 }
 
 /// Small helper wrapping sqlx errors into ApiError with logging + metrics.
-fn db_err(e: sqlx::Error, context: &'static str) -> domain::error::ApiError {
+pub(crate) fn db_err(e: sqlx::Error, context: &'static str) -> domain::error::ApiError {
     tracing::warn!(error = %e, "{context}");
     ::metrics::counter!("notes_query_errors_total").increment(1);
     domain::error::ApiError::InternalError(context.into())
@@ -55,7 +48,7 @@ fn db_err(e: sqlx::Error, context: &'static str) -> domain::error::ApiError {
 
 /// Newtype to carry DEV_USER_ID via request extensions.
 #[derive(Clone)]
-struct DevUserId(String);
+pub(crate) struct DevUserId(String);
 
 /// Status of the database connection pool.
 #[derive(Clone)]
@@ -72,7 +65,11 @@ pub struct HealthState {
     pub redis: Option<Arc<cache::RedisClient>>,
     pub sidecar: PythonSidecar,
     pub gauge_task: Option<tokio::task::AbortHandle>,
-    pub feature_flags: Option<domain::FeatureFlags>,
+    pub feature_flags: domain::FeatureFlags,
+    pub py_health_cache: Arc<tokio::sync::RwLock<Option<(std::time::Instant, serde_json::Value)>>>,
+    pub db_health_cache: Arc<tokio::sync::RwLock<Option<(std::time::Instant, serde_json::Value)>>>,
+    pub redis_health_cache:
+        Arc<tokio::sync::RwLock<Option<(std::time::Instant, serde_json::Value)>>>,
 }
 
 impl HealthState {
@@ -93,7 +90,7 @@ pub struct WebSocketState {
     pub connection_permits: Arc<Semaphore>,
     pub idle_timeout: Duration,
     pub shutdown: Arc<Notify>,
-    pub user_connections: Arc<RwLock<HashMap<String, usize>>>,
+    pub user_connections: Arc<Mutex<HashMap<String, usize>>>,
     pub per_user_max: usize,
 }
 
@@ -204,13 +201,16 @@ pub async fn router(
             redis,
             sidecar: PythonSidecar::from_env(),
             gauge_task,
-            feature_flags: Some(domain::FeatureFlags::from_env()),
+            feature_flags: domain::FeatureFlags::from_env(),
+            py_health_cache: Arc::new(tokio::sync::RwLock::new(None)),
+            db_health_cache: Arc::new(tokio::sync::RwLock::new(None)),
+            redis_health_cache: Arc::new(tokio::sync::RwLock::new(None)),
         }),
         ws: Arc::new(WebSocketState {
             connection_permits: Arc::new(Semaphore::new(ws_max_connections)),
             idle_timeout: Duration::from_secs(ws_idle_timeout_secs),
             shutdown: ws_shutdown,
-            user_connections: Arc::new(RwLock::new(HashMap::new())),
+            user_connections: Arc::new(Mutex::new(HashMap::new())),
             per_user_max: ws_per_user_max,
         }),
         auth,
@@ -229,17 +229,18 @@ pub fn router_with_state(state: AppState) -> Router {
 fn build_router(state: Arc<AppState>) -> Router {
     let mut router = Router::new()
         .merge(health_routes())
-        .route("/metrics", get(metrics_handler))
-        .route("/metrics/python", get(metrics_python_proxy))
+        .route("/metrics", get(metrics::metrics_handler))
+        .route("/metrics/python", get(metrics::metrics_python_proxy))
         .route("/live", get(live::ws_handler))
-        .layer(middleware::from_fn(metrics::track_metrics))
+        .layer(axum::middleware::from_fn(metrics::track_metrics))
         .with_state(state.clone());
 
-    if let Some(flags) = state.health.feature_flags {
-        router = router
-            .layer(middleware::from_fn(maintenance_middleware))
-            .layer(Extension(flags));
-    }
+    let flags = state.health.feature_flags;
+    router = router
+        .layer(axum::middleware::from_fn(
+            middleware::maintenance_middleware,
+        ))
+        .layer(Extension(flags));
 
     if let Some(auth_router) = auth_routes(&state) {
         router = router.nest("/auth", auth_router);
@@ -280,28 +281,31 @@ fn build_router(state: Arc<AppState>) -> Router {
             let uid = dev_user_id.clone().unwrap();
             notes_router = notes_router
                 .layer(Extension(DevUserId(uid)))
-                .layer(middleware::from_fn(dev_user_middleware));
+                .layer(axum::middleware::from_fn(middleware::dev_user_middleware));
         }
 
         router = router.nest("/notes", notes_router);
     } else {
         let fb = Router::new()
-            .route("/", get(notes_fallback).post(notes_fallback))
+            .route(
+                "/",
+                get(fallback::notes_fallback).post(fallback::notes_fallback),
+            )
             .route(
                 "/{id}",
-                get(notes_fallback)
-                    .put(notes_fallback)
-                    .delete(notes_fallback),
+                get(fallback::notes_fallback)
+                    .put(fallback::notes_fallback)
+                    .delete(fallback::notes_fallback),
             );
         router = router.nest("/notes", fb);
     }
     if state.auth.is_none() {
-        router = router.route("/auth/me", get(auth_me_disabled));
+        router = router.route("/auth/me", get(fallback::auth_me_disabled));
     }
 
     if let Some(ref auth_svc) = state.auth {
         router = router
-            .layer(middleware::from_fn(auth::middleware::auth_middleware))
+            .layer(axum::middleware::from_fn(auth::middleware::auth_middleware))
             .layer(Extension(auth_svc.clone()));
         if let Some(ref redis) = state.health.redis {
             router = router.layer(Extension(redis.clone()));
@@ -313,12 +317,12 @@ fn build_router(state: Arc<AppState>) -> Router {
 
 fn health_routes() -> Router<Arc<AppState>> {
     Router::new()
-        .route("/health", get(health))
-        .route("/health/db", get(health_db))
-        .route("/health/redis", get(health_redis))
-        .route("/health/storage", get(health_storage))
-        .route("/health/python", get(health_python))
-        .route("/health/auth", get(health_auth))
+        .route("/health", get(health::health))
+        .route("/health/db", get(health::health_db))
+        .route("/health/redis", get(health::health_redis))
+        .route("/health/storage", get(health::health_storage))
+        .route("/health/python", get(health::health_python))
+        .route("/health/auth", get(health::health_auth))
 }
 
 fn auth_routes(state: &Arc<AppState>) -> Option<Router> {
@@ -369,7 +373,7 @@ fn auth_routes(state: &Arc<AppState>) -> Option<Router> {
                 "/oauth/{provider}/callback",
                 axum::routing::get(auth::routes::oauth_callback),
             )
-            .layer(middleware::from_fn(auth::metrics::track_auth_metrics))
+            .layer(axum::middleware::from_fn(auth::metrics::track_auth_metrics))
             .with_state(auth_state),
     )
 }
@@ -408,378 +412,6 @@ fn storage_routes(state: &Arc<AppState>) -> Option<Router> {
     )
 }
 
-/// Maintenance mode middleware — returns 503 when FEATURE_MAINTENANCE is enabled,
-/// unless the request targets a whitelisted route (health, metrics).
-pub async fn maintenance_middleware(
-    req: axum::http::Request<axum::body::Body>,
-    next: axum::middleware::Next,
-) -> impl IntoResponse {
-    let path = req.uri().path();
-    // Whitelist: health checks and metrics must always work
-    let is_whitelisted = path == "/health"
-        || path.starts_with("/health/")
-        || path == "/metrics"
-        || path.starts_with("/metrics/")
-        || path == "/live";
-
-    if !is_whitelisted
-        && let Some(flags) = req.extensions().get::<domain::FeatureFlags>()
-        && flags.maintenance_mode
-    {
-        return (
-            StatusCode::SERVICE_UNAVAILABLE,
-            "{\"error\":\"maintenance mode\"}",
-        )
-            .into_response();
-    }
-    next.run(req).await
-}
-
-fn no_cache() -> HeaderMap {
-    let mut headers = HeaderMap::new();
-    headers.insert(
-        header::CACHE_CONTROL,
-        axum::http::HeaderValue::from_static("no-cache, no-store"),
-    );
-    headers
-}
-
-async fn health(State(state): State<Arc<AppState>>) -> impl IntoResponse {
-    let rust = json!({
-        "status": "ok",
-        "service": "api",
-    });
-
-    let db = health_db_value(&state.health).await;
-    let redis = health_redis_value(&state.health).await;
-    let storage = health_storage_value(&state);
-    let python = health_python_value(&state.health).await;
-    let auth = health_auth_value(&state);
-
-    // Truncate error details before broadcasting to WS clients (prevents
-    // unbounded message growth)
-    let truncate = |s: &str| -> String { s.chars().take(MAX_DETAIL_LENGTH).collect::<String>() };
-
-    // Fire-and-forget health broadcasts to WS subscribers (must not delay HTTP response)
-    // Clone values for the spawned task since they're also used in the HTTP response below
-    let (db_clone, redis_clone, storage_clone, python_clone, auth_clone) = (
-        db.clone(),
-        redis.clone(),
-        storage.clone(),
-        python.clone(),
-        auth.clone(),
-    );
-    let broadcast_state = state.clone();
-    tokio::spawn(async move {
-        futures_util::future::join_all([
-            broadcast_event(
-                &broadcast_state,
-                &LiveEvent::HealthUpdate {
-                    service: "rust".into(),
-                    status: "ok".into(),
-                    detail: None,
-                },
-            ),
-            broadcast_event(
-                &broadcast_state,
-                &LiveEvent::HealthUpdate {
-                    service: "db".into(),
-                    status: db_clone["status"].as_str().unwrap_or("unknown").into(),
-                    detail: db_clone
-                        .get("error")
-                        .and_then(|v| v.as_str())
-                        .map(&truncate),
-                },
-            ),
-            broadcast_event(
-                &broadcast_state,
-                &LiveEvent::HealthUpdate {
-                    service: "redis".into(),
-                    status: redis_clone["status"].as_str().unwrap_or("unknown").into(),
-                    detail: redis_clone
-                        .get("error")
-                        .and_then(|v| v.as_str())
-                        .map(&truncate),
-                },
-            ),
-            broadcast_event(
-                &broadcast_state,
-                &LiveEvent::HealthUpdate {
-                    service: "storage".into(),
-                    status: storage_clone["status"].as_str().unwrap_or("unknown").into(),
-                    detail: storage_clone
-                        .get("error")
-                        .and_then(|v| v.as_str())
-                        .map(&truncate),
-                },
-            ),
-            broadcast_event(
-                &broadcast_state,
-                &LiveEvent::HealthUpdate {
-                    service: "python".into(),
-                    status: python_clone["status"].as_str().unwrap_or("unknown").into(),
-                    detail: python_clone
-                        .get("error")
-                        .and_then(|v| v.as_str())
-                        .map(&truncate),
-                },
-            ),
-            broadcast_event(
-                &broadcast_state,
-                &LiveEvent::HealthUpdate {
-                    service: "auth".into(),
-                    status: auth_clone["status"].as_str().unwrap_or("unknown").into(),
-                    detail: None,
-                },
-            ),
-        ])
-        .await;
-    });
-
-    let flags = state.health.feature_flags.map(|f| {
-        json!({
-            "maintenance_mode": f.maintenance_mode,
-        })
-    });
-
-    (
-        StatusCode::OK,
-        no_cache(),
-        Json(json!({
-            "rust": rust,
-            "db": db,
-            "redis": redis,
-            "storage": storage,
-            "python": python,
-            "auth": auth,
-            "feature_flags": flags,
-        })),
-    )
-}
-
-fn health_auth_value(state: &AppState) -> serde_json::Value {
-    if state.auth.is_some() {
-        json!({ "status": "ok" })
-    } else {
-        json!({ "status": "disabled" })
-    }
-}
-
-async fn health_auth(State(state): State<Arc<AppState>>) -> impl IntoResponse {
-    (StatusCode::OK, no_cache(), Json(health_auth_value(&state)))
-}
-
-async fn health_db_value(state: &HealthState) -> serde_json::Value {
-    let pool = match &state.db {
-        DbStatus::Connected(pool) => Some(pool),
-        DbStatus::NotConfigured => {
-            tracing::info!("health check: database not configured");
-            return json!({ "status": "error" });
-        }
-        DbStatus::ConnectionFailed(msg) => {
-            tracing::warn!(error = %msg, "health check: database connection failed");
-            return json!({ "status": "error" });
-        }
-    };
-
-    match db::health_check(pool).await {
-        Ok(()) => json!({ "status": "ok" }),
-        Err(e) => {
-            tracing::warn!(error = %e, "health check: database unhealthy");
-            json!({ "status": "error" })
-        }
-    }
-}
-
-async fn health_db(State(state): State<Arc<AppState>>) -> impl IntoResponse {
-    let value = health_db_value(&state.health).await;
-    let status = if value["status"] == "ok" {
-        StatusCode::OK
-    } else {
-        StatusCode::SERVICE_UNAVAILABLE
-    };
-    (status, no_cache(), Json(value))
-}
-
-async fn health_redis_value(state: &HealthState) -> serde_json::Value {
-    match &state.redis {
-        Some(redis) => match redis.ping().await {
-            Ok(()) => json!({ "status": "ok" }),
-            Err(e) => {
-                tracing::warn!(error = %e, "health check: Redis ping failed");
-                json!({ "status": "error" })
-            }
-        },
-        None => {
-            tracing::info!("health check: Redis not configured");
-            json!({ "status": "error" })
-        }
-    }
-}
-
-async fn health_redis(State(state): State<Arc<AppState>>) -> impl IntoResponse {
-    let value = health_redis_value(&state.health).await;
-    let status = if value["status"] == "ok" {
-        StatusCode::OK
-    } else {
-        StatusCode::SERVICE_UNAVAILABLE
-    };
-    (status, no_cache(), Json(value))
-}
-
-fn health_storage_value(state: &AppState) -> serde_json::Value {
-    match &state.storage {
-        Some(_) => json!({ "status": "ok" }),
-        None => {
-            tracing::info!("health check: storage not configured");
-            json!({ "status": "error" })
-        }
-    }
-}
-
-async fn health_storage(State(state): State<Arc<AppState>>) -> impl IntoResponse {
-    let value = health_storage_value(&state);
-    let status = if value["status"] == "ok" {
-        StatusCode::OK
-    } else {
-        StatusCode::SERVICE_UNAVAILABLE
-    };
-    (status, no_cache(), Json(value))
-}
-
-fn format_health_value(v: &serde_json::Value) -> serde_json::Value {
-    json!({
-        "status": v.get("status").and_then(|s| s.as_str()).unwrap_or("unknown"),
-        "service": v.get("service").and_then(|s| s.as_str()).unwrap_or("unknown"),
-    })
-}
-
-async fn health_python_value(state: &HealthState) -> serde_json::Value {
-    match state.sidecar.health().await {
-        Ok(v) => format_health_value(&v),
-        Err(e) => sidecar_error_json(&e, state.sidecar.socket_path()),
-    }
-}
-
-fn sidecar_error_json(
-    e: &py_sidecar::SidecarError,
-    _socket_path: &std::path::Path,
-) -> serde_json::Value {
-    tracing::warn!(error = %e, "health check: Python sidecar unavailable");
-    json!({ "status": "unavailable" })
-}
-
-async fn health_python(
-    State(state): State<Arc<AppState>>,
-    req: Request<axum::body::Body>,
-) -> impl IntoResponse {
-    let trace_id = req
-        .headers()
-        .get("x-trace-id")
-        .and_then(|v| v.to_str().ok())
-        .unwrap_or("");
-
-    if !trace_id.is_empty() {
-        tracing::info!(%trace_id, "health check via sidecar with propagated trace_id");
-    }
-
-    let value = if trace_id.is_empty() {
-        health_python_value(&state.health).await
-    } else {
-        match state
-            .health
-            .sidecar
-            .get_with_trace_id("/health", trace_id, None)
-            .await
-        {
-            Ok(v) => format_health_value(&v),
-            Err(e) => sidecar_error_json(&e, state.health.sidecar.socket_path()),
-        }
-    };
-
-    let status = if value["status"] == "ok" {
-        StatusCode::OK
-    } else {
-        StatusCode::SERVICE_UNAVAILABLE
-    };
-    (status, no_cache(), Json(value))
-}
-
-async fn metrics_handler(State(state): State<Arc<AppState>>) -> impl IntoResponse {
-    let body = metrics::render_metrics(&state.prometheus_handle);
-    (
-        StatusCode::OK,
-        [(header::CONTENT_TYPE, "text/plain; charset=utf-8")],
-        body,
-    )
-}
-
-async fn metrics_python_proxy(State(state): State<Arc<AppState>>) -> impl IntoResponse {
-    match state.health.sidecar.get_raw("/metrics").await {
-        Ok(body) => (
-            StatusCode::OK,
-            [(header::CONTENT_TYPE, "text/plain; charset=utf-8")],
-            body,
-        ),
-        Err(py_sidecar::SidecarError::HttpError { status, body }) => {
-            let code = StatusCode::from_u16(status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
-            tracing::warn!(status = %status, "Python sidecar returned HTTP error for /metrics");
-            (
-                code,
-                [(header::CONTENT_TYPE, "text/plain; charset=utf-8")],
-                format!("# Python metrics error: {body}").into_bytes(),
-            )
-        }
-        Err(e) => {
-            tracing::warn!(error = %e, "failed to proxy Python metrics");
-            (
-                StatusCode::SERVICE_UNAVAILABLE,
-                [(header::CONTENT_TYPE, "text/plain; charset=utf-8")],
-                format!("# Python metrics unavailable: {e}").into_bytes(),
-            )
-        }
-    }
-}
-
-/// Fallback /auth/me when auth not configured.
-/// Returns 200 with `{"status":"disabled"}` so browser doesn't log 404.
-async fn auth_me_disabled() -> impl IntoResponse {
-    (
-        StatusCode::OK,
-        [("content-type", "application/json")],
-        "{\"status\":\"disabled\"}",
-    )
-}
-
-/// Fallback for notes endpoints when auth or database not configured.
-async fn notes_fallback() -> impl IntoResponse {
-    (
-        StatusCode::SERVICE_UNAVAILABLE,
-        Json(serde_json::json!({"error": "notes unavailable — auth or database not configured"})),
-    )
-}
-
-/// Middleware that injects a mock `AuthUser` using the `DEV_USER_ID` from
-/// request extensions.  Only applied on the notes sub-router when auth is
-/// disabled but `DEV_USER_ID` is set.
-async fn dev_user_middleware(
-    mut req: axum::http::Request<axum::body::Body>,
-    next: axum::middleware::Next,
-) -> axum::response::Response {
-    let dev_user_id = req.extensions().get::<DevUserId>().map(|d| d.0.clone());
-    if let Some(uid) = dev_user_id {
-        req.extensions_mut().insert(auth::middleware::AuthUser {
-            user_id: uid,
-            email: "dev@local.dev".into(),
-            name: Some("Dev User".into()),
-            provider: "dev".into(),
-            jti: String::new(),
-            session_id: None,
-        });
-    }
-    next.run(req).await
-}
-
 pub mod test_helpers;
 
 #[cfg(test)]
@@ -802,15 +434,18 @@ mod tests {
                     0,
                 ),
                 gauge_task: None,
-                feature_flags: Some(domain::FeatureFlags {
+                feature_flags: domain::FeatureFlags {
                     maintenance_mode: false,
-                }),
+                },
+                py_health_cache: Arc::new(tokio::sync::RwLock::new(None)),
+                db_health_cache: Arc::new(tokio::sync::RwLock::new(None)),
+                redis_health_cache: Arc::new(tokio::sync::RwLock::new(None)),
             }),
             ws: Arc::new(WebSocketState {
                 connection_permits: Arc::new(Semaphore::new(100)),
                 idle_timeout: Duration::from_secs(300),
                 shutdown: Arc::new(Notify::new()),
-                user_connections: Arc::new(RwLock::new(HashMap::new())),
+                user_connections: Arc::new(Mutex::new(HashMap::new())),
                 per_user_max: 10,
             }),
             auth: None,

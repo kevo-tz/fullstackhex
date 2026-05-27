@@ -1,6 +1,6 @@
 # frontend
 
-Astro + Bun + Tailwind CSS frontend for FullStackHex.
+Astro + Bun frontend for FullStackHex.
 
 ## Commands
 
@@ -12,7 +12,7 @@ All commands are run from this directory:
 | `bun run dev`              | Start dev server at `localhost:4321`        |
 | `bun run build`            | Build production site to `./dist/`          |
 | `bun run preview`          | Preview production build locally            |
-| `bun run test:vitest`      | Run test suite (vitest)                     |
+| `bun run test`             | Run test suite (vitest)                     |
 | `bun run typecheck`        | Run Astro type checker                      |
 | `bun run astro -- --help`  | Other Astro CLI commands                    |
 
@@ -24,6 +24,5 @@ The frontend never talks to the Python sidecar directly.
 ## Stack
 
 - Astro (SSR with `@astrojs/node` adapter)
-- Tailwind CSS v4 (via `@tailwindcss/vite` Vite plugin)
 - TypeScript
 - Bun runtime and package manager

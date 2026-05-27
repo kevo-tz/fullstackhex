@@ -117,7 +117,7 @@ Browser `WebSocket` API sends cookies automatically during the upgrade handshake
 
 ### Non-Browser Clients
 
-The `/live` endpoint authenticates via session cookie only. Programmatic clients (mobile, CLI) must authenticate through the HTTP API first to establish a session, then pass the session cookie during the WebSocket upgrade handshake.
+The `/live` endpoint authenticates via a valid JWT passed as a `?token=` query parameter during the WebSocket upgrade handshake, or via session cookie for clients that have one. Programmatic clients (mobile, CLI) can authenticate by obtaining a JWT from the HTTP API and passing it as `ws://host/api/live?token=<jwt>`.
 
 ### Auth Failure
 

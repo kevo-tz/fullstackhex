@@ -2,7 +2,7 @@
 
 ## Overview
 
-FullStackHex includes a monitoring stack with **Prometheus v3.3.1** and **Grafana 11.2.0** for tracking application performance, system metrics, and service health.
+FullStackHex includes a monitoring stack with **Prometheus v3.11.3** and **Grafana 13.0.1** for tracking application performance, system metrics, and service health.
 
 ## Accessing the Monitoring Stack
 

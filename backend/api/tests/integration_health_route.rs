@@ -175,8 +175,8 @@ async fn health_db_error_when_no_database_url() {
     let v: Value = serde_json::from_slice(&bytes).expect("response must be valid JSON");
 
     assert_eq!(
-        v["status"], "error",
-        "status must be 'error' when DATABASE_URL is absent"
+        v["status"], "disabled",
+        "status must be 'disabled' when DATABASE_URL is absent"
     );
 }
 
@@ -349,15 +349,18 @@ async fn health_db_ok_with_real_pool() {
                 0,
             ),
             gauge_task: None,
-            feature_flags: Some(domain::FeatureFlags {
+            feature_flags: domain::FeatureFlags {
                 maintenance_mode: false,
-            }),
+            },
+            db_health_cache: Arc::new(tokio::sync::RwLock::new(None)),
+            redis_health_cache: Arc::new(tokio::sync::RwLock::new(None)),
+            py_health_cache: Arc::new(tokio::sync::RwLock::new(None)),
         }),
         ws: Arc::new(WebSocketState {
             connection_permits: std::sync::Arc::new(tokio::sync::Semaphore::new(100)),
             idle_timeout: std::time::Duration::from_secs(300),
             shutdown: std::sync::Arc::new(tokio::sync::Notify::new()),
-            user_connections: std::sync::Arc::new(std::sync::RwLock::new(
+            user_connections: std::sync::Arc::new(std::sync::Mutex::new(
                 std::collections::HashMap::new(),
             )),
             per_user_max: 10,

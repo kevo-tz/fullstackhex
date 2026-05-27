@@ -53,8 +53,8 @@ bun create astro@latest frontend -- --template minimal --no-install --no-git --y
 
 cd frontend
 
-# Install Tailwind v4 (vite plugin) and Node SSR adapter
-bun add @tailwindcss/vite tailwindcss @astrojs/node
+# Install Node SSR adapter
+bun add @astrojs/node
 bun install
 ```
 
@@ -67,15 +67,16 @@ frontend/
 ├── tsconfig.json
 ├── src/
 │   ├── components/
-│   ├── layouts/
 │   └── pages/
 │       ├── index.astro
+│       ├── login.astro
+│       ├── dashboard.astro
 │       └── api/
 │           └── health.ts
 └── public/
 ```
 
-> **Note:** No `tailwind.config.mjs` — Tailwind v4 is configured via the vite plugin in `astro.config.mjs`.
+
 
 Use Astro server routes for backend-derived data:
 

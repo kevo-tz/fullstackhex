@@ -60,22 +60,20 @@ settings = Settings()
 
 
 def register_metrics() -> None:
-    """Create Prometheus metrics once. Catch duplicate on re-import across test files."""
-    global PYTHON_REQUESTS_TOTAL, PYTHON_REQUEST_DURATION
-    try:
-        PYTHON_REQUESTS_TOTAL = Counter(
-            "python_requests_total",
-            "Total HTTP requests",
-            ["method", "endpoint", "status"],
-        )
-        PYTHON_REQUEST_DURATION = Histogram(
-            "python_request_duration_seconds",
-            "HTTP request duration",
-            ["method", "endpoint"],
-            buckets=[0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0],
-        )
-    except ValueError as e:
-        logging.warning("register_metrics failed (may be duplicate import): %s", e)
+    """Idempotent — metrics created at module level, kept for backward compat."""
+
+
+PYTHON_REQUESTS_TOTAL = Counter(
+    "python_requests_total",
+    "Total HTTP requests",
+    ["method", "endpoint", "status"],
+)
+PYTHON_REQUEST_DURATION = Histogram(
+    "python_request_duration_seconds",
+    "HTTP request duration",
+    ["method", "endpoint"],
+    buckets=[0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0],
+)
 
 
 # Cache py-api version at module level — avoids importlib.metadata lookup per request
@@ -204,10 +202,14 @@ async def hmac_auth_middleware(
             )
     elif nonce and redis_client is None:
         logger.warning(
-            "HMAC nonce check skipped: Redis unavailable",
+            "HMAC rejection: nonce provided but Redis unavailable — rejecting",
             extra={"trace_id": trace_id},
         )
-
+        return Response(
+            content=json.dumps({"error": "Auth service degraded"}),
+            status_code=401,
+            media_type="application/json",
+        )
     # Compute expected signature: HMAC-SHA256(secret, JSON payload)
     # Compact separators match serde_json::to_string() from Rust side
     payload = json.dumps(

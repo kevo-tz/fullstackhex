@@ -18,6 +18,7 @@
 //! ```
 
 use crate::AppState;
+use axum::extract::Query;
 use axum::extract::State;
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
 use axum::http::{HeaderMap, StatusCode};
@@ -28,7 +29,7 @@ use serde::{Deserialize, Serialize};
 use futures_util::sink::SinkExt;
 use std::collections::HashMap;
 use std::sync::Arc;
-use std::sync::RwLock;
+use std::sync::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 use tokio::sync::Notify;
@@ -70,7 +71,10 @@ pub enum LiveEvent {
 pub async fn broadcast_event(state: &AppState, event: &LiveEvent) {
     let redis = match &state.health.redis {
         Some(r) => r,
-        None => return, // Redis not configured — event is dropped (polling fallback handles this)
+        None => {
+            tracing::info!("broadcast_event: Redis not configured — dropping event");
+            return;
+        }
     };
 
     let payload = match serde_json::to_string(event) {
@@ -104,7 +108,11 @@ enum WsConnectionOutcome {
 ///
 /// Extracted from `ws_handler` so the business logic can be unit-tested
 /// without requiring the Axum `WebSocketUpgrade` extractor.
-async fn validate_ws_connection(headers: &HeaderMap, state: &AppState) -> WsConnectionOutcome {
+async fn validate_ws_connection(
+    headers: &HeaderMap,
+    token: Option<String>,
+    state: &AppState,
+) -> WsConnectionOutcome {
     // Validate Origin when ALLOWED_ORIGIN is configured — prevents cross-site
     // WebSocket hijacking even when session cookies are present.
     if let Some(ref allowed) = state.allowed_origin {
@@ -121,8 +129,19 @@ async fn validate_ws_connection(headers: &HeaderMap, state: &AppState) -> WsConn
         }
     }
 
-    let maybe_user_id = if state.auth.is_some() {
-        cookie_authenticated(headers, state).await
+    let maybe_user_id = if let Some(ref auth_service) = state.auth {
+        if let Some(ref token_value) = token {
+            match auth_service.jwt.validate_token(token_value) {
+                Ok(claims) => Some(claims.sub),
+                Err(_) => {
+                    return WsConnectionOutcome::Reject(
+                        (StatusCode::UNAUTHORIZED, "{\"error\":\"Invalid token\"}").into_response(),
+                    );
+                }
+            }
+        } else {
+            cookie_authenticated(headers, state).await
+        }
     } else {
         None
     };
@@ -164,7 +183,11 @@ async fn validate_ws_connection(headers: &HeaderMap, state: &AppState) -> WsConn
     };
 
     if let Some(ref uid) = maybe_user_id {
-        let mut conns = state.ws.user_connections.write().unwrap();
+        let mut conns = state
+            .ws
+            .user_connections
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         let current = *conns.get(uid).unwrap_or(&0);
         if current >= state.ws.per_user_max {
             return WsConnectionOutcome::Reject(
@@ -195,8 +218,10 @@ pub async fn ws_handler(
     ws: WebSocketUpgrade,
     headers: HeaderMap,
     State(state): State<Arc<AppState>>,
+    Query(params): Query<HashMap<String, String>>,
 ) -> impl IntoResponse {
-    match validate_ws_connection(&headers, &state).await {
+    let token = params.get("token").cloned();
+    match validate_ws_connection(&headers, token, &state).await {
         WsConnectionOutcome::Permit {
             redis,
             permit,
@@ -276,13 +301,13 @@ impl Drop for WsGuard {
 /// Drop guard that decrements the per-user connection count.
 struct WsUserGuard {
     user_id: String,
-    connections: Arc<RwLock<HashMap<String, usize>>>,
+    connections: Arc<Mutex<HashMap<String, usize>>>,
 }
 
 impl Drop for WsUserGuard {
     fn drop(&mut self) {
         let uid = &self.user_id;
-        let mut map = self.connections.write().unwrap();
+        let mut map = self.connections.lock().unwrap_or_else(|e| e.into_inner());
         if let Some(count) = map.get_mut(uid) {
             *count = count.saturating_sub(1);
             if *count == 0 {
@@ -298,7 +323,7 @@ async fn handle_socket(
     redis: Arc<cache::RedisClient>,
     ws_idle_timeout: Duration,
     ws_shutdown: Arc<Notify>,
-    user_connections: Arc<RwLock<HashMap<String, usize>>>,
+    user_connections: Arc<Mutex<HashMap<String, usize>>>,
     user_id: Option<String>,
     _permit: tokio::sync::OwnedSemaphorePermit,
 ) {
@@ -503,9 +528,9 @@ mod tests {
 
     #[test]
     fn ws_user_guard_decrements_on_drop() {
-        let map: Arc<RwLock<HashMap<String, usize>>> = Arc::new(RwLock::new(HashMap::new()));
+        let map: Arc<Mutex<HashMap<String, usize>>> = Arc::new(Mutex::new(HashMap::new()));
         {
-            let mut m = map.write().unwrap();
+            let mut m = map.lock().unwrap();
             m.insert("user1".into(), 3usize);
         }
         {
@@ -514,14 +539,14 @@ mod tests {
                 connections: map.clone(),
             };
         }
-        assert_eq!(map.read().unwrap().get("user1"), Some(&2usize));
+        assert_eq!(map.lock().unwrap().get("user1"), Some(&2usize));
     }
 
     #[test]
     fn ws_user_guard_removes_key_when_zero() {
-        let map: Arc<RwLock<HashMap<String, usize>>> = Arc::new(RwLock::new(HashMap::new()));
+        let map: Arc<Mutex<HashMap<String, usize>>> = Arc::new(Mutex::new(HashMap::new()));
         {
-            let mut m = map.write().unwrap();
+            let mut m = map.lock().unwrap();
             m.insert("user1".into(), 1usize);
         }
         {
@@ -530,14 +555,14 @@ mod tests {
                 connections: map.clone(),
             };
         }
-        assert!(map.read().unwrap().get("user1").is_none());
+        assert!(map.lock().unwrap().get("user1").is_none());
     }
 
     #[test]
     fn ws_user_guard_is_noop_for_unknown_user() {
-        let map: Arc<RwLock<HashMap<String, usize>>> = Arc::new(RwLock::new(HashMap::new()));
+        let map: Arc<Mutex<HashMap<String, usize>>> = Arc::new(Mutex::new(HashMap::new()));
         {
-            let mut m = map.write().unwrap();
+            let mut m = map.lock().unwrap();
             m.insert("user1".into(), 3usize);
         }
         {
@@ -546,19 +571,19 @@ mod tests {
                 connections: map.clone(),
             };
         }
-        assert_eq!(map.read().unwrap().get("user1"), Some(&3usize));
+        assert_eq!(map.lock().unwrap().get("user1"), Some(&3usize));
     }
 
     #[test]
     fn ws_user_guard_is_noop_on_empty_map() {
-        let map: Arc<RwLock<HashMap<String, usize>>> = Arc::new(RwLock::new(HashMap::new()));
+        let map: Arc<Mutex<HashMap<String, usize>>> = Arc::new(Mutex::new(HashMap::new()));
         {
             let _user_guard = WsUserGuard {
                 user_id: "user1".into(),
                 connections: map.clone(),
             };
         }
-        assert!(map.read().unwrap().is_empty());
+        assert!(map.lock().unwrap().is_empty());
     }
 
     #[tokio::test]
@@ -597,13 +622,18 @@ mod tests {
                     0,
                 ),
                 gauge_task: None,
-                feature_flags: None,
+                feature_flags: domain::FeatureFlags {
+                    maintenance_mode: false,
+                },
+                py_health_cache: Arc::new(tokio::sync::RwLock::new(None)),
+                db_health_cache: Arc::new(tokio::sync::RwLock::new(None)),
+                redis_health_cache: Arc::new(tokio::sync::RwLock::new(None)),
             }),
             ws: Arc::new(crate::WebSocketState {
                 connection_permits: Arc::new(tokio::sync::Semaphore::new(100)),
                 idle_timeout: Duration::from_secs(300),
                 shutdown: Arc::new(tokio::sync::Notify::new()),
-                user_connections: Arc::new(std::sync::RwLock::new(HashMap::new())),
+                user_connections: Arc::new(std::sync::Mutex::new(HashMap::new())),
                 per_user_max: 10,
             }),
             auth: Some(Arc::new(auth::AuthService::new(auth::AuthConfig {
@@ -626,7 +656,7 @@ mod tests {
             prometheus_handle: metrics::init_metrics_recorder(),
             allowed_origin: None,
         };
-        match validate_ws_connection(&headers, &state).await {
+        match validate_ws_connection(&headers, None, &state).await {
             WsConnectionOutcome::Reject(response) => {
                 assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
             }
@@ -638,7 +668,7 @@ mod tests {
     async fn validate_connection_returns_404_when_redis_disabled() {
         let headers = HeaderMap::new();
         let state = test_state();
-        match validate_ws_connection(&headers, &state).await {
+        match validate_ws_connection(&headers, None, &state).await {
             WsConnectionOutcome::Reject(response) => {
                 assert_eq!(response.status(), StatusCode::NOT_FOUND);
             }
@@ -661,13 +691,18 @@ mod tests {
                     0,
                 ),
                 gauge_task: None,
-                feature_flags: None,
+                feature_flags: domain::FeatureFlags {
+                    maintenance_mode: false,
+                },
+                py_health_cache: Arc::new(tokio::sync::RwLock::new(None)),
+                db_health_cache: Arc::new(tokio::sync::RwLock::new(None)),
+                redis_health_cache: Arc::new(tokio::sync::RwLock::new(None)),
             }),
             ws: Arc::new(crate::WebSocketState {
                 connection_permits: Arc::new(tokio::sync::Semaphore::new(permits)),
                 idle_timeout: Duration::from_secs(300),
                 shutdown: Arc::new(tokio::sync::Notify::new()),
-                user_connections: Arc::new(std::sync::RwLock::new(HashMap::new())),
+                user_connections: Arc::new(std::sync::Mutex::new(HashMap::new())),
                 per_user_max: 10,
             }),
             auth: None,
@@ -684,7 +719,7 @@ mod tests {
             return;
         };
         let headers = HeaderMap::new();
-        match validate_ws_connection(&headers, &state).await {
+        match validate_ws_connection(&headers, None, &state).await {
             WsConnectionOutcome::Reject(response) => {
                 assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
             }
@@ -699,11 +734,90 @@ mod tests {
             return;
         };
         let headers = HeaderMap::new();
-        match validate_ws_connection(&headers, &state).await {
+        match validate_ws_connection(&headers, None, &state).await {
             WsConnectionOutcome::Permit { .. } => {}
             WsConnectionOutcome::Reject(response) => {
                 panic!("expected Permit, got {}", response.status());
             }
+        }
+    }
+
+    #[tokio::test]
+    async fn validate_connection_accepts_valid_token() {
+        let Some(state) = state_with_redis(100).await else {
+            eprintln!("SKIP: REDIS_URL not set or unreachable");
+            return;
+        };
+        // State needs auth configured with a known secret
+        let jwt_secret = uuid::Uuid::new_v4().to_string();
+        let auth = auth::AuthService::new(auth::AuthConfig {
+            jwt_secret,
+            jwt_issuer: "test".to_string(),
+            jwt_expiry: 900,
+            refresh_expiry: 604800,
+            auth_mode: auth::AuthMode::Bearer,
+            google_client_id: None,
+            google_client_secret: None,
+            github_client_id: None,
+            github_client_secret: None,
+            oauth_redirect_url: None,
+            sidecar_shared_secret: None,
+            fail_open_on_redis_error: true,
+            rate_limits: Default::default(),
+            cookie_secure: false,
+        });
+        let token = auth
+            .jwt
+            .create_token("user-42", "a@b.com", None, "local")
+            .unwrap();
+        let auth_state = crate::AppState {
+            auth: Some(Arc::new(auth)),
+            ..state
+        };
+        let headers = HeaderMap::new();
+        match validate_ws_connection(&headers, Some(token), &auth_state).await {
+            WsConnectionOutcome::Permit { user_id, .. } => {
+                assert_eq!(user_id, Some("user-42".to_string()));
+            }
+            WsConnectionOutcome::Reject(response) => {
+                panic!("expected Permit, got {}", response.status());
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn validate_connection_rejects_invalid_token() {
+        let Some(state) = state_with_redis(100).await else {
+            eprintln!("SKIP: REDIS_URL not set or unreachable");
+            return;
+        };
+        let jwt_secret = uuid::Uuid::new_v4().to_string();
+        let auth = auth::AuthService::new(auth::AuthConfig {
+            jwt_secret,
+            jwt_issuer: "test".to_string(),
+            jwt_expiry: 900,
+            refresh_expiry: 604800,
+            auth_mode: auth::AuthMode::Bearer,
+            google_client_id: None,
+            google_client_secret: None,
+            github_client_id: None,
+            github_client_secret: None,
+            oauth_redirect_url: None,
+            sidecar_shared_secret: None,
+            fail_open_on_redis_error: true,
+            rate_limits: Default::default(),
+            cookie_secure: false,
+        });
+        let auth_state = crate::AppState {
+            auth: Some(Arc::new(auth)),
+            ..state
+        };
+        let headers = HeaderMap::new();
+        match validate_ws_connection(&headers, Some("bogus-token".to_string()), &auth_state).await {
+            WsConnectionOutcome::Reject(response) => {
+                assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+            }
+            _ => panic!("expected Reject with 401"),
         }
     }
 
@@ -722,13 +836,18 @@ mod tests {
                     0,
                 ),
                 gauge_task: None,
-                feature_flags: None,
+                feature_flags: domain::FeatureFlags {
+                    maintenance_mode: false,
+                },
+                py_health_cache: Arc::new(tokio::sync::RwLock::new(None)),
+                db_health_cache: Arc::new(tokio::sync::RwLock::new(None)),
+                redis_health_cache: Arc::new(tokio::sync::RwLock::new(None)),
             }),
             ws: Arc::new(crate::WebSocketState {
                 connection_permits: Arc::new(tokio::sync::Semaphore::new(100)),
                 idle_timeout: Duration::from_secs(300),
                 shutdown: Arc::new(tokio::sync::Notify::new()),
-                user_connections: Arc::new(std::sync::RwLock::new(HashMap::new())),
+                user_connections: Arc::new(std::sync::Mutex::new(HashMap::new())),
                 per_user_max: 10,
             }),
             auth: None,

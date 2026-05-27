@@ -2,7 +2,7 @@ use crate::metrics;
 use crate::{AppState, DbStatus, HealthState, WebSocketState};
 use py_sidecar::PythonSidecar;
 use std::collections::HashMap;
-use std::sync::{Arc, RwLock};
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 /// Create a default test AppState with all optional features disabled.
@@ -17,13 +17,18 @@ pub fn new_test_state() -> AppState {
                 0,
             ),
             gauge_task: None,
-            feature_flags: None,
+            feature_flags: domain::FeatureFlags {
+                maintenance_mode: false,
+            },
+            py_health_cache: Arc::new(tokio::sync::RwLock::new(None)),
+            db_health_cache: Arc::new(tokio::sync::RwLock::new(None)),
+            redis_health_cache: Arc::new(tokio::sync::RwLock::new(None)),
         }),
         ws: Arc::new(WebSocketState {
             connection_permits: Arc::new(tokio::sync::Semaphore::new(100)),
             idle_timeout: Duration::from_secs(300),
             shutdown: Arc::new(tokio::sync::Notify::new()),
-            user_connections: Arc::new(RwLock::new(HashMap::new())),
+            user_connections: Arc::new(Mutex::new(HashMap::new())),
             per_user_max: 10,
         }),
         auth: None,

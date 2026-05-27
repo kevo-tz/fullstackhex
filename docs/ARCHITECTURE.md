@@ -136,16 +136,14 @@ Feature flags are loaded once at startup from environment variables and are NOT 
 
 ```rust
 pub struct FeatureFlags {
-    pub chat_enabled: bool,       // FEATURE_CHAT
-    pub storage_readonly: bool,   // FEATURE_STORAGE_READONLY
     pub maintenance_mode: bool,   // FEATURE_MAINTENANCE
 }
 ```
 
-- Stored as `Option<FeatureFlags>` in `AppState` (absent when env vars not configured)
+- Stored as `FeatureFlags` in `AppState` (always present — defaults to `false`)
 - Exposed in `/health` response as `feature_flags` object
-- Used by `maintenance_middleware`: returns 503 for all `/api/*` routes except `/health`, `/metrics`, `/live`
-- Frontend `lib/flags.ts` provides typed helpers: `fetchFeatureFlags()`, `isFeatureEnabled()`
+- Used by `maintenance_middleware`: returns 503 for all routes except `/health`, `/metrics`, `/metrics/`, `/live`
+- Extend the struct to add new feature flags as needed
 - See `.env.example` for flag configuration
 
 ## Technology Stack (Latest Versions)

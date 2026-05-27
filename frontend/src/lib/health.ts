@@ -93,42 +93,6 @@ export function createRetryController(
   return { start: doStart, cancel: doCancel, reset: doReset };
 }
 
-async function handleService(
-  fetchImpl: typeof fetch,
-  url: string,
-  serviceKey: string,
-  targetService: string,
-  defaultStatus: string,
-  traceId: string,
-): Promise<{ status: string }> {
-  try {
-    const res = await fetchImpl(url, {
-      headers: { "x-trace-id": traceId },
-    });
-    const d = await res.json();
-    const status = (d as Record<string, unknown>).status ?? "unknown";
-    jsonLog({
-      timestamp: new Date().toISOString(),
-      level: "info",
-      target: "frontend:health",
-      message: `${serviceKey} health response`,
-      trace_id: traceId,
-      target_service: targetService,
-      response_status: status,
-    });
-    return { status: String(status) };
-  } catch {
-    jsonLog({
-      timestamp: new Date().toISOString(),
-      level: "warn",
-      target: "frontend:health",
-      message: `${serviceKey} health fetch/parse failed`,
-      trace_id: traceId,
-    });
-    return { status: defaultStatus };
-  }
-}
-
 // Dev fallback; production uses VITE_RUST_BACKEND_URL env var
 export const API_BASE = import.meta.env.VITE_RUST_BACKEND_URL || "http://localhost:8001";
 
@@ -143,90 +107,53 @@ export async function aggregateHealth(
     timestamp: new Date().toISOString(),
     level: "info",
     target: "frontend:health",
-    message: "health check fan-out",
+    message: "health check",
     trace_id: traceId,
   });
 
-  const [
-    rustResult,
-    dbResult,
-    redisResult,
-    storageResult,
-    pythonResult,
-    authResult,
-  ] = await Promise.all([
-    (async (): Promise<{ status: string }> => {
-      try {
-        const res = await fetchImpl(`${apiBase}/health`, {
-          headers: { "x-trace-id": traceId },
-        });
-        const d = await res.json();
-        const healthData = d as Record<string, unknown>;
-        const rustHealth = healthData.rust as Record<string, unknown> | undefined;
-        return { status: String(rustHealth?.status ?? "error") };
-      } catch {
-        return { status: "error" };
-      }
-    })(),
+  try {
+    const res = await fetchImpl(`${apiBase}/health`, {
+      headers: { "x-trace-id": traceId },
+    });
+    const d = (await res.json()) as Record<string, unknown>;
 
-    handleService(
-      fetchImpl,
-      `${apiBase}/health/db`,
-      "db",
-      "db",
-      "error",
-      traceId,
-    ),
-    handleService(
-      fetchImpl,
-      `${apiBase}/health/redis`,
-      "redis",
-      "redis",
-      "unavailable",
-      traceId,
-    ),
-    handleService(
-      fetchImpl,
-      `${apiBase}/health/storage`,
-      "storage",
-      "storage",
-      "unavailable",
-      traceId,
-    ),
-    handleService(
-      fetchImpl,
-      `${apiBase}/health/python`,
-      "python",
-      "python",
-      "unavailable",
-      traceId,
-    ),
-    handleService(
-      fetchImpl,
-      `${apiBase}/health/auth`,
-      "auth",
-      "auth",
-      "disabled",
-      traceId,
-    ),
-  ]);
+    const result: Record<string, unknown> = {};
+    for (const svc of SERVICE_IDS) {
+      const entry = d[svc] as Record<string, unknown> | undefined;
+      result[svc] = { status: String(entry?.status ?? (svc === "auth" ? "disabled" : "error")) };
+    }
+    if (d.feature_flags) {
+      result.feature_flags = d.feature_flags as Record<string, boolean>;
+    }
 
-  const durationMs = Math.round(performance.now() - start);
-  jsonLog({
-    timestamp: new Date().toISOString(),
-    level: "info",
-    target: "frontend:health",
-    message: "health check complete",
-    trace_id: traceId,
-    duration_ms: durationMs,
-  });
+    const durationMs = Math.round(performance.now() - start);
+    jsonLog({
+      timestamp: new Date().toISOString(),
+      level: "info",
+      target: "frontend:health",
+      message: "health check complete",
+      trace_id: traceId,
+      duration_ms: durationMs,
+    });
 
-  return {
-    rust: rustResult,
-    db: dbResult,
-    redis: redisResult,
-    storage: storageResult,
-    python: pythonResult,
-    auth: authResult,
-  };
+    return result;
+  } catch {
+    const durationMs = Math.round(performance.now() - start);
+    jsonLog({
+      timestamp: new Date().toISOString(),
+      level: "warn",
+      target: "frontend:health",
+      message: "health check failed",
+      trace_id: traceId,
+      duration_ms: durationMs,
+    });
+    return {
+      rust: { status: "error" },
+      db: { status: "error" },
+      redis: { status: "unavailable" },
+      storage: { status: "unavailable" },
+      python: { status: "unavailable" },
+      auth: { status: "disabled" },
+    };
+  }
 }

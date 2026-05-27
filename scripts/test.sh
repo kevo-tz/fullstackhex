@@ -10,7 +10,9 @@ cd "$REPO_ROOT" || exit
 EXIT=0
 
 echo "=== Running Rust tests ==="
-(cd backend && cargo test --workspace) || EXIT=$?
+# --locked matches CI: ensures Cargo.lock is respected
+# --test-threads=1 is set in backend/.cargo/config.toml
+(cd backend && cargo test --locked --workspace) || EXIT=$?
 
 echo ""
 echo "=== Running Python tests ==="
@@ -18,7 +20,7 @@ echo "=== Running Python tests ==="
 
 echo ""
 echo "=== Running frontend tests (vitest) ==="
-(cd frontend && bun run test:vitest) || EXIT=$?
+(cd frontend && bun run test) || EXIT=$?
 
 echo ""
 if [ "$EXIT" -eq 0 ]; then

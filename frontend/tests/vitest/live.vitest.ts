@@ -89,6 +89,13 @@ describe("connectLiveStream", () => {
     live.close();
   });
 
+  test("accepts token option and appends ?token= to URL", () => {
+    const live = connectLiveStream({ token: "my-jwt" });
+    expect(MockWebSocket.instances.length).toBe(1);
+    expect(MockWebSocket.instances[0].url).toContain("?token=my-jwt");
+    live.close();
+  });
+
   test("emits connected on open", () => {
     const events: LiveEvent[] = [];
     const live = connectLiveStream();

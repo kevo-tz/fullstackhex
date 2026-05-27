@@ -18,6 +18,7 @@
 //! ```
 
 use crate::AppState;
+use axum::extract::Query;
 use axum::extract::State;
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
 use axum::http::{HeaderMap, StatusCode};
@@ -107,7 +108,11 @@ enum WsConnectionOutcome {
 ///
 /// Extracted from `ws_handler` so the business logic can be unit-tested
 /// without requiring the Axum `WebSocketUpgrade` extractor.
-async fn validate_ws_connection(headers: &HeaderMap, state: &AppState) -> WsConnectionOutcome {
+async fn validate_ws_connection(
+    headers: &HeaderMap,
+    token: Option<String>,
+    state: &AppState,
+) -> WsConnectionOutcome {
     // Validate Origin when ALLOWED_ORIGIN is configured — prevents cross-site
     // WebSocket hijacking even when session cookies are present.
     if let Some(ref allowed) = state.allowed_origin {
@@ -124,8 +129,19 @@ async fn validate_ws_connection(headers: &HeaderMap, state: &AppState) -> WsConn
         }
     }
 
-    let maybe_user_id = if state.auth.is_some() {
-        cookie_authenticated(headers, state).await
+    let maybe_user_id = if let Some(ref auth_service) = state.auth {
+        if let Some(ref token_value) = token {
+            match auth_service.jwt.validate_token(token_value) {
+                Ok(claims) => Some(claims.sub),
+                Err(_) => {
+                    return WsConnectionOutcome::Reject(
+                        (StatusCode::UNAUTHORIZED, "{\"error\":\"Invalid token\"}").into_response(),
+                    );
+                }
+            }
+        } else {
+            cookie_authenticated(headers, state).await
+        }
     } else {
         None
     };
@@ -202,8 +218,10 @@ pub async fn ws_handler(
     ws: WebSocketUpgrade,
     headers: HeaderMap,
     State(state): State<Arc<AppState>>,
+    Query(params): Query<HashMap<String, String>>,
 ) -> impl IntoResponse {
-    match validate_ws_connection(&headers, &state).await {
+    let token = params.get("token").cloned();
+    match validate_ws_connection(&headers, token, &state).await {
         WsConnectionOutcome::Permit {
             redis,
             permit,
@@ -638,7 +656,7 @@ mod tests {
             prometheus_handle: metrics::init_metrics_recorder(),
             allowed_origin: None,
         };
-        match validate_ws_connection(&headers, &state).await {
+        match validate_ws_connection(&headers, None, &state).await {
             WsConnectionOutcome::Reject(response) => {
                 assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
             }
@@ -650,7 +668,7 @@ mod tests {
     async fn validate_connection_returns_404_when_redis_disabled() {
         let headers = HeaderMap::new();
         let state = test_state();
-        match validate_ws_connection(&headers, &state).await {
+        match validate_ws_connection(&headers, None, &state).await {
             WsConnectionOutcome::Reject(response) => {
                 assert_eq!(response.status(), StatusCode::NOT_FOUND);
             }
@@ -701,7 +719,7 @@ mod tests {
             return;
         };
         let headers = HeaderMap::new();
-        match validate_ws_connection(&headers, &state).await {
+        match validate_ws_connection(&headers, None, &state).await {
             WsConnectionOutcome::Reject(response) => {
                 assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
             }
@@ -716,11 +734,88 @@ mod tests {
             return;
         };
         let headers = HeaderMap::new();
-        match validate_ws_connection(&headers, &state).await {
+        match validate_ws_connection(&headers, None, &state).await {
             WsConnectionOutcome::Permit { .. } => {}
             WsConnectionOutcome::Reject(response) => {
                 panic!("expected Permit, got {}", response.status());
             }
+        }
+    }
+
+    #[tokio::test]
+    async fn validate_connection_accepts_valid_token() {
+        let Some(state) = state_with_redis(100).await else {
+            eprintln!("SKIP: REDIS_URL not set or unreachable");
+            return;
+        };
+        // State needs auth configured with a known secret
+        let auth = auth::AuthService::new(auth::AuthConfig {
+            jwt_secret: "test-secret-for-ws-token".to_string(),
+            jwt_issuer: "test".to_string(),
+            jwt_expiry: 900,
+            refresh_expiry: 604800,
+            auth_mode: auth::AuthMode::Bearer,
+            google_client_id: None,
+            google_client_secret: None,
+            github_client_id: None,
+            github_client_secret: None,
+            oauth_redirect_url: None,
+            sidecar_shared_secret: None,
+            fail_open_on_redis_error: true,
+            rate_limits: Default::default(),
+            cookie_secure: false,
+        });
+        let token = auth
+            .jwt
+            .create_token("user-42", "a@b.com", None, "local")
+            .unwrap();
+        let auth_state = crate::AppState {
+            auth: Some(Arc::new(auth)),
+            ..state
+        };
+        let headers = HeaderMap::new();
+        match validate_ws_connection(&headers, Some(token), &auth_state).await {
+            WsConnectionOutcome::Permit { user_id, .. } => {
+                assert_eq!(user_id, Some("user-42".to_string()));
+            }
+            WsConnectionOutcome::Reject(response) => {
+                panic!("expected Permit, got {}", response.status());
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn validate_connection_rejects_invalid_token() {
+        let Some(state) = state_with_redis(100).await else {
+            eprintln!("SKIP: REDIS_URL not set or unreachable");
+            return;
+        };
+        let auth = auth::AuthService::new(auth::AuthConfig {
+            jwt_secret: "test-secret-for-ws-token".to_string(),
+            jwt_issuer: "test".to_string(),
+            jwt_expiry: 900,
+            refresh_expiry: 604800,
+            auth_mode: auth::AuthMode::Bearer,
+            google_client_id: None,
+            google_client_secret: None,
+            github_client_id: None,
+            github_client_secret: None,
+            oauth_redirect_url: None,
+            sidecar_shared_secret: None,
+            fail_open_on_redis_error: true,
+            rate_limits: Default::default(),
+            cookie_secure: false,
+        });
+        let auth_state = crate::AppState {
+            auth: Some(Arc::new(auth)),
+            ..state
+        };
+        let headers = HeaderMap::new();
+        match validate_ws_connection(&headers, Some("bogus-token".to_string()), &auth_state).await {
+            WsConnectionOutcome::Reject(response) => {
+                assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+            }
+            _ => panic!("expected Reject with 401"),
         }
     }
 

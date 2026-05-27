@@ -335,9 +335,9 @@ pub(crate) async fn health_python(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::{DbStatus, HealthState};
     use std::sync::Arc;
     use std::time::{Duration, Instant};
-    use crate::{DbStatus, HealthState};
 
     fn test_sidecar() -> py_sidecar::PythonSidecar {
         py_sidecar::PythonSidecar::new(

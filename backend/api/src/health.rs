@@ -309,11 +309,20 @@ pub(crate) async fn health_python(
         .and_then(|v| v.to_str().ok())
         .unwrap_or("");
 
-    if !trace_id.is_empty() {
+    let value = if trace_id.is_empty() {
+        health_python_value(&state.health).await
+    } else {
         tracing::info!(%trace_id, "health check via sidecar with propagated trace_id");
-    }
-
-    let value = health_python_value(&state.health).await;
+        match state
+            .health
+            .sidecar
+            .get_with_trace_id("/health", trace_id, None)
+            .await
+        {
+            Ok(v) => format_health_value(&v),
+            Err(e) => sidecar_error_json(&e),
+        }
+    };
 
     let status = if value["status"] == "ok" {
         StatusCode::OK
@@ -321,4 +330,130 @@ pub(crate) async fn health_python(
         StatusCode::SERVICE_UNAVAILABLE
     };
     (status, no_cache(), Json(value))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::Arc;
+    use std::time::{Duration, Instant};
+    use crate::{DbStatus, HealthState};
+
+    fn test_sidecar() -> py_sidecar::PythonSidecar {
+        py_sidecar::PythonSidecar::new(
+            "/tmp/__nonexistent_test_socket__.sock",
+            Duration::from_secs(1),
+            0,
+        )
+    }
+
+    fn health_state_with(
+        db: DbStatus,
+        py_cache: Option<(Instant, serde_json::Value)>,
+        db_cache: Option<(Instant, serde_json::Value)>,
+        redis_cache: Option<(Instant, serde_json::Value)>,
+    ) -> HealthState {
+        HealthState {
+            db,
+            redis: None,
+            sidecar: test_sidecar(),
+            gauge_task: None,
+            feature_flags: domain::FeatureFlags {
+                maintenance_mode: false,
+            },
+            py_health_cache: Arc::new(tokio::sync::RwLock::new(py_cache)),
+            db_health_cache: Arc::new(tokio::sync::RwLock::new(db_cache)),
+            redis_health_cache: Arc::new(tokio::sync::RwLock::new(redis_cache)),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_db_cache_hit_returns_cached_value() {
+        let state = health_state_with(
+            DbStatus::NotConfigured,
+            None,
+            Some((Instant::now(), json!({"status": "ok"}))),
+            None,
+        );
+        let result = health_db_value(&state).await;
+        assert_eq!(result["status"], "ok");
+    }
+
+    #[tokio::test]
+    async fn test_db_cache_expired_falls_through() {
+        let state = health_state_with(
+            DbStatus::NotConfigured,
+            None,
+            Some((
+                Instant::now() - HEALTH_CACHE_TTL - Duration::from_secs(1),
+                json!({"status": "ok"}),
+            )),
+            None,
+        );
+        let result = health_db_value(&state).await;
+        assert_eq!(result["status"], "disabled");
+    }
+
+    #[tokio::test]
+    async fn test_db_cache_only_caches_ok() {
+        let state = health_state_with(DbStatus::NotConfigured, None, None, None);
+        let result = health_db_value(&state).await;
+        assert_eq!(result["status"], "disabled");
+        let cache = state.db_health_cache.read().await;
+        assert!(cache.is_none(), "should not cache 'disabled' status");
+    }
+
+    #[tokio::test]
+    async fn test_python_cache_hit_returns_cached_value() {
+        let state = health_state_with(
+            DbStatus::NotConfigured,
+            Some((Instant::now(), json!({"status": "ok"}))),
+            None,
+            None,
+        );
+        let result = health_python_value(&state).await;
+        assert_eq!(result["status"], "ok");
+    }
+
+    #[tokio::test]
+    async fn test_python_cache_expired_falls_through() {
+        let state = health_state_with(
+            DbStatus::NotConfigured,
+            Some((
+                Instant::now() - HEALTH_CACHE_TTL - Duration::from_secs(1),
+                json!({"status": "ok"}),
+            )),
+            None,
+            None,
+        );
+        let result = health_python_value(&state).await;
+        assert_eq!(result["status"], "unavailable");
+    }
+
+    #[tokio::test]
+    async fn test_redis_cache_hit_returns_cached_value() {
+        let state = health_state_with(
+            DbStatus::NotConfigured,
+            None,
+            None,
+            Some((Instant::now(), json!({"status": "ok"}))),
+        );
+        let result = health_redis_value(&state).await;
+        assert_eq!(result["status"], "ok");
+    }
+
+    #[tokio::test]
+    async fn test_redis_cache_expired_falls_through() {
+        let state = health_state_with(
+            DbStatus::NotConfigured,
+            None,
+            None,
+            Some((
+                Instant::now() - HEALTH_CACHE_TTL - Duration::from_secs(1),
+                json!({"status": "ok"}),
+            )),
+        );
+        let result = health_redis_value(&state).await;
+        assert_eq!(result["status"], "disabled");
+    }
 }

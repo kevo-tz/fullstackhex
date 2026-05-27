@@ -52,6 +52,8 @@ chmod +x scripts/*.sh
 | `make watch`  | Start full stack with Rust hot reload              |
 | `make down`   | Stop all services                                  |
 | `make test`   | Run all test suites (rust + python + frontend)     |
+| `make lint`   | Run all lint/format/typecheck (matches CI)         |
+| `make check`  | Full CI preflight: lint + test                     |
 | `make logs`   | Follow all stack logs                              |
 | `make bench`  | Run performance benchmarks                         |
 | `make status` | Show service status (PID, port, health)            |

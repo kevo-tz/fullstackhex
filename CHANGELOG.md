@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.14.5] - 2026-05-27
+
+### Added
+- **`make check` and `make lint` targets**: `make check` runs lint + test (matching CI gate); `make lint` runs all lint/format/typecheck in one command
+- **`scripts/lint.sh`**: standalone lint script matching CI lint steps
+- **Cache tests**: `health_python` cache module now covered with unit tests
+
+### Changed
+- **Backend decomposed**: `api/src/lib.rs` split into `health.rs` (459 lines), `middleware.rs` (53 lines), `fallback.rs` (21 lines) — modular health, maintenance, and dev-user middleware
+- **Frontend health simplified**: `aggregateHealth()` now calls `/health` once instead of fanning out to 6 individual endpoints — fewer requests, simpler code
+- **RustFS image**: bumped from `1.0.0-beta.3` to `1.0.0-beta.4` in dev and prod compose files
+- **`scripts/down.sh`**: force-cleans used ports on shutdown
+- **`make bench`**: improved presentation and performance
+
+### Fixed
+- **WS auth via `?token=`**: frontend now passes JWT as query param to WebSocket upgrade — fixes auth gating on `/live`
+- **Trace ID propagation**: restored `x-trace-id` header forwarding in `health_python` endpoint
+- **Eager-init Prometheus metrics**: counters created at startup instead of on first request — prevents missing-metric gaps in dashboards
+- **Integration test thread safety**: switched from `RwLock` to `Mutex` in shared test state — eliminates write-write contention
+- **Test assertion fix**: updated expected status from `"error"` to `"disabled"` for auth-disabled fallback route
+- **Rustfmt and clippy warnings**: all formatting and lint warnings resolved across backend
+- **Python ruff and syntax fixes**: address code review findings — Python syntax, health cache race
+
 ## [0.14.4] - 2026-05-20
 
 ### Security

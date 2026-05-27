@@ -138,7 +138,7 @@ Open-source S3-compatible object storage server.
 
 | Property | Value |
 |----------|-------|
-| Image | `rustfs/rustfs:1.0.0-beta.3` |
+| Image | `rustfs/rustfs:1.0.0-beta.4` |
 | Container | `fullstackhex_rustfs` |
 | API Port | `9000` (configurable: **RUSTFS_API_PORT**) |
 | Console Port | `9001` (configurable: **RUSTFS_CONSOLE_PORT**) |
@@ -239,7 +239,7 @@ The canonical dev configuration is at [`compose/dev.yml`](../compose/dev.yml). K
 |---------|-------|------|-------|
 | postgres | postgres:18-alpine | 5432 | `POSTGRES_PASSWORD` required |
 | redis | redis:8-alpine | 6379 | `REDIS_PASSWORD` required, AOF enabled |
-| rustfs | rustfs/rustfs:1.0.0-beta.3 | 9000, 9001 | S3-compatible, browser UI |
+| rustfs | rustfs/rustfs:1.0.0-beta.4 | 9000, 9001 | S3-compatible, browser UI |
 | adminer | adminer:5.1.0 | 8080 (tools profile) | DB admin UI |
 | redis-commander | rediscommander/redis-commander:0.8.0 | 8081 (tools profile) | Redis admin UI |
 | redis-exporter | oliver006/redis_exporter:v1.83.0 | 9121 | Prometheus Redis metrics |
@@ -255,7 +255,7 @@ All management ports are bound to `127.0.0.1` to prevent external access. See `c
 # Services:
 #   - postgres:18-alpine  (port 5432) - Primary database
 #   - redis:8-alpine      (port 6379) - Cache layer
-#   - rustfs/rustfs:1.0.0-beta.3 (ports 9000, 9001) - S3-compatible object storage
+#   - rustfs/rustfs:1.0.0-beta.4 (ports 9000, 9001) - S3-compatible object storage
 #
 # Networks: fullstackhex-network (bridge)
 # Volumes: postgres_data, redis_data, rustfs_data (persistent)
@@ -332,7 +332,7 @@ services:
         max-file: "3"
 
   rustfs:
-    image: rustfs/rustfs:1.0.0-beta.3
+    image: rustfs/rustfs:1.0.0-beta.4
     container_name: fullstackhex_rustfs
     restart: unless-stopped
     ports:

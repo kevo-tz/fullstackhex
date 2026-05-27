@@ -749,8 +749,9 @@ mod tests {
             return;
         };
         // State needs auth configured with a known secret
+        let jwt_secret = uuid::Uuid::new_v4().to_string();
         let auth = auth::AuthService::new(auth::AuthConfig {
-            jwt_secret: "test-secret-for-ws-token".to_string(),
+            jwt_secret,
             jwt_issuer: "test".to_string(),
             jwt_expiry: 900,
             refresh_expiry: 604800,
@@ -790,8 +791,9 @@ mod tests {
             eprintln!("SKIP: REDIS_URL not set or unreachable");
             return;
         };
+        let jwt_secret = uuid::Uuid::new_v4().to_string();
         let auth = auth::AuthService::new(auth::AuthConfig {
-            jwt_secret: "test-secret-for-ws-token".to_string(),
+            jwt_secret,
             jwt_issuer: "test".to_string(),
             jwt_expiry: 900,
             refresh_expiry: 604800,

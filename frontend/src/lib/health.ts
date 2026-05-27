@@ -117,11 +117,13 @@ export async function aggregateHealth(
     });
     const d = (await res.json()) as Record<string, unknown>;
 
-    const services = ["rust", "db", "redis", "storage", "python", "auth"] as const;
     const result: Record<string, unknown> = {};
-    for (const svc of services) {
+    for (const svc of SERVICE_IDS) {
       const entry = d[svc] as Record<string, unknown> | undefined;
       result[svc] = { status: String(entry?.status ?? (svc === "auth" ? "disabled" : "error")) };
+    }
+    if (d.feature_flags) {
+      result.feature_flags = d.feature_flags as Record<string, boolean>;
     }
 
     const durationMs = Math.round(performance.now() - start);

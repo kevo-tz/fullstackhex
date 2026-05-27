@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.14.6] - 2026-05-27
+
+### Added
+- **Docker image digest bumps**: node (`424cafd`→`1e738cb`), python (`7a50012`→`c845af9`), rust (`39d8cb3`→`0861191`), debian (`109e2c6`→`b6e2a15`) — picks up latest OS and runtime patches
+
+### Changed
+- **astro bumped to 6.3.8** (was 6.3.3) — latest stable
+- **serde_json bumped to 1.0.150** (was 1.0.149)
+- **reqwest bumped to 0.13.4** (was 0.13.3) — fixes CI dependency audit failure
+
+### Fixed
+- **Hardcoded JWT secret in WebSocket test**: detect-secrets flagged `"test-secret-for-ws-token"` — replaced with `uuid::Uuid::new_v4()`; both WS test helpers now use dynamic secrets (live.rs)
+- **Duplicate services array in health.ts**: `aggregateHealth()` now reuses exported `SERVICE_IDS` constant instead of redefining it
+- **Missing feature_flags forwarding**: `aggregateHealth()` now passes through `feature_flags` from the backend health response
+
 ## [0.14.5] - 2026-05-27
 
 ### Added

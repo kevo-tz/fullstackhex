@@ -18,7 +18,7 @@
     "test:e2e:playwright": "playwright test"
   },
   "dependencies": {
-    "@astrojs/node": "10.1.1",
+    "@astrojs/node": "10.1.2",
     "astro": "6.3.8"
   },
   "devDependencies": {

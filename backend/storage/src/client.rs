@@ -1133,6 +1133,63 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn multipart_upload_part_streaming_success() {
+        use wiremock::matchers::{method, path, query_param};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let mock_server = MockServer::start().await;
+        let mut config = test_config();
+        config.endpoint = mock_server.uri();
+
+        Mock::given(method("PUT"))
+            .and(path("/test-bucket/big-file.dat"))
+            .and(query_param("partNumber", "1"))
+            .and(query_param("uploadId", "uid-stream"))
+            .respond_with(ResponseTemplate::new(200).insert_header("ETag", "\"etag-streamed-1\""))
+            .expect(1)
+            .mount(&mock_server)
+            .await;
+
+        let client = reqwest::Client::new();
+        let body = reqwest::Body::from("streamed part data".to_string());
+        let part = upload_part_streaming(&client, &config, "big-file.dat", "uid-stream", 1, body)
+            .await
+            .expect("streamed part upload failed");
+
+        assert_eq!(part.part_number, 1);
+        assert_eq!(part.etag, "etag-streamed-1");
+    }
+
+    #[tokio::test]
+    async fn multipart_upload_part_streaming_surfaces_error_status() {
+        use wiremock::matchers::{method, path, query_param};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let mock_server = MockServer::start().await;
+        let mut config = test_config();
+        config.endpoint = mock_server.uri();
+
+        Mock::given(method("PUT"))
+            .and(path("/test-bucket/big-file.dat"))
+            .and(query_param("partNumber", "1"))
+            .and(query_param("uploadId", "uid-stream-err"))
+            .respond_with(
+                ResponseTemplate::new(403)
+                    .set_body_string("<Error><Code>AccessDenied</Code></Error>"),
+            )
+            .expect(1)
+            .mount(&mock_server)
+            .await;
+
+        let client = reqwest::Client::new();
+        let body = reqwest::Body::from("streamed part data".to_string());
+        let result =
+            upload_part_streaming(&client, &config, "big-file.dat", "uid-stream-err", 1, body)
+                .await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
     async fn multipart_abort_mid_upload() {
         use wiremock::matchers::{method, path, query_param};
         use wiremock::{Mock, MockServer, ResponseTemplate};

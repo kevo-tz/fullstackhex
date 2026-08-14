@@ -64,6 +64,9 @@ leankg.yaml
 .backup/
 .performance/
 
+# detect-secrets — generated audit artifact, never committed
+.secrets.baseline.new
+
 # Playwright
 playwright-report/
 test-results/

@@ -155,4 +155,17 @@ _All 8 items completed. 300 backend tests pass, 118 frontend tests pass, 23 py-a
 | T5 | CSP lockdown | nginx: `frame-src`, `object-src`, `connect-src`, `img-src`, `base-uri`, `form-action`, `report-uri`; Astro: remove `'unsafe-inline'` | `abe6485` / `c6f257b` |
 | T6 | `From<sqlx::Error>` | RowNotFound→NotFound, PoolClosed→ServiceUnavailable behind `sqlx-conv` feature | `55e00ab` |
 | T7 | Integration tests | 13 tests for forgot/reset/delete/oauth in `integration_auth_handlers.rs` + `cleanup_user()` | `4c938f9` / `b919884` |
-| T8 | Redis Lua perf | Atomic session_create (SET+SADD+EXPIRE), backoff_check (GET+TTL+stale cleanup), batch DEL for multi-session | `3debbf7` / `588f532` |_
+| T8 | Redis Lua perf | Atomic session_create (SET+SADD+EXPIRE), backoff_check (GET+TTL+stale cleanup), batch DEL for multi-session | `3debbf7` / `588f532` |
+
+---
+
+## Audit Corrections (2026-08)
+
+_Re-verified against `develop` head. Two prior claims did not match the code and are corrected below._
+
+| Claim | Reality | Status |
+|-------|---------|--------|
+| Phase 7: `except ValueError, TypeError:` fixed to `except (ValueError, TypeError):` (`cdc19d8`) | Commit `cdc19d8` not reachable from `develop` (squashed). The unparenthesized form is valid and formatter-canonical on Python 3.14+ (PEP 758); the project pins `requires-python >=3.14` and `ruff target-version py314`, so no fix was needed. | No change needed — claim was inaccurate |
+| Phase 2.4: WS `Mutex`→`RwLock` | `backend/api/src/lib.rs` still declares `Arc<Mutex<HashMap<String, usize>>>` for `user_connections`. `Mutex` is appropriate here (every connect/disconnect both reads and writes the count). | No change needed — claim was inaccurate |
+
+> Note: most per-item commit hashes in this file (`cdc19d8`, `e7dc53b`, `dd2f0ce..14fa4db`, `3debbf7`, …) lived on squash-merged feature branches and are not reachable from `develop`. Treat them as historical references, not verifiable pointers.

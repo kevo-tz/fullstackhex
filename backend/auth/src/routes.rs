@@ -7,12 +7,14 @@
 use super::AuthService;
 use super::middleware::AuthUser;
 use super::password;
+use axum::Extension;
 use axum::Json;
-use axum::extract::{Path, Query, State};
+use axum::extract::{ConnectInfo, Path, Query, State};
 use axum::http::{HeaderMap, StatusCode, header};
 use axum::response::IntoResponse;
 use domain::error::ApiError;
 use serde::{Deserialize, Serialize};
+use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -25,27 +27,53 @@ pub struct AuthState {
     pub oauth: Arc<super::oauth::OAuthService>,
 }
 
-/// Extract client IP from request headers.
+/// Extract client IP from the connection peer and proxy headers.
 ///
-/// Only trusts `X-Forwarded-For` and `X-Real-IP` when `TRUST_PROXY` is set
-/// (production behind nginx). Otherwise returns "unknown" to prevent IP
-/// spoofing in dev setups where the app is directly exposed.
-fn client_ip(headers: &HeaderMap) -> String {
+/// When `TRUST_PROXY` is set, `X-Forwarded-For`/`X-Real-IP` are trusted only if
+/// the direct peer is a loopback or private address (the reverse proxy). A
+/// public peer means the client reached us directly, so its forwarded headers
+/// are spoofable and must be ignored. Without a peer (e.g. tests, or a server
+/// started without connect-info), this falls back to "unknown".
+fn client_ip(headers: &HeaderMap, peer: Option<SocketAddr>) -> String {
     if std::env::var("TRUST_PROXY").is_ok() {
-        headers
-            .get("x-forwarded-for")
-            .and_then(|v| v.to_str().ok())
-            .and_then(|v| v.split(',').next())
-            .map(|s| s.trim().to_string())
-            .or_else(|| {
-                headers
-                    .get("x-real-ip")
-                    .and_then(|v| v.to_str().ok())
-                    .map(|s| s.trim().to_string())
-            })
-            .unwrap_or_else(|| "unknown".to_string())
-    } else {
-        "unknown".to_string()
+        // Only trust forwarded headers when the direct peer is the reverse proxy.
+        if peer.map(|a| is_proxy_peer(&a.ip())).unwrap_or(false)
+            && let Some(ip) = forwarded_ip(headers)
+        {
+            return ip;
+        }
+    }
+    peer.map(|a| a.ip().to_string())
+        .unwrap_or_else(|| "unknown".to_string())
+}
+
+/// Extract the client IP from proxy-added headers, first non-empty entry wins.
+fn forwarded_ip(headers: &HeaderMap) -> Option<String> {
+    headers
+        .get("x-forwarded-for")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.split(',').next())
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .or_else(|| {
+            headers
+                .get("x-real-ip")
+                .and_then(|v| v.to_str().ok())
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+        })
+}
+
+/// True when the address belongs to a reverse proxy (loopback, private, or
+/// link-local), as opposed to a client connecting to us directly.
+fn is_proxy_peer(ip: &std::net::IpAddr) -> bool {
+    match ip {
+        std::net::IpAddr::V4(v4) => v4.is_loopback() || v4.is_private() || v4.is_link_local(),
+        std::net::IpAddr::V6(v6) => {
+            v6.is_loopback()
+                || (v6.segments()[0] & 0xfe00) == 0xfc00 // ULA fc00::/7
+                || (v6.segments()[0] & 0xffc0) == 0xfe80 // link-local fe80::/10
+        }
     }
 }
 
@@ -131,10 +159,11 @@ pub(crate) fn validate_registration(body: &RegisterRequest) -> Result<(), ApiErr
 pub async fn register(
     State(state): State<AuthState>,
     headers: HeaderMap,
+    peer: Option<Extension<ConnectInfo<SocketAddr>>>,
     Json(body): Json<RegisterRequest>,
 ) -> Result<impl IntoResponse, ApiError> {
     // Rate limit by IP (configurable, default: 5 per 15 minutes)
-    let ip = client_ip(&headers);
+    let ip = client_ip(&headers, peer.map(|Extension(ConnectInfo(addr))| addr));
     check_rate_limit(
         &state.redis,
         &format!("register:{ip}"),
@@ -165,7 +194,9 @@ pub async fn register(
         .await
         .map_err(|e| ApiError::InternalError(format!("Password hashing task failed: {e}")))??;
 
-    // Insert user
+    // Insert user. The email column has a UNIQUE constraint; the SELECT above is
+    // only a fast path — a concurrent registration racing for the same email
+    // surfaces here as a unique violation, mapped back to 409 instead of 500.
     let user_id: String = sqlx::query_scalar(
         "INSERT INTO users (email, name, provider, password_hash) VALUES ($1, $2, 'local', $3) RETURNING id::text",
     )
@@ -175,6 +206,12 @@ pub async fn register(
     .fetch_one(&state.db)
     .await
     .map_err(|e| {
+            if e.as_database_error()
+                .map(|d| d.is_unique_violation())
+                .unwrap_or(false)
+            {
+                return ApiError::Conflict("Email already registered".to_string());
+            }
             tracing::error!(error = %e, "database query failed");
             ApiError::InternalError("Internal server error".to_string())
         })?;
@@ -264,9 +301,10 @@ pub async fn register(
 pub async fn login(
     State(state): State<AuthState>,
     headers: HeaderMap,
+    peer: Option<Extension<ConnectInfo<SocketAddr>>>,
     Json(body): Json<LoginRequest>,
 ) -> Result<impl IntoResponse, ApiError> {
-    let ip = client_ip(&headers);
+    let ip = client_ip(&headers, peer.map(|Extension(ConnectInfo(addr))| addr));
 
     // Progressive brute-force backoff by IP + email/IP rate limits. The three
     // Lua EVALs hit independent keys, so run them concurrently.
@@ -516,10 +554,11 @@ const RESET_TOKEN_TTL_SECS: u64 = 3600; // 1 hour
 pub async fn forgot_password(
     State(state): State<AuthState>,
     headers: HeaderMap,
+    peer: Option<Extension<ConnectInfo<SocketAddr>>>,
     Json(body): Json<ForgotPasswordRequest>,
 ) -> Result<impl IntoResponse, ApiError> {
     // Rate limit by IP
-    let ip = client_ip(&headers);
+    let ip = client_ip(&headers, peer.map(|Extension(ConnectInfo(addr))| addr));
     check_rate_limit(
         &state.redis,
         &format!("forgot:{ip}"),
@@ -556,11 +595,10 @@ pub async fn forgot_password(
             )
             .await?;
 
-        tracing::info!(
-            user_id = %user_id,
-            reset_token = %reset_token,
-            "password reset token generated"
-        );
+        // Do NOT log the reset token itself — it would let anyone with log
+        // access reset the user's password. The dev-mode URL below is the only
+        // place the token is emitted, and only outside PRODUCTION.
+        tracing::info!(user_id = %user_id, "password reset token generated");
 
         // In development, log the reset URL for testing
         if std::env::var("PRODUCTION").is_err() {
@@ -975,13 +1013,14 @@ fn validate_oauth_state_match(
 pub async fn oauth_callback(
     State(state): State<AuthState>,
     headers: HeaderMap,
+    peer: Option<Extension<ConnectInfo<SocketAddr>>>,
     Path(provider): Path<String>,
     Query(query): Query<OAuthCallbackQuery>,
 ) -> Result<impl IntoResponse, ApiError> {
     let provider = parse_provider(&provider)?;
 
     // Rate limit by IP
-    let ip = client_ip(&headers);
+    let ip = client_ip(&headers, peer.map(|Extension(ConnectInfo(addr))| addr));
     check_rate_limit(
         &state.redis,
         &format!("oauth_callback:{ip}"),
@@ -1129,21 +1168,39 @@ fn parse_provider(s: &str) -> Result<super::oauth::OAuthProvider, ApiError> {
 #[cfg(test)]
 mod route_tests {
     use super::*;
+    use serial_test::serial;
 
     #[test]
-    fn client_ip_from_x_forwarded_for() {
+    fn client_ip_ignores_forwarded_without_trust_proxy() {
         let mut headers = HeaderMap::new();
         headers.insert("x-forwarded-for", "192.168.1.1, 10.0.0.1".parse().unwrap());
-        // Without TRUST_PROXY, forwarded headers are ignored
-        assert_eq!(client_ip(&headers), "unknown");
+        // Without TRUST_PROXY, forwarded headers are ignored; a real peer is
+        // used directly instead of collapsing to "unknown".
+        let peer: SocketAddr = "203.0.113.9:4000".parse().unwrap();
+        assert_eq!(client_ip(&headers, Some(peer)), "203.0.113.9");
     }
 
     #[test]
-    fn client_ip_trusts_forwarded_when_configured() {
+    #[serial]
+    fn client_ip_trusts_forwarded_when_peer_is_proxy() {
         unsafe { std::env::set_var("TRUST_PROXY", "true") };
         let mut headers = HeaderMap::new();
         headers.insert("x-forwarded-for", "192.168.1.1, 10.0.0.1".parse().unwrap());
-        assert_eq!(client_ip(&headers), "192.168.1.1");
+        let peer: SocketAddr = "127.0.0.1:8080".parse().unwrap();
+        assert_eq!(client_ip(&headers, Some(peer)), "192.168.1.1");
+        unsafe { std::env::remove_var("TRUST_PROXY") };
+    }
+
+    #[test]
+    #[serial]
+    fn client_ip_ignores_forwarded_from_public_peer() {
+        unsafe { std::env::set_var("TRUST_PROXY", "true") };
+        let mut headers = HeaderMap::new();
+        headers.insert("x-forwarded-for", "192.168.1.1".parse().unwrap());
+        // A public peer means the client reached us directly — the forwarded
+        // header is spoofable and must be ignored.
+        let peer: SocketAddr = "8.8.8.8:1234".parse().unwrap();
+        assert_eq!(client_ip(&headers, Some(peer)), "8.8.8.8");
         unsafe { std::env::remove_var("TRUST_PROXY") };
     }
 
@@ -1151,13 +1208,13 @@ mod route_tests {
     fn client_ip_from_x_real_ip() {
         let mut headers = HeaderMap::new();
         headers.insert("x-real-ip", "10.0.0.2".parse().unwrap());
-        assert_eq!(client_ip(&headers), "unknown");
+        assert_eq!(client_ip(&headers, None), "unknown");
     }
 
     #[test]
     fn client_ip_defaults_to_unknown() {
         let headers = HeaderMap::new();
-        assert_eq!(client_ip(&headers), "unknown");
+        assert_eq!(client_ip(&headers, None), "unknown");
     }
 
     #[test]

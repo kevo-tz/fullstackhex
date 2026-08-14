@@ -462,6 +462,54 @@ pub async fn upload_part(
     Ok(PartInfo { part_number, etag })
 }
 
+/// Upload a single part of a multipart upload with a streaming body.
+///
+/// Uses `UNSIGNED-PAYLOAD` so the full part isn't buffered for SigV4 hashing.
+/// Prefer this over [`upload_part`] for large parts; part size is set by the
+/// client and only the final part may be smaller than 5 MB.
+pub async fn upload_part_streaming(
+    client: &reqwest::Client,
+    config: &super::StorageConfig,
+    key: &str,
+    upload_id: &str,
+    part_number: u32,
+    body: reqwest::Body,
+) -> Result<PartInfo, ApiError> {
+    let base = build_object_url(&config.endpoint, &config.bucket, key)
+        .map_err(|e| ApiError::InternalError(format!("Invalid URL: {e}")))?;
+    let url_str = format!("{}?partNumber={}&uploadId={}", base, part_number, upload_id);
+    let signed = sign_request_unsigned(config, "PUT", &url_str, "")?;
+
+    let resp = client
+        .put(&url_str)
+        .body(body)
+        .header("Host", &signed.host)
+        .header("X-Amz-Date", &signed.amz_date)
+        .header("X-Amz-Content-Sha256", "UNSIGNED-PAYLOAD")
+        .header("Authorization", &signed.authorization)
+        .send()
+        .await
+        .map_err(|e| ApiError::ServiceUnavailable(format!("Part upload failed: {e}")))?;
+
+    let status = resp.status();
+    if !status.is_success() {
+        let body = resp.text().await.unwrap_or_default();
+        return Err(ApiError::ServiceUnavailable(format!(
+            "Part upload failed: HTTP {status}: {body}"
+        )));
+    }
+
+    let etag = resp
+        .headers()
+        .get("ETag")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("")
+        .trim_matches('"')
+        .to_string();
+
+    Ok(PartInfo { part_number, etag })
+}
+
 /// Build the XML body for completing a multipart upload.
 fn build_complete_multipart_xml(parts: &[PartInfo]) -> String {
     use quick_xml::escape::escape;

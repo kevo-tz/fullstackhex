@@ -37,8 +37,8 @@ pub struct Note {
     pub user_id: String,
     pub title: String,
     pub body: String,
-    pub created_at: String,
-    pub updated_at: String,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+    pub updated_at: chrono::DateTime<chrono::Utc>,
 }
 
 /// Input for creating a new note.
@@ -64,18 +64,23 @@ mod tests {
 
     #[test]
     fn note_serde_roundtrip() {
+        let ts = chrono::DateTime::parse_from_rfc3339("2026-01-01T00:00:00Z")
+            .unwrap()
+            .with_timezone(&chrono::Utc);
         let note = Note {
             id: "uuid-1".into(),
             user_id: "uuid-2".into(),
             title: "Test Note".into(),
             body: "Hello world".into(),
-            created_at: "2026-01-01T00:00:00Z".into(),
-            updated_at: "2026-01-01T00:00:00Z".into(),
+            created_at: ts,
+            updated_at: ts,
         };
         let json = serde_json::to_string(&note).unwrap();
         let deserialized: Note = serde_json::from_str(&json).unwrap();
         assert_eq!(deserialized.id, "uuid-1");
         assert_eq!(deserialized.title, "Test Note");
+        assert_eq!(deserialized.created_at, note.created_at);
+        assert_eq!(deserialized.updated_at, note.updated_at);
     }
 
     #[test]

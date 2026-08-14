@@ -173,11 +173,12 @@ async fn notes_create_list_get_delete() {
     assert_eq!(response.status(), StatusCode::OK);
     let bytes = to_bytes(response.into_body(), usize::MAX).await.unwrap();
     let list: Value = serde_json::from_slice(&bytes).unwrap();
-    assert!(list["total"].as_i64().unwrap_or(0) >= 1);
-    assert_eq!(
-        list["items"].as_array().unwrap().len() as i64,
-        list["total"].as_i64().unwrap()
-    );
+    assert!(list["has_more"].is_boolean());
+    assert_eq!(list["items"].as_array().unwrap().len(), 1);
+    // Exactly one page: no more notes, and no cursor is offered.
+    assert_eq!(list["has_more"], false);
+    assert!(list["next_cursor"].is_null());
+    assert_eq!(list["per_page"].as_i64(), Some(20));
 
     // GET note by ID
     let response = app
@@ -479,5 +480,122 @@ async fn notes_list_returns_empty_for_new_user() {
     let bytes = to_bytes(response.into_body(), usize::MAX).await.unwrap();
     let list: Value = serde_json::from_slice(&bytes).unwrap();
     assert_eq!(list["items"].as_array().unwrap().len(), 0);
-    assert_eq!(list["total"].as_i64().unwrap_or(-1), 0);
+    assert_eq!(list["has_more"], false);
+    assert!(list["next_cursor"].is_null());
+}
+
+/// Helper: GET the notes list and return the parsed JSON body.
+async fn get_notes_json(app: axum::Router, token: &str, uri: &str) -> Value {
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri(uri)
+                .method("GET")
+                .header("authorization", format!("Bearer {token}"))
+                .body(axum::body::Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let bytes = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    serde_json::from_slice(&bytes).unwrap()
+}
+
+#[tokio::test]
+#[serial]
+async fn notes_list_keyset_pagination() {
+    let Some((state, pool)) = connect_db().await else {
+        eprintln!("SKIP: DATABASE_URL not set or unreachable");
+        return;
+    };
+
+    let app = router_with_state(state);
+    let auth = test_auth_service();
+    let email = format!("notes-pagination-{}@example.com", Uuid::new_v4());
+    let (user_id, token) = create_test_user(&pool, &auth, &email).await;
+
+    // Insert 25 notes with deterministic, strictly increasing timestamps so
+    // keyset ordering (created_at DESC, id DESC) is fully predictable.
+    for i in 0..25 {
+        let ts = format!("2026-01-01T00:00:{i:02}Z");
+        sqlx::query(
+            "INSERT INTO notes (user_id, title, body, created_at, updated_at) \
+             VALUES ($1::uuid, $2, 'body', $3::timestamptz, $3::timestamptz)",
+        )
+        .bind(user_id.to_string())
+        .bind(format!("Note {i}"))
+        .bind(ts)
+        .execute(&pool)
+        .await
+        .expect("failed to insert pagination notes");
+    }
+
+    // Page 1: newest 10 of 25, has_more true, cursor present.
+    let page1 = get_notes_json(app.clone(), &token, "/notes?per_page=10").await;
+    let page1_items = page1["items"].as_array().unwrap().clone();
+    assert_eq!(page1_items.len(), 10);
+    assert_eq!(page1["has_more"], true);
+    let cursor1 = page1["next_cursor"].as_str().unwrap().to_string();
+
+    // Page 2 via cursor: next 10, no overlap with page 1.
+    let page2 = get_notes_json(
+        app.clone(),
+        &token,
+        &format!("/notes?per_page=10&cursor={cursor1}"),
+    )
+    .await;
+    let page2_items = page2["items"].as_array().unwrap().clone();
+    assert_eq!(page2_items.len(), 10);
+    assert_eq!(page2["has_more"], true);
+    let cursor2 = page2["next_cursor"].as_str().unwrap().to_string();
+
+    let page1_ids: Vec<&str> = page1_items
+        .iter()
+        .filter_map(|i| i["id"].as_str())
+        .collect();
+    let page2_ids: Vec<&str> = page2_items
+        .iter()
+        .filter_map(|i| i["id"].as_str())
+        .collect();
+    for id in &page2_ids {
+        assert!(
+            !page1_ids.contains(id),
+            "page 2 should not overlap with page 1"
+        );
+    }
+
+    // Page 3 via cursor: final 5, has_more false, no next_cursor.
+    let page3 = get_notes_json(
+        app.clone(),
+        &token,
+        &format!("/notes?per_page=10&cursor={cursor2}"),
+    )
+    .await;
+    let page3_items = page3["items"].as_array().unwrap().clone();
+    assert_eq!(page3_items.len(), 5);
+    assert_eq!(page3["has_more"], false);
+    assert!(page3["next_cursor"].is_null());
+
+    // 25 distinct notes across all three pages.
+    let page3_ids: Vec<&str> = page3_items
+        .iter()
+        .filter_map(|i| i["id"].as_str())
+        .collect();
+    let mut all_ids: Vec<&str> = page1_ids;
+    all_ids.extend(page2_ids);
+    all_ids.extend(page3_ids);
+    all_ids.sort();
+    all_ids.dedup();
+    assert_eq!(all_ids.len(), 25);
+
+    // Garbage cursor is treated as no cursor: same as page 1.
+    let garbage = get_notes_json(
+        app.clone(),
+        &token,
+        "/notes?per_page=10&cursor=!!!not-a-cursor",
+    )
+    .await;
+    assert_eq!(garbage["items"].as_array().unwrap().len(), 10);
+    assert_eq!(garbage["has_more"], true);
 }

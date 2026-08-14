@@ -1,5 +1,6 @@
 ---
 import Layout from "../components/Layout.astro";
+export const prerender = true;
 ---
 
 <Layout title="FullStackHex">
@@ -104,18 +105,54 @@ make status</pre>
       import { connectLiveStream } from "../lib/live";
       import { setStatus, setDetail, setDiagnostic, showOutage } from "../lib/health-ui";
 
-      let wsFallbackTimer: ReturnType<typeof setTimeout> | null = null;
+      let connectTimer: ReturnType<typeof setTimeout> | null = null;
       let wsDisconnected = true;
       let wsEverConnected = false;
+      let healthAbort: AbortController | null = null;
 
-      const retry = createRetryController(() => fetchHealth());
+      // Single poller: exponential backoff via retry controller.
+      // Capped at 60 attempts, then shows a "give up" state.
+      const retry = createRetryController(
+        () => fetchHealth(),
+        30000,
+        1000,
+        {
+          maxAttempts: 60,
+          onGiveUp: () => {
+            const rawJson = document.getElementById("raw-json");
+            if (rawJson) rawJson.textContent =
+              "Backend unreachable — polling stopped. Click refresh to retry.";
+          },
+        },
+      );
+
+      function stopHealthFetch() {
+        if (healthAbort !== null) {
+          healthAbort.abort();
+          healthAbort = null;
+        }
+      }
+
+      function startConnectTimeout() {
+        if (connectTimer !== null) return;
+        connectTimer = setTimeout(() => {
+          connectTimer = null;
+          if (wsDisconnected && !wsEverConnected && !document.hidden) {
+            console.log("[dashboard] WS connect timeout — using polling");
+            retry.start();
+          }
+        }, 3000);
+      }
 
       async function fetchHealth() {
+        if (document.hidden) return;
+        if (healthAbort === null) healthAbort = new AbortController();
+        const signal = healthAbort.signal;
         const rawJson = document.getElementById("raw-json");
         if (rawJson) rawJson.textContent = "fetching…";
 
         try {
-          const res  = await fetch("/api/health");
+          const res  = await fetch("/api/health", { signal });
           if (!res.ok) throw new Error(`HTTP ${res.status}`);
           const data = await res.json();
 
@@ -192,6 +229,7 @@ make status</pre>
           }
 
         } catch (err) {
+          if (err instanceof DOMException && err.name === "AbortError") return;
           for (const svc of SERVICE_IDS) {
             setStatus(svc, "error", svc === "rust" ? "unreachable" : "—");
             setDiagnostic(svc, "");
@@ -223,46 +261,49 @@ make status</pre>
         const live = connectLiveStream();
 
         live.onEvent((event: import("../lib/live").LiveEvent) => {
-          wsDisconnected = false;
           if (event.type === "connection_status") {
             if (event.data.status === "connected") {
               wsDisconnected = false;
               wsEverConnected = true;
               retry.cancel();
-              if (wsFallbackTimer !== null) {
-                clearTimeout(wsFallbackTimer);
-                wsFallbackTimer = null;
+              if (connectTimer !== null) {
+                clearTimeout(connectTimer);
+                connectTimer = null;
               }
             } else if (event.data.status === "offline") {
               wsDisconnected = true;
-              if (wsEverConnected && wsFallbackTimer === null) {
-                // WS was connected but dropped — start periodic polling
-                console.log("[dashboard] WS disconnected — polling every 5s");
-                fetchHealth();
-                wsFallbackTimer = setInterval(() => {
-                  if (wsDisconnected) {
-                    fetchHealth();
-                  } else {
-                    clearInterval(wsFallbackTimer!);
-                    wsFallbackTimer = null;
-                  }
-                }, 5000);
-              }
+              // WS gave up or was never available — fall back to polling
+              if (!document.hidden) retry.start();
+            } else {
+              wsDisconnected = true;
             }
             return;
           }
+          wsDisconnected = false;
           applyHealthUpdate(event);
         });
 
-        window.addEventListener("beforeunload", () => live.close());
+        window.addEventListener("pagehide", () => {
+          retry.cancel();
+          stopHealthFetch();
+          live.close();
+        });
       }
 
       document.addEventListener("visibilitychange", () => {
         if (document.hidden) {
           retry.cancel();
+          stopHealthFetch();
+          if (connectTimer !== null) {
+            clearTimeout(connectTimer);
+            connectTimer = null;
+          }
         } else {
           retry.reset();
           fetchHealth();
+          if (wsDisconnected && !wsEverConnected) {
+            startConnectTimeout();
+          }
         }
       });
 
@@ -278,22 +319,6 @@ make status</pre>
       // WS events only carry future updates, not the current state.
       fetchHealth();
 
-      wsFallbackTimer = setTimeout(() => {
-        if (wsDisconnected) {
-          console.log("[dashboard] WS connect timeout — using polling");
-          fetchHealth();
-          // Continue periodic polling if WS never connected
-          if (!wsEverConnected) {
-            wsFallbackTimer = setInterval(() => {
-              if (wsDisconnected && !wsEverConnected) {
-                fetchHealth();
-              } else {
-                clearInterval(wsFallbackTimer!);
-                wsFallbackTimer = null;
-              }
-            }, 5000);
-          }
-        }
-      }, 3000);
+      startConnectTimeout();
     </script>
 </Layout>

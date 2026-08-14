@@ -57,17 +57,32 @@ export function getDiagnostics(
   return result;
 }
 
+export interface RetryControllerOptions {
+  /** Maximum number of attempts before giving up (default: no cap). */
+  maxAttempts?: number;
+  /** Called once when maxAttempts is reached and retrying stops. */
+  onGiveUp?: () => void;
+}
+
 export function createRetryController(
   onRetry: () => void,
   maxDelay = 30000,
   initialDelay = 1000,
+  options: RetryControllerOptions = {},
 ): { start: () => void; cancel: () => void; reset: () => void } {
   let timer: ReturnType<typeof setTimeout> | null = null;
   let delay = initialDelay;
+  let attempts = 0;
 
   function schedule() {
     timer = setTimeout(() => {
       onRetry();
+      attempts++;
+      if (options.maxAttempts !== undefined && attempts >= options.maxAttempts) {
+        timer = null;
+        if (options.onGiveUp) options.onGiveUp();
+        return;
+      }
       if (delay < maxDelay) delay = Math.min(delay * 2, maxDelay);
       schedule();
     }, delay);
@@ -83,10 +98,12 @@ export function createRetryController(
   function doReset() {
     doCancel();
     delay = initialDelay;
+    attempts = 0;
   }
 
   function doStart() {
     doCancel();
+    attempts = 0;
     schedule();
   }
 

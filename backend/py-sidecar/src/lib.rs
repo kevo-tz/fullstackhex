@@ -149,7 +149,8 @@ impl PythonSidecar {
         trace_id: &str,
         auth_headers: Option<(&str, &str, &str, u64, &str)>,
     ) -> Result<serde_json::Value, SidecarError> {
-        self.do_get(path, Some(trace_id), auth_headers).await
+        self.do_get(path, Some(trace_id), auth_headers, self.max_retries)
+            .await
     }
 
     /// GET raw bytes from a path. Returns the response body without JSON parsing.
@@ -165,7 +166,15 @@ impl PythonSidecar {
         trace_id: &str,
         auth_headers: Option<(&str, &str, &str, u64, &str)>,
     ) -> Result<Vec<u8>, SidecarError> {
-        self.do_get_raw(path, Some(trace_id), auth_headers).await
+        self.do_get_raw(path, Some(trace_id), auth_headers, self.max_retries)
+            .await
+    }
+
+    /// GET raw bytes from a path without retries.
+    /// For request paths where a negative cache absorbs outages, so backoff
+    /// sleeps must not block handlers.
+    pub async fn get_raw_quick(&self, path: &str) -> Result<Vec<u8>, SidecarError> {
+        self.do_get_raw(path, None, None, 0).await
     }
 
     async fn do_get(
@@ -173,8 +182,11 @@ impl PythonSidecar {
         path: &str,
         trace_id: Option<&str>,
         auth_headers: Option<(&str, &str, &str, u64, &str)>,
+        max_retries: u32,
     ) -> Result<serde_json::Value, SidecarError> {
-        let body = self.do_request_inner(path, trace_id, auth_headers).await?;
+        let body = self
+            .do_request_inner(path, trace_id, auth_headers, max_retries)
+            .await?;
         serde_json::from_slice(&body).map_err(|e| SidecarError::InvalidResponse(e.to_string()))
     }
 
@@ -183,8 +195,10 @@ impl PythonSidecar {
         path: &str,
         trace_id: Option<&str>,
         auth_headers: Option<(&str, &str, &str, u64, &str)>,
+        max_retries: u32,
     ) -> Result<Vec<u8>, SidecarError> {
-        self.do_request_inner(path, trace_id, auth_headers).await
+        self.do_request_inner(path, trace_id, auth_headers, max_retries)
+            .await
     }
 
     /// Shared retry-with-backoff loop. Calls perform_request and handles
@@ -194,6 +208,7 @@ impl PythonSidecar {
         path: &str,
         trace_id: Option<&str>,
         auth_headers: Option<(&str, &str, &str, u64, &str)>,
+        max_retries: u32,
     ) -> Result<Vec<u8>, SidecarError> {
         if !self.is_available() {
             return Err(SidecarError::SocketNotFound(self.socket_path.clone()));
@@ -201,7 +216,7 @@ impl PythonSidecar {
 
         let mut last_error = None;
 
-        for attempt in 0..=self.max_retries {
+        for attempt in 0..=max_retries {
             if attempt > 0 {
                 let backoff = backoff_for_attempt(attempt);
                 tokio::time::sleep(backoff).await;
@@ -370,6 +385,26 @@ impl PythonSidecar {
         tracing::info!(%trace_id, target = "py_sidecar", "health check");
         let start = std::time::Instant::now();
         let result = self.get_with_trace_id("/health", &trace_id, None).await;
+        let duration_ms = start.elapsed().as_millis() as u64;
+        match &result {
+            Ok(_) => {
+                tracing::info!(%trace_id, duration_ms, target = "py_sidecar", "health check OK")
+            }
+            Err(e) => {
+                tracing::warn!(%trace_id, duration_ms, error = %e, target = "py_sidecar", "health check failed")
+            }
+        }
+        result
+    }
+
+    /// GET /health from the sidecar without retries.
+    /// Used in request paths where a negative cache absorbs outages, so
+    /// backoff sleeps must not block handlers.
+    pub async fn health_quick(&self) -> Result<serde_json::Value, SidecarError> {
+        let trace_id = uuid::Uuid::new_v4().to_string();
+        tracing::info!(%trace_id, target = "py_sidecar", "health check");
+        let start = std::time::Instant::now();
+        let result = self.do_get("/health", Some(&trace_id), None, 0).await;
         let duration_ms = start.elapsed().as_millis() as u64;
         match &result {
             Ok(_) => {

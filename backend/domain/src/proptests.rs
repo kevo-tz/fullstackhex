@@ -15,20 +15,22 @@ proptest! {
         assert_eq!(deserialized, flags);
     }
 
-    /// Note serde round-trip: arbitrary strings for all 6 fields survive
-    /// serialization and deserialization without data loss.
-    /// Each field capped at 4096 chars to keep test runtime bounded.
+    /// Note serde round-trip: arbitrary strings for id/user_id/title/body and
+    /// arbitrary timestamps for created_at/updated_at survive serialization and
+    /// deserialization without data loss.
+    /// Each string field capped at 4096 chars to keep test runtime bounded.
     #[test]
     fn note_serde_roundtrip(
         id in "[a-zA-Z0-9_ ]{0,4096}",
         user_id in "[a-zA-Z0-9_ ]{0,4096}",
         title in "[a-zA-Z0-9_ ]{0,4096}",
         body in "[a-zA-Z0-9_ ]{0,4096}",
-        created_at in "[a-zA-Z0-9_ ]{0,4096}",
-        updated_at in "[a-zA-Z0-9_ ]{0,4096}",
+        created_at_secs in -10_000_000_000i64..10_000_000_000i64,
+        updated_at_secs in -10_000_000_000i64..10_000_000_000i64,
     ) {
-
-        let note = Note { id: id.clone(), user_id: user_id.clone(), title: title.clone(), body: body.clone(), created_at: created_at.clone(), updated_at: updated_at.clone() };
+        let created_at = chrono::DateTime::from_timestamp(created_at_secs, 0).unwrap();
+        let updated_at = chrono::DateTime::from_timestamp(updated_at_secs, 0).unwrap();
+        let note = Note { id: id.clone(), user_id: user_id.clone(), title: title.clone(), body: body.clone(), created_at, updated_at };
         let json = serde_json::to_string(&note).unwrap();
         let deserialized: Note = serde_json::from_str(&json).unwrap();
         assert_eq!(deserialized.id, id);

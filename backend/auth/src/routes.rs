@@ -159,8 +159,11 @@ pub async fn register(
         return Err(ApiError::Conflict("Email already registered".to_string()));
     }
 
-    // Hash password
-    let password_hash = password::hash_password(&body.password)?;
+    // Hash password (Argon2 is CPU-bound — run off the async runtime)
+    let password = body.password.clone();
+    let password_hash = tokio::task::spawn_blocking(move || password::hash_password(&password))
+        .await
+        .map_err(|e| ApiError::InternalError(format!("Password hashing task failed: {e}")))??;
 
     // Insert user
     let user_id: String = sqlx::query_scalar(
@@ -265,8 +268,22 @@ pub async fn login(
 ) -> Result<impl IntoResponse, ApiError> {
     let ip = client_ip(&headers);
 
-    // Progressive brute-force backoff by IP (before rate limit check)
-    match state.redis.backoff_check(&ip, "login").await {
+    // Progressive brute-force backoff by IP + email/IP rate limits. The three
+    // Lua EVALs hit independent keys, so run them concurrently.
+    let email_key = format!("login:email:{}", body.email);
+    let ip_key = format!("login:ip:{ip}");
+    let email_window = Duration::from_secs(state.auth.config.rate_limits.login_email_window_secs);
+    let email_max = state.auth.config.rate_limits.login_email_max;
+    let ip_window = Duration::from_secs(state.auth.config.rate_limits.login_ip_window_secs);
+    let ip_max = state.auth.config.rate_limits.login_ip_max;
+
+    let (backoff, email_limit, ip_limit) = tokio::join!(
+        state.redis.backoff_check(&ip, "login"),
+        check_rate_limit(&state.redis, &email_key, email_window, email_max),
+        check_rate_limit(&state.redis, &ip_key, ip_window, ip_max),
+    );
+
+    match backoff {
         Ok(()) => {}
         Err(cache::CacheError::BackoffBlocked {
             remaining_secs,
@@ -285,23 +302,8 @@ pub async fn login(
         }
     }
 
-    // Rate limit by email (configurable, default: 5 per 5 minutes)
-    check_rate_limit(
-        &state.redis,
-        &format!("login:email:{}", body.email),
-        Duration::from_secs(state.auth.config.rate_limits.login_email_window_secs),
-        state.auth.config.rate_limits.login_email_max,
-    )
-    .await?;
-
-    // Rate limit by IP (configurable, default: 10 per 5 minutes)
-    check_rate_limit(
-        &state.redis,
-        &format!("login:ip:{ip}"),
-        Duration::from_secs(state.auth.config.rate_limits.login_ip_window_secs),
-        state.auth.config.rate_limits.login_ip_max,
-    )
-    .await?;
+    email_limit?;
+    ip_limit?;
 
     // Find user
     #[allow(clippy::type_complexity)]
@@ -337,7 +339,12 @@ pub async fn login(
         }
     };
 
-    if !password::verify_password(&body.password, &hash)? {
+    // Argon2 verify is CPU-bound — run off the async runtime
+    let password = body.password.clone();
+    if !tokio::task::spawn_blocking(move || password::verify_password(&password, &hash))
+        .await
+        .map_err(|e| ApiError::InternalError(format!("Password verification task failed: {e}")))??
+    {
         if let Err(e) = state.redis.backoff_increment(&ip, "login").await {
             tracing::warn!(ip = %ip, error = %e, "backoff_increment failed");
         }
@@ -603,8 +610,11 @@ pub async fn reset_password(
     let user_id = user_id
         .ok_or_else(|| ApiError::Unauthorized("Invalid or expired reset token".to_string()))?;
 
-    // Hash the new password
-    let password_hash = password::hash_password(&body.password)?;
+    // Hash the new password (Argon2 is CPU-bound — run off the async runtime)
+    let password = body.password.clone();
+    let password_hash = tokio::task::spawn_blocking(move || password::hash_password(&password))
+        .await
+        .map_err(|e| ApiError::InternalError(format!("Password hashing task failed: {e}")))??;
 
     // Update password in DB (only local provider users — OAuth users don't have password_hash)
     let result = sqlx::query(

@@ -120,11 +120,28 @@ export function connectLiveStream(opts: LiveStreamOptions = {}): LiveStream {
       emit(parsed);
     };
 
-    ws.onclose = () => {
+    ws.onclose = (event: CloseEvent) => {
       ws = null;
-      if (!closed) {
-        scheduleReconnect();
+      if (closed) return;
+
+      // Deterministic refusal — do NOT retry. The backend/proxy rejecting the
+      // upgrade (HTTP 403/404, Redis disabled) won't change with time.
+      const reason = (event.reason || "").toLowerCase();
+      const permanentCode =
+        event.code === 1003 || event.code === 1008 || event.code === 1009 ||
+        event.code === 1011 || event.code === 1015;
+      const refused =
+        /(403|404|forbidden|not\s*found|refused)/.test(reason) &&
+        reason !== "";
+      if (permanentCode || refused) {
+        console.warn(
+          `[live] WS closed with ${permanentCode ? `code ${event.code}` : `reason "${event.reason}"`} — not retrying`,
+        );
+        notifyStatus("offline");
+        return;
       }
+
+      scheduleReconnect();
     };
 
     ws.onerror = () => {

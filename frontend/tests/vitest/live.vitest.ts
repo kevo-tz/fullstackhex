@@ -45,7 +45,7 @@ function createMockWebSocket(): MockWebSocketStatic {
     };
     this._close = function (_code?: number, _reason?: string) {
       this.readyState = 3;
-      this.onclose?.(new CloseEvent("close"));
+      this.onclose?.(new CloseEvent("close", { code: _code ?? 1006, reason: _reason ?? "" }));
     };
     this._message = function (data: string) {
       this.onmessage?.(new MessageEvent("message", { data }));
@@ -193,6 +193,36 @@ describe("connectLiveStream", () => {
     // After close(), no reconnect should happen
     vi.advanceTimersByTime(50000);
     expect(MockWebSocket.instances.length).toBe(1);
+  });
+
+  test("goes offline immediately on permanent refusal close code", () => {
+    const events: LiveEvent[] = [];
+    const live = connectLiveStream();
+    live.onEvent((e) => {
+      if (e.type === "connection_status") events.push(e);
+    });
+    // Server refuses the upgrade permanently (e.g. HTTP 403/404, Redis disabled)
+    lastWs()!._close(1003, "");
+    vi.advanceTimersByTime(50000);
+    expect(MockWebSocket.instances.length).toBe(1);
+    const connEvents = events.filter((e) => e.type === "connection_status") as Array<LiveEvent & { type: "connection_status" }>;
+    expect(connEvents.some((e) => e.data.status === "offline")).toBe(true);
+    expect(connEvents.some((e) => e.data.status === "reconnecting")).toBe(false);
+    live.close();
+  });
+
+  test("goes offline immediately on refusal reason text", () => {
+    const events: LiveEvent[] = [];
+    const live = connectLiveStream();
+    live.onEvent((e) => {
+      if (e.type === "connection_status") events.push(e);
+    });
+    lastWs()!._close(1006, "HTTP 404 Not Found");
+    vi.advanceTimersByTime(50000);
+    expect(MockWebSocket.instances.length).toBe(1);
+    const connEvents = events.filter((e) => e.type === "connection_status") as Array<LiveEvent & { type: "connection_status" }>;
+    expect(connEvents.some((e) => e.data.status === "offline")).toBe(true);
+    live.close();
   });
 
   test("close removes all listeners", () => {

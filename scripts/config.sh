@@ -23,6 +23,9 @@ REPO_ROOT="$(get_repo_root)"
 # Service URLs and ports (can be overridden by environment variables)
 RUST_BACKEND_URL="${RUST_BACKEND_URL:-http://localhost:8001}"
 FRONTEND_URL="${FRONTEND_URL:-http://localhost:4321}"
+# Reverse proxy / edge — benchmarks against nginx measure the full path
+# (keepalive, static asset serving) instead of bypassing it.
+NGINX_URL="${NGINX_URL:-http://localhost:80}"
 
 # Database configuration
 POSTGRES_USER="${POSTGRES_USER:-app_user}"
@@ -49,6 +52,12 @@ RUST_HEALTH_REDIS_P99_THRESHOLD="${RUST_HEALTH_REDIS_P99_THRESHOLD:-100}"
 RUST_HEALTH_PYTHON_P50_THRESHOLD="${RUST_HEALTH_PYTHON_P50_THRESHOLD:-100}"
 RUST_HEALTH_PYTHON_P99_THRESHOLD="${RUST_HEALTH_PYTHON_P99_THRESHOLD:-300}"
 FRONTEND_TTFB_THRESHOLD="${FRONTEND_TTFB_THRESHOLD:-100}" # in milliseconds
+NGINX_HEALTH_P50_THRESHOLD="${NGINX_HEALTH_P50_THRESHOLD:-200}"
+NGINX_HEALTH_P99_THRESHOLD="${NGINX_HEALTH_P99_THRESHOLD:-500}"
+NGINX_STATIC_P50_THRESHOLD="${NGINX_STATIC_P50_THRESHOLD:-50}"
+NGINX_STATIC_P99_THRESHOLD="${NGINX_STATIC_P99_THRESHOLD:-150}"
+# Static asset benchmarked through nginx (probed automatically if unset)
+NGINX_STATIC_ASSET="${NGINX_STATIC_ASSET:-}"
 
 # File paths
 BASELINE_DIR="${BASELINE_DIR:-.performance}"

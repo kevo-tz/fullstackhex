@@ -134,7 +134,7 @@ pub async fn metrics_handler(State(state): State<Arc<AppState>>) -> impl IntoRes
 }
 
 pub async fn metrics_python_proxy(State(state): State<Arc<AppState>>) -> impl IntoResponse {
-    match state.health.sidecar.get_raw("/metrics").await {
+    match state.health.sidecar.get_raw_quick("/metrics").await {
         Ok(body) => (
             StatusCode::OK,
             [(header::CONTENT_TYPE, "text/plain; charset=utf-8")],

@@ -4,6 +4,10 @@ set -euo pipefail
 # FullStackHex Performance Benchmark Script
 # Usage: ./scripts/bench.sh [--json] [--compare]
 # Requires: ab (Apache Bench) - install via: apt-get install apache2-utils (Linux) or yum install httpd-tools (RHEL)
+#
+# Benchmarks the Rust backend directly AND through nginx (the edge path with
+# keepalive + static asset serving). --compare reports regressions vs the last
+# run's baseline stored in $BASELINE_DIR/last.json.
 
 # Source common functions and configuration
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -77,7 +81,28 @@ check_services() {
         exit 1
     fi
 
+    if check_service_http "Nginx" "$NGINX_URL/health" 5 false; then
+        log_success "Nginx responding at $NGINX_URL"
+    else
+        log_warning "Nginx not responding at $NGINX_URL — skipping edge benchmarks"
+    fi
+
     echo ""
+}
+
+# Probe for a static asset served directly by nginx (not proxied to Node).
+# Returns 0 with the URL in $STATIC_PROBE_URL, or 1 if none found.
+probe_static_asset() {
+    local candidates=("$@")
+    for path in "${candidates[@]}"; do
+        local code
+        code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 5 "$NGINX_URL$path" 2>/dev/null || echo "000")
+        if [ "$code" = "200" ]; then
+            STATIC_PROBE_URL="$NGINX_URL$path"
+            return 0
+        fi
+    done
+    return 1
 }
 
 # Run ab and parse results into structured fields stored in global result dict.
@@ -151,21 +176,33 @@ run_ab() {
     BENCH_NAMES_SAFE+=("$safe")
 }
 
-# Frontend TTFB benchmark using curl
+# Frontend TTFB benchmark using curl — 5 samples, reports median (p50) and p95.
 benchmark_frontend_ttfb() {
     log_info "Benchmark: Frontend TTFB (SSR)"
     log_info "URL: $FRONTEND_URL"
     echo "" >&2
 
-    local ttfb
-    ttfb=$(curl -w "%{time_starttransfer}" -o /dev/null -s "$FRONTEND_URL")
+    local samples=()
+    for _ in 1 2 3 4 5; do
+        local t
+        t=$(curl -w "%{time_starttransfer}" -o /dev/null -s "$FRONTEND_URL")
+        samples+=("$t")
+    done
+
+    # Sort numerically for percentile extraction
+    local sorted
+    sorted=$(printf "%s\n" "${samples[@]}" | sort -n)
+    local p50 p95
+    p50=$(echo "$sorted" | sed -n '3p')   # median of 5
+    p95=$(echo "$sorted" | sed -n '5p')   # max of 5 approximates p95
+
     local expected_s
     expected_s=$(echo "scale=3; $FRONTEND_TTFB_THRESHOLD / 1000" | bc)
 
-    log_info "TTFB: ${ttfb}s (target: <${expected_s}s)"
+    log_info "TTFB p50: ${p50}s  p95: ${p95}s (target: <${expected_s}s)"
 
     local passed
-    passed=$(echo "$ttfb < $expected_s" | bc -l 2>/dev/null || echo "0")
+    passed=$(echo "$p50 < $expected_s" | bc -l 2>/dev/null || echo "0")
 
     if [ "$passed" = "1" ]; then
         log_success "TTFB PASSED"
@@ -173,11 +210,11 @@ benchmark_frontend_ttfb() {
         log_error "TTFB FAILED"
     fi
 
-    # Store for summary
+    # Store for summary — ttfb field carries the median
     BENCH_NAMES+=("Frontend TTFB")
     BENCH_NAMES_SAFE+=("frontend_ttfb")
     # shellcheck disable=SC2034 # accessed via get_var eval in print_summary
-    declare -g frontend_ttfb_ttfb="$ttfb" frontend_ttfb_target="$expected_s" frontend_ttfb_passed="$passed"
+    declare -g frontend_ttfb_ttfb="$p50" frontend_ttfb_target="$expected_s" frontend_ttfb_passed="$passed" frontend_ttfb_p95="$p95"
 }
 
 # Print results summary table
@@ -213,8 +250,7 @@ print_summary() {
                 color="$RED"; failed_count=$((failed_count + 1))
             fi
             printf "  ${color}%-28s %6s %6s %6s %6s ${color}%-6s${NC}\n" \
-                "$name" "${ttfb_ms}ms" "n/a" "n/a" "n/a" "PASS" >&2
-        else
+                "$name" "${ttfb_ms}ms" "n/a" "n/a" "n/a" "PASS" >&2        else
             p50_val=$(get_var "${safe}_p50")
             p99_val=$(get_var "${safe}_p99")
             mean_val=$(get_var "${safe}_mean")
@@ -260,7 +296,7 @@ main() {
         echo ""
         echo "Options:"
         echo "  --json           Output results in JSON format"
-        echo "  --compare        Compare against baseline (non-blocking warning)"
+        echo "  --compare        Compare p50 against the previous run (baseline in .performance/last.json)"
         echo "  --help, -h       Show this help message"
         exit 0
     fi
@@ -269,8 +305,7 @@ main() {
     while [[ "${1:-}" == --* ]]; do
         case "$1" in
             --json) JSON_OUTPUT=true; shift ;;
-            --compare) # shellcheck disable=SC2034 # reserved for baseline comparison
-                COMPARE=true; shift ;;
+            --compare) COMPARE=true; shift ;;
             *) break ;;
         esac
     done
@@ -295,15 +330,36 @@ main() {
 
     # ── Run benchmarks ──────────────────────────────────────────────
 
-    # 1. Aggregate /health endpoint
+    # 1. Aggregate /health endpoint (direct Rust)
     run_ab "Rust /health" "$RUST_BACKEND_URL/health" "$RUST_HEALTH_P50_THRESHOLD" "$RUST_HEALTH_P99_THRESHOLD"
 
-    # 2. Sub-endpoints
+    # 2. Sub-endpoints (direct Rust)
     run_ab "Rust /health/db" "$RUST_BACKEND_URL/health/db" "$RUST_HEALTH_DB_P50_THRESHOLD" "$RUST_HEALTH_DB_P99_THRESHOLD"
     run_ab "Rust /health/redis" "$RUST_BACKEND_URL/health/redis" "$RUST_HEALTH_REDIS_P50_THRESHOLD" "$RUST_HEALTH_REDIS_P99_THRESHOLD"
     run_ab "Rust /health/python" "$RUST_BACKEND_URL/health/python" "$RUST_HEALTH_PYTHON_P50_THRESHOLD" "$RUST_HEALTH_PYTHON_P99_THRESHOLD"
 
-    # 3. Frontend TTFB
+    # 3. Edge benchmarks — through nginx (keepalive, static serving, full path)
+    if check_service_http "Nginx" "$NGINX_URL/health" 5 false; then
+        run_ab "Nginx /health (edge)" "$NGINX_URL/health" "$NGINX_HEALTH_P50_THRESHOLD" "$NGINX_HEALTH_P99_THRESHOLD"
+
+        local static_asset="${NGINX_STATIC_ASSET:-}"
+        if [ -z "$static_asset" ]; then
+            STATIC_PROBE_URL=""
+            probe_static_asset "/styles/layout.css" "/favicon.ico" "/_astro/../styles/layout.css"
+            if [ -n "${STATIC_PROBE_URL:-}" ]; then
+                static_asset="$STATIC_PROBE_URL"
+            fi
+        fi
+        if [ -n "$static_asset" ]; then
+            run_ab "Nginx static asset" "$static_asset" "$NGINX_STATIC_P50_THRESHOLD" "$NGINX_STATIC_P99_THRESHOLD"
+        else
+            log_warning "No static asset probed through nginx — skipping static benchmark"
+        fi
+    else
+        log_warning "Nginx down — skipping edge benchmarks"
+    fi
+
+    # 4. Frontend TTFB (5-sample distribution)
     benchmark_frontend_ttfb
 
     # ── Summary table ───────────────────────────────────────────────
@@ -338,11 +394,13 @@ main() {
             echo "      \"requests\": \"$BENCHLITE_REQUESTS\","
             echo "      \"concurrent\": \"$BENCHLITE_CONCURRENT\","
             if [ "$s" = "frontend_ttfb" ]; then
-                local tf tb
+                local tf tb tp95
                 tf=$(get_var "${s}_ttfb")
                 tb=$(get_var "${s}_target")
+                tp95=$(get_var "${s}_p95")
                 echo "      \"result\": {"
                 echo "        \"ttfb_s\": $tf,"
+                echo "        \"p95_s\": ${tp95:-$tf},"
                 echo "        \"target_s\": $tb,"
                 echo "        \"passed\": $(get_var "${s}_passed")"
                 echo "      }"
@@ -360,6 +418,56 @@ main() {
         echo "  ]"
         echo "}"
     fi
+
+    # ── Baseline storage + comparison ──────────────────────────────
+
+    mkdir -p "$BASELINE_DIR"
+    local baseline_file="$BASELINE_DIR/last.json"
+
+    # Build a machine-readable summary of this run (name → p50) regardless of
+    # --json, so the baseline is always comparable.
+    local baseline_lines=()
+    for i in "${!BENCH_NAMES[@]}"; do
+        local n="${BENCH_NAMES[$i]}" s="${BENCH_NAMES_SAFE[$i]}"
+        local p50
+        if [ "$s" = "frontend_ttfb" ]; then
+            p50=$(get_var "${s}_ttfb")
+        else
+            p50=$(get_var "${s}_p50")
+        fi
+        baseline_lines+=("$n|$p50")
+    done
+
+    if [ "$COMPARE" = true ]; then
+        if [ -f "$baseline_file" ]; then
+            log_info "Comparing against baseline: $baseline_file"
+            local regressed=0
+            for line in "${baseline_lines[@]}"; do
+                local name="${line%%|*}" cur="${line##*|}"
+                local base
+                base=$(grep -F "${name}|" "$baseline_file" 2>/dev/null | head -1 | cut -d'|' -f2 || echo "")
+                if [ -z "$base" ] || [ "$base" = "0" ]; then
+                    continue
+                fi
+                local pct
+                pct=$(echo "scale=1; ($cur - $base) / $base * 100" | bc 2>/dev/null || echo "0")
+                if echo "$pct > 20" | bc 2>/dev/null | grep -q 1; then
+                    log_error "REGRESSION ${name}: ${cur}ms vs baseline ${base}ms (+${pct}%)"
+                    regressed=1
+                else
+                    log_info "${name}: ${cur}ms vs baseline ${base}ms (${pct}%)"
+                fi
+            done
+            if [ "$regressed" = "1" ]; then
+                log_error "One or more benchmarks regressed >20% vs baseline"
+            fi
+        else
+            log_warning "No baseline found — run without --compare once to establish one"
+        fi
+    fi
+
+    # Persist this run as the baseline for the next --compare.
+    printf '%s\n' "${baseline_lines[@]}" > "$baseline_file"
 
     exit $failed
 }

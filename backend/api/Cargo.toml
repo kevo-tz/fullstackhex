@@ -29,7 +29,7 @@ domain = { path = "../domain", features = ["api", "cache-conv", "db-conv"] }
 reqwest = { version = "0.13", features = ["stream"] }
 futures-util = "0.3"
 uuid = { workspace = true }
-base64 = "0.22"
+base64 = "0.23"
 
 [dev-dependencies]
 serial_test = { workspace = true }

@@ -24,7 +24,7 @@ futures-util = "0.3"
 bytes = "1"
 url = "2"
 urlencoding = "2"
-quick-xml = "0.40"
+quick-xml = "0.41"
 domain = { path = "../domain" }
 auth = { path = "../auth" }
 

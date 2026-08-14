@@ -10,7 +10,49 @@ use axum::http::{Method, request::Parts};
 use axum::response::{IntoResponse, Response};
 use hmac::{Hmac, KeyInit, Mac};
 use sha2::Sha256;
-use std::sync::Arc;
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex, OnceLock};
+use std::time::Instant;
+
+/// In-process cache of blacklisted JTI values, keyed by JTI → expiry time.
+///
+/// Bounded to [`MAX_BLACKLIST_CACHE_ENTRIES`]; Redis remains the source of truth.
+static BLACKLIST_CACHE: OnceLock<Mutex<HashMap<String, Instant>>> = OnceLock::new();
+
+/// Hard cap on the in-process blacklist cache to bound memory.
+const MAX_BLACKLIST_CACHE_ENTRIES: usize = 100_000;
+
+/// Look up a JTI in the in-process blacklist cache.
+///
+/// Returns `true` if the JTI is present and unexpired, `false` if absent or expired.
+fn blacklisted_in_process(jti: &str) -> bool {
+    let Some(cache) = BLACKLIST_CACHE.get() else {
+        return false;
+    };
+    let Ok(mut map) = cache.lock() else {
+        return false;
+    };
+    match map.get(jti) {
+        Some(expiry) if *expiry > Instant::now() => true,
+        Some(_) => {
+            map.remove(jti);
+            false
+        }
+        None => false,
+    }
+}
+
+/// Remember a JTI as blacklisted until `expiry`.
+fn cache_blacklisted(jti: &str, expiry: Instant) {
+    let Some(cache) = BLACKLIST_CACHE.get() else {
+        return;
+    };
+    if let Ok(mut map) = cache.lock()
+        && map.len() < MAX_BLACKLIST_CACHE_ENTRIES
+    {
+        map.insert(jti.to_string(), expiry);
+    }
+}
 
 /// Authenticated user context extracted from the request.
 #[derive(Debug, Clone)]
@@ -85,6 +127,19 @@ pub async fn auth_middleware(
         || path.starts_with("/health")
         || path == "/metrics"
         || path.starts_with("/metrics/")
+        // Public /auth endpoints — no session/bearer needed; paying the auth
+        // cost here wastes a Redis round-trip per request for every login,
+        // register, refresh, provider, and OAuth flow request.
+        || path == "/auth/login"
+        || path == "/auth/register"
+        || path == "/auth/forgot-password"
+        || path == "/auth/reset-password"
+        || path == "/auth/refresh"
+        || path == "/auth/providers"
+        || path == "/auth/oauth/google"
+        || path == "/auth/oauth/github"
+        || path == "/auth/oauth/google/callback"
+        || path == "/auth/oauth/github/callback"
     {
         return next.run(req).await;
     }
@@ -124,6 +179,17 @@ pub async fn auth_middleware(
 
     // JWT blacklist check
     if let (Some(user), Some(redis)) = (&auth_user, &redis) {
+        // Fast path: in-process blacklist cache avoids a Redis round-trip
+        // per authenticated request for repeat tokens.
+        if !user.jti.is_empty() && blacklisted_in_process(&user.jti) {
+            tracing::debug!(
+                jti = %user.jti,
+                user_id = %user.user_id,
+                "blacklisted token rejected (in-process cache)"
+            );
+            return next.run(req).await;
+        }
+
         let is_blacklisted: Option<bool> = match redis.cache_get("blacklist", &user.jti).await {
             Ok(Some(v)) => Some(v),
             Ok(None) => Some(false),
@@ -143,6 +209,11 @@ pub async fn auth_middleware(
                     user_id = %user.user_id,
                     "blacklisted token rejected"
                 );
+                if !user.jti.is_empty() {
+                    let expiry = Instant::now()
+                        + std::time::Duration::from_secs(auth_service.config.jwt_expiry);
+                    cache_blacklisted(&user.jti, expiry);
+                }
                 return next.run(req).await;
             }
             None if auth_service.config.fail_open_on_redis_error => {
@@ -240,12 +311,7 @@ async fn resolve_cookie_user(
     redis: Arc<cache::RedisClient>,
     session_id: String,
 ) -> Option<AuthUser> {
-    let session: Option<cache::session::Session> = redis
-        .cache_get("session", &session_id)
-        .await
-        .unwrap_or(None);
-
-    let session = session?;
+    let session: cache::session::Session = redis.session_get(&session_id).await.ok()?;
 
     Some(AuthUser {
         user_id: session.user_id,

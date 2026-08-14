@@ -40,6 +40,11 @@ const LIVE_EVENTS_CHANNEL: &str = "live:events";
 /// Global active connection counter for metrics.
 static ACTIVE_WS_CONNECTIONS: AtomicUsize = AtomicUsize::new(0);
 
+/// Returns true when at least one WebSocket connection is active.
+pub fn has_active_ws_connections() -> bool {
+    ACTIVE_WS_CONNECTIONS.load(Ordering::SeqCst) > 0
+}
+
 /// Events that can be broadcast over the live channel.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", content = "data")]
@@ -69,6 +74,11 @@ pub enum LiveEvent {
 /// Events are serialized to JSON and published to the `live:events` Redis channel
 /// through the cache crate's pub/sub methods (not raw fred) for correct namespacing.
 pub async fn broadcast_event(state: &AppState, event: &LiveEvent) {
+    // Skip the Redis round-trip entirely when no clients are connected.
+    if !has_active_ws_connections() {
+        return;
+    }
+
     let redis = match &state.health.redis {
         Some(r) => r,
         None => {
@@ -270,14 +280,13 @@ async fn cookie_authenticated(headers: &HeaderMap, state: &AppState) -> Option<S
         None => return None,
     };
 
-    let session: Option<cache::session::Session> =
-        match redis.cache_get("session", &session_id).await {
-            Ok(s) => s,
-            Err(e) => {
-                tracing::warn!(error = %e, "Redis session lookup failed in cookie_authenticated");
-                None
-            }
-        };
+    let session: Option<cache::session::Session> = match redis.session_get(&session_id).await {
+        Ok(s) => Some(s),
+        Err(e) => {
+            tracing::warn!(error = %e, "Redis session lookup failed in cookie_authenticated");
+            None
+        }
+    };
 
     if let Some(s) = session {
         Some(s.user_id)
@@ -357,7 +366,7 @@ async fn handle_socket(
             // Forward Redis message to WebSocket, with idle timeout
             msg = tokio::time::timeout(ws_idle_timeout, subscriber.recv()) => {
                 match msg {
-                    Ok(Some(PubSubMessage { payload, .. })) => {
+                    Ok(Ok(PubSubMessage { payload, .. })) => {
                         // Use a short timeout on send() to avoid blocking the subscriber
                         // loop when the client's TCP buffer is full. Drop the message
                         // instead of stalling all event delivery.
@@ -375,7 +384,10 @@ async fn handle_socket(
                             }
                         }
                     }
-                    Ok(None) => {
+                    Ok(Err(tokio::sync::broadcast::error::RecvError::Lagged(_))) => {
+                        tracing::debug!("pubsub lagged — dropping message");
+                    }
+                    Ok(Err(tokio::sync::broadcast::error::RecvError::Closed)) => {
                         tracing::warn!("pubsub channel closed");
                         break;
                     }

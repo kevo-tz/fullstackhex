@@ -4,6 +4,7 @@
 //! backed by Redis 8 via the fred crate.
 
 use fred::prelude::*;
+use std::sync::OnceLock;
 use std::time::Duration;
 
 pub mod cache;
@@ -43,14 +44,18 @@ pub enum CacheError {
 pub struct RedisClient {
     client: Client,
     key_prefix: String,
+    pubsub_subscriber: OnceLock<pubsub::SharedSubscriber>,
 }
 
 impl RedisClient {
     /// Create a new Redis client from environment variables.
     ///
-    /// Reads `REDIS_URL` for the connection string and `REDIS_POOL_SIZE`
-    /// for the connection pool size (default: 10). Reads `REDIS_KEY_PREFIX`
+    /// Reads `REDIS_URL` for the connection string and `REDIS_KEY_PREFIX`
     /// for the key namespace prefix (default: "fullstackhex").
+    ///
+    /// Note: fred 10 maintains a bounded internal connection set per client;
+    /// connection fan-out is avoided by sharing one `RedisClient` across the
+    /// process (e.g. the single pub/sub subscriber in [`pubsub::SharedSubscriber`]).
     pub async fn from_env() -> Result<Self, CacheError> {
         let redis_url = std::env::var("REDIS_URL").map_err(|_| CacheError::NotConfigured)?;
 
@@ -78,7 +83,11 @@ impl RedisClient {
         let key_prefix =
             std::env::var("REDIS_KEY_PREFIX").unwrap_or_else(|_| "fullstackhex".to_string());
 
-        Ok(Self { client, key_prefix })
+        Ok(Self {
+            client,
+            key_prefix,
+            pubsub_subscriber: OnceLock::new(),
+        })
     }
 
     /// Create a Redis client for testing with explicit URL.
@@ -101,6 +110,7 @@ impl RedisClient {
         Ok(Self {
             client,
             key_prefix: prefix.to_string(),
+            pubsub_subscriber: OnceLock::new(),
         })
     }
 

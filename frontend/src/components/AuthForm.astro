@@ -63,17 +63,30 @@ const altText = isLogin ? "Need an account? Register" : "Already have an account
   const oauthSection = document.getElementById("oauth-section") as HTMLDivElement;
   const oauthButtons = document.getElementById("oauth-buttons") as HTMLDivElement;
 
-  let cachedProviders: string[] | null = null;
+  const PROVIDERS_KEY = "oauth_providers_cache";
+  const PROVIDERS_TTL_MS = 5 * 60 * 1000;
 
   async function loadProviders(): Promise<string[]> {
-    if (cachedProviders) return cachedProviders;
+    try {
+      const cached = sessionStorage.getItem(PROVIDERS_KEY);
+      if (cached) {
+        const parsed = JSON.parse(cached) as { providers?: string[]; ts?: number };
+        if (parsed && Array.isArray(parsed.providers) && typeof parsed.ts === "number" && Date.now() - parsed.ts < PROVIDERS_TTL_MS) {
+          return parsed.providers;
+        }
+      }
+    } catch { /* sessionStorage may be blocked in private browsing */ }
+
     try {
       const res = await fetch("/api/auth/providers");
       if (!res.ok) return [];
       const data = await res.json();
-      cachedProviders = data.providers ?? [];
-      return cachedProviders ?? [];
-    } catch { /* network failure — show no providers */ 
+      const providers = data.providers ?? [];
+      try {
+        sessionStorage.setItem(PROVIDERS_KEY, JSON.stringify({ providers, ts: Date.now() }));
+      } catch { /* quota exceeded — ignore */ }
+      return providers;
+    } catch { /* network failure — show no providers */
       return [];
     }
   }

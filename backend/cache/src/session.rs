@@ -7,7 +7,65 @@ use super::{CacheError, RedisClient};
 use fred::interfaces::LuaInterface;
 use fred::prelude::*;
 use serde::{Deserialize, Serialize};
-use std::time::Duration;
+use std::collections::HashMap;
+use std::sync::{Mutex, OnceLock};
+use std::time::{Duration, Instant};
+
+/// In-process cache of session lookups keyed by session ID.
+///
+/// Bounded to [`MAX_SESSION_CACHE_ENTRIES`]; Redis remains the source of
+/// truth, and entries are invalidated when sessions are destroyed.
+static SESSION_CACHE: OnceLock<Mutex<HashMap<String, (Instant, Session)>>> = OnceLock::new();
+
+/// Hard cap on the in-process session cache to bound memory.
+const MAX_SESSION_CACHE_ENTRIES: usize = 100_000;
+
+/// How long a session stays in the in-process cache before a Redis refetch.
+const SESSION_CACHE_TTL: Duration = Duration::from_secs(300);
+
+/// Look up a session in the in-process cache.
+///
+/// Returns `Some(session)` when present and unexpired, `None` when absent
+/// or expired (stale entries are removed).
+fn session_cache_get(session_id: &str) -> Option<Session> {
+    let cache = SESSION_CACHE.get_or_init(|| Mutex::new(HashMap::new()));
+    let Ok(mut map) = cache.lock() else {
+        return None;
+    };
+    match map.get(session_id) {
+        Some((expiry, session)) if *expiry > Instant::now() => Some(session.clone()),
+        Some(_) => {
+            map.remove(session_id);
+            None
+        }
+        None => None,
+    }
+}
+
+/// Store a session in the in-process cache until the TTL expires.
+fn session_cache_put(session_id: &str, session: &Session) {
+    let cache = SESSION_CACHE.get_or_init(|| Mutex::new(HashMap::new()));
+    let Ok(mut map) = cache.lock() else {
+        return;
+    };
+    if map.len() >= MAX_SESSION_CACHE_ENTRIES {
+        map.clear();
+    }
+    map.insert(
+        session_id.to_string(),
+        (Instant::now() + SESSION_CACHE_TTL, session.clone()),
+    );
+}
+
+/// Remove a session from the in-process cache.
+fn session_cache_remove(session_id: &str) {
+    let Some(cache) = SESSION_CACHE.get() else {
+        return;
+    };
+    if let Ok(mut map) = cache.lock() {
+        map.remove(session_id);
+    }
+}
 
 /// Session data stored in Redis.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -86,10 +144,20 @@ impl RedisClient {
         if let Err(e) = self.client.del::<(), _>(session_keys).await {
             tracing::warn!(error = %e, "failed to delete some sessions during user invalidation");
         }
+
+        // Drop all cached sessions belonging to this user.
+        let cache = SESSION_CACHE.get_or_init(|| Mutex::new(HashMap::new()));
+        if let Ok(mut map) = cache.lock() {
+            map.retain(|_, (_, session)| session.user_id != user_id);
+        }
     }
 
     /// Get a session by ID.
     pub async fn session_get(&self, session_id: &str) -> Result<Session, CacheError> {
+        if let Some(session) = session_cache_get(session_id) {
+            return Ok(session);
+        }
+
         let key = self.make_key("session", session_id);
         let result: Option<String> = self
             .client
@@ -101,6 +169,7 @@ impl RedisClient {
             Some(json) => {
                 let session: Session = serde_json::from_str(&json)
                     .map_err(|e| CacheError::SerializationFailed(e.to_string()))?;
+                session_cache_put(session_id, &session);
                 Ok(session)
             }
             None => Err(CacheError::SessionNotFound),
@@ -111,34 +180,36 @@ impl RedisClient {
     ///
     /// Also removes the session ID from the user→sessions set if the session
     /// can be read (best-effort — the session may already be expired).
+    ///
+    /// Uses a single Lua script to atomically read the session (to find the
+    /// owning user), SREM the session ID from the user→sessions set, and DEL
+    /// the session key in one round-trip.
     pub async fn session_destroy(&self, session_id: &str) -> Result<(), CacheError> {
         let key = self.make_key("session", session_id);
+        // Prefix shared by all user→sessions keys; full key built in the script
+        // after the user_id is decoded from the session JSON.
+        let user_prefix = format!("{}:user_sessions", self.key_prefix);
 
-        // Best-effort: read the session to find the user_id for set cleanup
-        let user_id: Option<String> = self
+        // KEYS[1] = session:<id>
+        // ARGV[1] = session_id, ARGV[2] = user_sessions key prefix
+        let script = r#"
+            local json = redis.call('GET', KEYS[1])
+            if json then
+                local ok, session = pcall(cjson.decode, json)
+                if ok and session['user_id'] then
+                    redis.call('SREM', ARGV[2] .. ':' .. session['user_id'], ARGV[1])
+                end
+            end
+            redis.call('DEL', KEYS[1])
+            return 1
+        "#;
+
+        let _: i64 = self
             .client
-            .get::<Option<String>, _>(&key)
-            .await
-            .ok()
-            .and_then(|json| json)
-            .and_then(|json| {
-                serde_json::from_str::<Session>(&json)
-                    .ok()
-                    .map(|s| s.user_id)
-            });
-        if let Some(uid) = user_id {
-            let user_key = self.make_key("user_sessions", &uid);
-            let _: () = self
-                .client
-                .srem(&user_key, session_id)
-                .await
-                .unwrap_or_default();
-        }
-
-        self.client
-            .del::<(), _>(&key)
+            .eval(script, vec![key], vec![session_id.to_string(), user_prefix])
             .await
             .map_err(CacheError::CommandFailed)?;
+        session_cache_remove(session_id);
         Ok(())
     }
 

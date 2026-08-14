@@ -14,6 +14,13 @@ const MAX_DETAIL_LENGTH: usize = 500;
 /// How long to cache health check results before re-checking.
 const HEALTH_CACHE_TTL: std::time::Duration = std::time::Duration::from_secs(1);
 
+/// How long to cache *failed* health check results.
+///
+/// Longer than the healthy TTL so a down dependency (DB, Redis, Python) does
+/// not cause every poll to re-run the full probe — preventing a thundering
+/// herd under partial outage while still recovering quickly.
+const HEALTH_ERROR_CACHE_TTL: std::time::Duration = std::time::Duration::from_secs(2);
+
 static NO_CACHE_HEADERS: OnceLock<HeaderMap> = OnceLock::new();
 
 fn no_cache() -> HeaderMap {
@@ -155,14 +162,14 @@ pub(crate) async fn health_auth(
 pub(crate) async fn health_db_value(state: &HealthState) -> serde_json::Value {
     // Fast path: cache hit (read lock, no contention with other readers)
     if let Some((cached_at, cached_val)) = state.db_health_cache.read().await.as_ref()
-        && cached_at.elapsed() < HEALTH_CACHE_TTL
+        && health_cache_fresh(cached_at, cached_val)
     {
         return cached_val.clone();
     }
     // Cache miss or expired: acquire write lock and double-check
     let mut cache = state.db_health_cache.write().await;
     if let Some((cached_at, cached_val)) = cache.as_ref()
-        && cached_at.elapsed() < HEALTH_CACHE_TTL
+        && health_cache_fresh(cached_at, cached_val)
     {
         return cached_val.clone();
     }
@@ -183,10 +190,9 @@ pub(crate) async fn health_db_value(state: &HealthState) -> serde_json::Value {
             json!({ "status": "error" })
         }
     };
-    // Only cache successful checks — don't amplify transient failures
-    if value["status"] == "ok" {
-        *cache = Some((Instant::now(), value.clone()));
-    }
+    // Cache both healthy and failed checks — failed ones use a longer TTL so
+    // a down dependency doesn't trigger a probe storm.
+    *cache = Some((Instant::now(), value.clone()));
     value
 }
 
@@ -202,13 +208,13 @@ pub(crate) async fn health_db(State(state): State<std::sync::Arc<AppState>>) -> 
 
 pub(crate) async fn health_redis_value(state: &HealthState) -> serde_json::Value {
     if let Some((cached_at, cached_val)) = state.redis_health_cache.read().await.as_ref()
-        && cached_at.elapsed() < HEALTH_CACHE_TTL
+        && health_cache_fresh(cached_at, cached_val)
     {
         return cached_val.clone();
     }
     let mut cache = state.redis_health_cache.write().await;
     if let Some((cached_at, cached_val)) = cache.as_ref()
-        && cached_at.elapsed() < HEALTH_CACHE_TTL
+        && health_cache_fresh(cached_at, cached_val)
     {
         return cached_val.clone();
     }
@@ -225,9 +231,9 @@ pub(crate) async fn health_redis_value(state: &HealthState) -> serde_json::Value
             json!({ "status": "disabled" })
         }
     };
-    if value["status"] == "ok" {
-        *cache = Some((Instant::now(), value.clone()));
-    }
+    // Cache both healthy and failed checks — failed ones use a longer TTL so
+    // a down dependency doesn't trigger a probe storm.
+    *cache = Some((Instant::now(), value.clone()));
     value
 }
 
@@ -274,24 +280,37 @@ fn format_health_value(v: &serde_json::Value) -> serde_json::Value {
 
 pub(crate) async fn health_python_value(state: &HealthState) -> serde_json::Value {
     if let Some((cached_at, cached_val)) = state.py_health_cache.read().await.as_ref()
-        && cached_at.elapsed() < HEALTH_CACHE_TTL
+        && health_cache_fresh(cached_at, cached_val)
     {
         return cached_val.clone();
     }
     let mut cache = state.py_health_cache.write().await;
     if let Some((cached_at, cached_val)) = cache.as_ref()
-        && cached_at.elapsed() < HEALTH_CACHE_TTL
+        && health_cache_fresh(cached_at, cached_val)
     {
         return cached_val.clone();
     }
-    let value = match state.sidecar.health().await {
+    let value = match state.sidecar.health_quick().await {
         Ok(v) => format_health_value(&v),
         Err(e) => sidecar_error_json(&e),
     };
-    if value["status"] == "ok" {
-        *cache = Some((Instant::now(), value.clone()));
-    }
+    // Cache both healthy and failed checks — failed ones use a longer TTL so
+    // a down sidecar doesn't trigger a probe storm on every poll.
+    *cache = Some((Instant::now(), value.clone()));
     value
+}
+
+/// Whether a cached health value is still fresh.
+///
+/// Healthy entries use [`HEALTH_CACHE_TTL`]; error/unavailable entries use the
+/// longer [`HEALTH_ERROR_CACHE_TTL`] so outages are absorbed instead of probed.
+fn health_cache_fresh(cached_at: &Instant, cached_val: &serde_json::Value) -> bool {
+    let ttl = if cached_val["status"] == "ok" {
+        HEALTH_CACHE_TTL
+    } else {
+        HEALTH_ERROR_CACHE_TTL
+    };
+    cached_at.elapsed() < ttl
 }
 
 fn sidecar_error_json(e: &py_sidecar::SidecarError) -> serde_json::Value {
@@ -395,12 +414,15 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_db_cache_only_caches_ok() {
+    async fn test_db_cache_caches_all_statuses() {
         let state = health_state_with(DbStatus::NotConfigured, None, None, None);
         let result = health_db_value(&state).await;
         assert_eq!(result["status"], "disabled");
         let cache = state.db_health_cache.read().await;
-        assert!(cache.is_none(), "should not cache 'disabled' status");
+        assert!(
+            cache.is_some(),
+            "should cache non-ok statuses (with a longer error TTL)"
+        );
     }
 
     #[tokio::test]

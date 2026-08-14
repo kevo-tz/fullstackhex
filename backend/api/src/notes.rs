@@ -8,6 +8,7 @@ use axum::Json;
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
+use chrono::{DateTime, Utc};
 use domain::error::ApiError;
 use domain::{CreateNoteInput, Note, UpdateNoteInput};
 use serde::Deserialize;
@@ -17,15 +18,13 @@ use uuid::Uuid;
 /// Pagination query parameters.
 #[derive(Debug, Deserialize)]
 pub struct PaginationParams {
-    #[serde(default = "default_page")]
-    pub page: i64,
+    /// Opaque keyset cursor; omit for the first page.
+    #[serde(default)]
+    pub cursor: Option<String>,
     #[serde(default = "default_per_page")]
     pub per_page: i64,
 }
 
-fn default_page() -> i64 {
-    1
-}
 fn default_per_page() -> i64 {
     20
 }
@@ -33,22 +32,83 @@ fn default_per_page() -> i64 {
 impl Default for PaginationParams {
     fn default() -> Self {
         Self {
-            page: 1,
+            cursor: None,
             per_page: 20,
         }
     }
 }
 
-/// Paginated response wrapper.
+/// Paginated response wrapper for keyset pagination.
 #[derive(serde::Serialize)]
 pub struct PaginatedNotes {
     pub items: Vec<Note>,
-    pub total: i64,
-    pub page: i64,
+    pub next_cursor: Option<String>,
+    pub has_more: bool,
     pub per_page: i64,
 }
 
-/// List notes for the authenticated user.
+/// Opaque keyset cursor: base64url of "{created_at_epoch_micros}:{id}".
+fn encode_cursor(created_at: DateTime<Utc>, id: &str) -> String {
+    let raw = format!("{}:{}", created_at.timestamp_micros(), id);
+    encode_base64url(raw.as_bytes())
+}
+
+/// Decode a keyset cursor; garbage input yields None (treated as no cursor).
+fn decode_cursor(cursor: &str) -> Option<(i64, String)> {
+    let raw = String::from_utf8(decode_base64url(cursor)?).ok()?;
+    let (micros, id) = raw.split_once(':')?;
+    Some((micros.parse().ok()?, id.to_string()))
+}
+
+const BASE64URL_ALPHABET: &[u8; 64] =
+    b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+
+fn encode_base64url(input: &[u8]) -> String {
+    let mut out = String::with_capacity(input.len().div_ceil(3) * 4);
+    for chunk in input.chunks(3) {
+        let b0 = chunk[0];
+        let b1 = chunk.get(1).copied().unwrap_or(0);
+        let b2 = chunk.get(2).copied().unwrap_or(0);
+        out.push(BASE64URL_ALPHABET[(b0 >> 2) as usize] as char);
+        out.push(BASE64URL_ALPHABET[(((b0 & 0x03) << 4) | (b1 >> 4)) as usize] as char);
+        if chunk.len() > 1 {
+            out.push(BASE64URL_ALPHABET[(((b1 & 0x0f) << 2) | (b2 >> 6)) as usize] as char);
+        }
+        if chunk.len() > 2 {
+            out.push(BASE64URL_ALPHABET[(b2 & 0x3f) as usize] as char);
+        }
+    }
+    out
+}
+
+fn decode_base64url(input: &str) -> Option<Vec<u8>> {
+    let mut bits: u32 = 0;
+    let mut nbits: u32 = 0;
+    let mut out = Vec::with_capacity(input.len() / 4 * 3);
+    for byte in input.bytes() {
+        let value = match byte {
+            b'A'..=b'Z' => byte - b'A',
+            b'a'..=b'z' => byte - b'a' + 26,
+            b'0'..=b'9' => byte - b'0' + 52,
+            b'-' => 62,
+            b'_' => 63,
+            _ => return None,
+        } as u32;
+        bits = (bits << 6) | value;
+        nbits += 6;
+        if nbits >= 8 {
+            nbits -= 8;
+            out.push((bits >> nbits) as u8);
+            bits &= (1u32 << nbits) - 1;
+        }
+    }
+    if nbits > 0 && bits != 0 {
+        return None;
+    }
+    Some(out)
+}
+
+/// List notes for the authenticated user, keyset-paginated.
 pub async fn list_notes(
     auth: auth::middleware::AuthUser,
     State(state): State<Arc<AppState>>,
@@ -56,45 +116,70 @@ pub async fn list_notes(
 ) -> Result<impl IntoResponse, ApiError> {
     let pool = state.db_pool()?;
 
-    let page = params.page.max(1);
     let limit = params.per_page.clamp(1, 100);
-    let offset = page.saturating_sub(1).saturating_mul(limit);
 
-    let rows = sqlx::query_as::<_, (String, String, String, String, String, i64)>(
-        r#"
-        SELECT id::text, title, body, created_at::text, updated_at::text,
-               COUNT(*) OVER()::bigint AS total_count
-        FROM notes
-        WHERE user_id = $1::uuid
-        ORDER BY created_at DESC
-        LIMIT $2 OFFSET $3
-        "#,
-    )
-    .bind(&auth.user_id)
-    .bind(limit)
-    .bind(offset)
-    .fetch_all(pool)
-    .await
-    .map_err(|e| super::db_err(e, "failed to list notes"))?;
+    // Keyset cursor decodes to (created_at, id); garbage cursors fall back to
+    // the first page instead of erroring.
+    let cursor: Option<(DateTime<Utc>, String)> = params
+        .cursor
+        .as_deref()
+        .and_then(decode_cursor)
+        .and_then(|(micros, id)| {
+            DateTime::from_timestamp_micros(micros).zip(Uuid::parse_str(&id).ok().map(|_| id))
+        });
 
-    let total = rows.first().map(|r| r.5).unwrap_or(0);
+    // List UI only renders id/title/created_at — skip the body column to avoid
+    // transferring full note content. Note still serializes body:"" for the
+    // shared `Note` contract; the detail endpoint returns the real body.
+    let mut sql = String::from(
+        "SELECT id::text, title, created_at, updated_at \
+         FROM notes WHERE user_id = $1::uuid",
+    );
+    let limit_param = if cursor.is_some() {
+        sql.push_str(" AND (created_at, id) < ($2::timestamptz, $3::uuid)");
+        "$4"
+    } else {
+        "$2"
+    };
+    sql.push_str(" ORDER BY created_at DESC, id DESC LIMIT ");
+    sql.push_str(limit_param);
+
+    let mut query = sqlx::query_as::<_, (String, String, DateTime<Utc>, DateTime<Utc>)>(&sql)
+        .bind(&auth.user_id);
+    if let Some((ts, id)) = cursor {
+        query = query.bind(ts).bind(id);
+    }
+    let rows = query
+        .bind(limit + 1)
+        .fetch_all(pool)
+        .await
+        .map_err(|e| super::db_err(e, "failed to list notes"))?;
+
+    // Fetch one extra row to detect another page, then drop it.
+    let has_more = rows.len() > limit as usize;
     let items: Vec<Note> = rows
         .into_iter()
+        .take(limit as usize)
         .map(|r| Note {
             id: r.0,
             user_id: auth.user_id.clone(),
             title: r.1,
-            body: r.2,
-            created_at: r.3,
-            updated_at: r.4,
+            body: String::new(),
+            created_at: r.2,
+            updated_at: r.3,
         })
         .collect();
+    let next_cursor = if has_more {
+        items.last().map(|n| encode_cursor(n.created_at, &n.id))
+    } else {
+        None
+    };
     Ok((
         StatusCode::OK,
         Json(PaginatedNotes {
             items,
-            total,
-            page,
+            next_cursor,
+            has_more,
             per_page: limit,
         }),
     ))
@@ -122,11 +207,11 @@ pub async fn create_note(
         ));
     }
 
-    let r = sqlx::query_as::<_, (String, String, String, String, String, String)>(
+    let r = sqlx::query_as::<_, (String, String, String, String, DateTime<Utc>, DateTime<Utc>)>(
         r#"
         INSERT INTO notes (user_id, title, body)
         VALUES ($1::uuid, $2, $3)
-        RETURNING id::text, user_id::text, title, body, created_at::text, updated_at::text
+        RETURNING id::text, user_id::text, title, body, created_at, updated_at
         "#,
     )
     .bind(&auth.user_id)
@@ -158,9 +243,9 @@ pub async fn get_note(
         Uuid::parse_str(&id).map_err(|_| ApiError::ValidationError("invalid note id".into()))?;
     let pool = state.db_pool()?;
 
-    let r = sqlx::query_as::<_, (String, String, String, String, String, String)>(
+    let r = sqlx::query_as::<_, (String, String, String, String, DateTime<Utc>, DateTime<Utc>)>(
         r#"
-        SELECT id::text, user_id::text, title, body, created_at::text, updated_at::text
+        SELECT id::text, user_id::text, title, body, created_at, updated_at
         FROM notes
         WHERE id = $1::uuid AND user_id = $2::uuid
         "#,
@@ -208,12 +293,12 @@ pub async fn update_note(
         ));
     }
 
-    let r = sqlx::query_as::<_, (String, String, String, String, String, String)>(
+    let r = sqlx::query_as::<_, (String, String, String, String, DateTime<Utc>, DateTime<Utc>)>(
         r#"
         UPDATE notes
         SET title = $1, body = $2, updated_at = NOW()
         WHERE id = $3::uuid AND user_id = $4::uuid
-        RETURNING id::text, user_id::text, title, body, created_at::text, updated_at::text
+        RETURNING id::text, user_id::text, title, body, created_at, updated_at
         "#,
     )
     .bind(&input.title)
@@ -258,5 +343,29 @@ pub async fn delete_note(
         Ok((StatusCode::NO_CONTENT, ""))
     } else {
         Err(ApiError::NotFound("note not found".into()))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn cursor_roundtrip() {
+        let ts = DateTime::parse_from_rfc3339("2026-05-27T10:00:00.123456Z")
+            .unwrap()
+            .with_timezone(&Utc);
+        let id = "550e8400-e29b-41d4-a716-446655440000";
+        let cursor = encode_cursor(ts, id);
+        let decoded = decode_cursor(&cursor).unwrap();
+        assert_eq!(decoded.0, ts.timestamp_micros());
+        assert_eq!(decoded.1, id);
+    }
+
+    #[test]
+    fn cursor_rejects_garbage() {
+        assert!(decode_cursor("not-base64!!").is_none());
+        assert!(decode_cursor("aGVsbG8").is_none());
+        assert!(decode_cursor("").is_none());
     }
 }

@@ -33,16 +33,20 @@ pub struct JwtService {
     decoding_key: DecodingKey,
     issuer: String,
     expiry: u64,
+    validation: Validation,
 }
 
 impl JwtService {
     /// Create a new JWT service.
     pub fn new(secret: String, issuer: String, expiry: u64) -> Self {
+        let mut validation = Validation::default();
+        validation.set_issuer(&[&issuer]);
         Self {
             encoding_key: EncodingKey::from_secret(secret.as_bytes()),
             decoding_key: DecodingKey::from_secret(secret.as_bytes()),
             issuer,
             expiry,
+            validation,
         }
     }
 
@@ -73,10 +77,7 @@ impl JwtService {
 
     /// Validate a token and return the claims.
     pub fn validate_token(&self, token: &str) -> Result<Claims, ApiError> {
-        let mut validation = Validation::default();
-        validation.set_issuer(&[&self.issuer]);
-
-        decode::<Claims>(token, &self.decoding_key, &validation)
+        decode::<Claims>(token, &self.decoding_key, &self.validation)
             .map(|data| data.claims)
             .map_err(|e| match e.kind() {
                 jsonwebtoken::errors::ErrorKind::ExpiredSignature => {

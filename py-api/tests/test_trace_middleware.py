@@ -9,9 +9,13 @@ def test_trace_middleware_records_metrics() -> None:
     """The trace middleware should record Prometheus metrics for each request."""
     client = TestClient(app)
 
-    # Make a request to trigger metric recording
-    response = client.get("/health")
-    assert response.status_code == 200
+    # Monitoring paths are not recorded — they would pollute the histograms
+    health_response = client.get("/health")
+    assert health_response.status_code == 200
+
+    # Make a request to a non-monitoring path to trigger metric recording
+    response = client.get("/test")
+    assert response.status_code == 401
 
     # Check that metrics endpoint exposes the recorded request
     metrics_response = client.get("/metrics")
@@ -19,8 +23,10 @@ def test_trace_middleware_records_metrics() -> None:
     metrics_text = metrics_response.text
 
     # The trace middleware labels are method + endpoint
-    assert 'python_requests_total{endpoint="/health",method="GET",status="200"}' in metrics_text
-    assert 'python_request_duration_seconds_count{endpoint="/health",method="GET"}' in metrics_text
+    assert 'python_requests_total{endpoint="/test",method="GET",status="401"}' in metrics_text
+    assert 'python_request_duration_seconds_count{endpoint="/test",method="GET"}' in metrics_text
+    assert 'endpoint="/health"' not in metrics_text
+    assert 'endpoint="/metrics"' not in metrics_text
 
 
 def test_trace_middleware_preserves_trace_id_header() -> None:
@@ -53,17 +59,17 @@ def test_metrics_endpoint_increments_after_requests() -> None:
 
     # Make several requests
     for _ in range(3):
-        client.get("/health")
+        client.get("/test")
 
     metrics_response = client.get("/metrics")
     assert metrics_response.status_code == 200
     metrics_text = metrics_response.text
 
-    # Find the counter value for /health GET 200
+    # Find the counter value for /test GET 401
     for line in metrics_text.splitlines():
-        if line.startswith('python_requests_total{endpoint="/health",method="GET",status="200"}'):
+        if line.startswith('python_requests_total{endpoint="/test",method="GET",status="401"}'):
             _, value = line.rsplit(" ", 1)
             assert int(float(value)) >= 3
             break
     else:
-        raise AssertionError("Expected /health GET 200 counter not found in metrics")
+        raise AssertionError("Expected /test GET 401 counter not found in metrics")

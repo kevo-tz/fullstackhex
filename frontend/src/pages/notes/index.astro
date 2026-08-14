@@ -3,6 +3,7 @@ import Layout from "../../components/Layout.astro";
 import Table from "../../components/Table.astro";
 import EmptyState from "../../components/EmptyState.astro";
 import Skeleton from "../../components/Skeleton.astro";
+export const prerender = true;
 
 
 ---
@@ -54,31 +55,39 @@ import Skeleton from "../../components/Skeleton.astro";
 </Layout>
 
 <script>
-  let page = 1;
+  let nextCursor: string | null = null;
+  let hasMore = true;
   const perPage = 20;
 
-  async function loadNotes() {
-    document.getElementById("notes-loading")!.classList.remove("hidden");
+  async function loadNotes(append = false) {
+    if (!append) {
+      document.getElementById("notes-loading")!.classList.remove("hidden");
+      document.getElementById("notes-table")!.classList.add("hidden");
+    }
     document.getElementById("notes-error")!.classList.add("hidden");
     document.getElementById("notes-empty")!.classList.add("hidden");
-    document.getElementById("notes-table")!.classList.add("hidden");
 
     try {
-      const res = await fetch(`/api/notes?page=${page}&per_page=${perPage}`);
+      const params = new URLSearchParams({ per_page: String(perPage) });
+      if (nextCursor) params.set("cursor", nextCursor);
+      const res = await fetch(`/api/notes?${params}`);
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
         const errMsg = typeof body?.error === "string" ? body.error : body?.error?.message || `HTTP ${res.status}`;
         throw new Error(errMsg);
       }
       const data = await res.json();
-      const notes = data.items ?? [];
-      const total: number = data.total ?? 0;
+      const notes: Array<{ id: string; title: string; created_at: string }> = data.items ?? [];
+      nextCursor = typeof data.next_cursor === "string" ? data.next_cursor : null;
+      hasMore = data.has_more === true;
 
       document.getElementById("notes-loading")!.classList.add("hidden");
 
       if (notes.length === 0) {
-        document.getElementById("notes-empty")!.classList.remove("hidden");
-        document.getElementById("notes-pagination")!.innerHTML = "";
+        if (!append) {
+          document.getElementById("notes-empty")!.classList.remove("hidden");
+        }
+        renderLoadMore();
         return;
       }
 
@@ -86,7 +95,7 @@ import Skeleton from "../../components/Skeleton.astro";
       table.classList.remove("hidden");
 
       const tbody = document.querySelector("#notes-tbody table tbody")!;
-      tbody.innerHTML = notes.map((n: { id: string; title: string; created_at: string }) => `
+      const rows = notes.map((n) => `
         <tr>
           <td data-label="Title">
             <a href="/notes/${encodeURIComponent(n.id)}" class="text-[var(--accent,#22c55e)] hover:underline">${escapeHtml(n.title)}</a>
@@ -94,8 +103,9 @@ import Skeleton from "../../components/Skeleton.astro";
           <td data-label="Created">${formatDate(n.created_at)}</td>
         </tr>
       `).join("");
+      tbody.innerHTML = append ? tbody.innerHTML + rows : rows;
 
-      renderPagination(total);
+      renderLoadMore();
     } catch (err) {
       document.getElementById("notes-loading")!.classList.add("hidden");
       document.getElementById("notes-error")!.classList.remove("hidden");
@@ -104,27 +114,16 @@ import Skeleton from "../../components/Skeleton.astro";
     }
   }
 
-  function renderPagination(total: number) {
+  function renderLoadMore() {
     const container = document.getElementById("notes-pagination")!;
-    const totalPages = Math.max(1, Math.ceil(total / perPage));
-    if (totalPages <= 1) { container.innerHTML = ""; return; }
-
-    const hasPrev = page > 1;
-    const hasNext = page < totalPages;
-
+    if (!hasMore) { container.innerHTML = ""; return; }
     container.innerHTML = `
-      <nav aria-label="Pagination" class="pagination-nav">
-        <button class="page-btn" data-p="${page - 1}" ${hasPrev ? "" : "disabled"}>← Previous</button>
-        <span class="page-info">Page ${page} of ${totalPages}</span>
-        <button class="page-btn" data-p="${page + 1}" ${hasNext ? "" : "disabled"}>Next →</button>
-      </nav>
+      <div class="text-center mt-6">
+        <button id="load-more-btn" class="load-more-btn">Load more</button>
+      </div>
     `;
-
-    container.querySelectorAll(".page-btn:not([disabled])").forEach((btn) => {
-      btn.addEventListener("click", () => {
-        const p = parseInt((btn as HTMLElement).dataset.p!, 10);
-        if (p > 0) { page = p; loadNotes(); }
-      });
+    container.querySelector("#load-more-btn")!.addEventListener("click", () => {
+      loadNotes(true);
     });
   }
 
@@ -136,7 +135,9 @@ import Skeleton from "../../components/Skeleton.astro";
     try { return new Date(iso).toLocaleDateString(); } catch { return "Unknown date"; }
   }
 
-  document.getElementById("notes-retry-btn")?.addEventListener("click", loadNotes);
+  document.getElementById("notes-retry-btn")?.addEventListener("click", () => {
+    loadNotes(false);
+  });
 
   loadNotes();
 </script>

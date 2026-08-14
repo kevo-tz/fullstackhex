@@ -55,6 +55,8 @@ pub struct OAuthService {
     google_client: Option<ConfiguredClient>,
     github_client: Option<ConfiguredClient>,
     http_client: reqwest::Client,
+    /// Dedicated client for token exchange (no redirects), reused across calls.
+    token_exchange_client: oauth2::reqwest::Client,
 }
 
 impl OAuthService {
@@ -96,10 +98,16 @@ impl OAuthService {
                     )
             });
 
+        let token_exchange_client = oauth2::reqwest::ClientBuilder::new()
+            .redirect(oauth2::reqwest::redirect::Policy::none())
+            .build()
+            .unwrap_or_else(|_| oauth2::reqwest::Client::new());
+
         Self {
             google_client,
             github_client,
             http_client,
+            token_exchange_client,
         }
     }
 
@@ -142,14 +150,9 @@ impl OAuthService {
     ) -> Result<OAuthUserInfo, ApiError> {
         let client = self.get_client(provider)?;
 
-        let http_client = oauth2::reqwest::ClientBuilder::new()
-            .redirect(oauth2::reqwest::redirect::Policy::none())
-            .build()
-            .map_err(|e| ApiError::InternalError(format!("HTTP client build failed: {e}")))?;
-
         let token = client
             .exchange_code(AuthorizationCode::new(code.to_string()))
-            .request_async(&http_client)
+            .request_async(&self.token_exchange_client)
             .await
             .map_err(|e| ApiError::InternalError(format!("Token exchange failed: {e}")))?;
 

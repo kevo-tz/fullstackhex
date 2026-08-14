@@ -70,9 +70,34 @@ const metaType = ogType || "website";
     </div>
     <footer>port 8001 &middot; <a href="https://github.com/kevo-tz/fullstackhex" style="color:inherit">github.com/kevo-tz/fullstackhex</a></footer>
     <script>
+      const origFetch = window.fetch.bind(window);
+      const pageAbort = new AbortController();
+      const abortSignal = pageAbort.signal;
+      const inFlightGet: Map<string, Promise<Response>> = new Map();
+      let refreshPromise: Promise<boolean> | null = null;
+      let refreshAttempted = false;
+      let refreshSucceeded = false;
+
+      window.addEventListener("pagehide", () => pageAbort.abort());
+
+      function withPageAbort(init?: RequestInit): RequestInit | undefined {
+        if (!init) return { signal: abortSignal };
+        return { ...init, signal: init.signal ? AbortSignal.any([init.signal, abortSignal]) : abortSignal };
+      }
+
+      function dedupGet(url: string): Promise<Response> {
+        const existing = inFlightGet.get(url);
+        if (existing) return existing;
+        const p = origFetch(url, withPageAbort()).finally(() => {
+          inFlightGet.delete(url);
+        });
+        inFlightGet.set(url, p);
+        return p;
+      }
+
       async function fetchUser(): Promise<Record<string, string> | null> {
         try {
-          const res = await origFetch("/api/auth/me");
+          const res = await dedupGet("/api/auth/me");
           if (!res.ok) return null;
           const data = await res.json();
           // Fallback response when auth disabled: { status: "disabled" }
@@ -147,20 +172,22 @@ const metaType = ogType || "website";
       }
       (window as CustomWindow).logout = logout;
 
-      const origFetch = window.fetch.bind(window);
-      let refreshPromise: Promise<boolean> | null = null;
-
       async function performRefresh(): Promise<boolean> {
+        refreshAttempted = true;
         try {
-          const refreshRes = await origFetch("/api/auth/refresh", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-          });
+          const refreshRes = await origFetch(
+            "/api/auth/refresh",
+            withPageAbort({
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+            }),
+          );
           if (refreshRes.ok) {
             const data = await refreshRes.json().catch(() => ({}));
             if (data.csrf_token) {
               sessionStorage.setItem("csrf_token", data.csrf_token);
             }
+            refreshSucceeded = true;
             return true;
           }
           document.cookie = "access_token=; path=/; max-age=0";
@@ -175,10 +202,19 @@ const metaType = ogType || "website";
       window.fetch = (async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
         const urlStr = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
         if (typeof urlStr !== "string" || !urlStr.startsWith("/api/")) {
-          return origFetch(input, init);
+          return origFetch(input, withPageAbort(init));
         }
-        const res = await origFetch(input, init);
+        const plainGet = (init?.method ?? "GET").toUpperCase() === "GET" && init === undefined;
+        const res = await (plainGet ? dedupGet(urlStr) : origFetch(input, withPageAbort(init)));
         if (res.status === 401 && !(init?.body instanceof FormData)) {
+          const isMe = urlStr === "/api/auth/me";
+          const hasSession =
+            document.cookie.includes("access_token=") ||
+            document.cookie.includes("refresh_token=");
+          if (isMe && (!hasSession || (refreshAttempted && !refreshSucceeded))) {
+            // Guest or refresh already failed — just return unauthenticated.
+            return res;
+          }
           if (!refreshPromise) {
             refreshPromise = performRefresh().finally(() => { refreshPromise = null; });
           }

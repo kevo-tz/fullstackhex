@@ -3,6 +3,9 @@
 //! Implements a complete CRUD lifecycle with Postgres-backed storage,
 //! user-scoped authorization (user_id), and standard REST patterns.
 
+use base64::Engine;
+use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+
 use crate::AppState;
 use axum::Json;
 use axum::extract::{Path, Query, State};
@@ -47,65 +50,17 @@ pub struct PaginatedNotes {
     pub per_page: i64,
 }
 
-/// Opaque keyset cursor: base64url of "{created_at_epoch_micros}:{id}".
+/// Opaque keyset cursor: base64url (no padding) of "{created_at_epoch_micros}:{id}".
 fn encode_cursor(created_at: DateTime<Utc>, id: &str) -> String {
     let raw = format!("{}:{}", created_at.timestamp_micros(), id);
-    encode_base64url(raw.as_bytes())
+    URL_SAFE_NO_PAD.encode(raw.as_bytes())
 }
 
 /// Decode a keyset cursor; garbage input yields None (treated as no cursor).
 fn decode_cursor(cursor: &str) -> Option<(i64, String)> {
-    let raw = String::from_utf8(decode_base64url(cursor)?).ok()?;
+    let raw = String::from_utf8(URL_SAFE_NO_PAD.decode(cursor).ok()?).ok()?;
     let (micros, id) = raw.split_once(':')?;
     Some((micros.parse().ok()?, id.to_string()))
-}
-
-const BASE64URL_ALPHABET: &[u8; 64] =
-    b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
-
-fn encode_base64url(input: &[u8]) -> String {
-    let mut out = String::with_capacity(input.len().div_ceil(3) * 4);
-    for chunk in input.chunks(3) {
-        let b0 = chunk[0];
-        let b1 = chunk.get(1).copied().unwrap_or(0);
-        let b2 = chunk.get(2).copied().unwrap_or(0);
-        out.push(BASE64URL_ALPHABET[(b0 >> 2) as usize] as char);
-        out.push(BASE64URL_ALPHABET[(((b0 & 0x03) << 4) | (b1 >> 4)) as usize] as char);
-        if chunk.len() > 1 {
-            out.push(BASE64URL_ALPHABET[(((b1 & 0x0f) << 2) | (b2 >> 6)) as usize] as char);
-        }
-        if chunk.len() > 2 {
-            out.push(BASE64URL_ALPHABET[(b2 & 0x3f) as usize] as char);
-        }
-    }
-    out
-}
-
-fn decode_base64url(input: &str) -> Option<Vec<u8>> {
-    let mut bits: u32 = 0;
-    let mut nbits: u32 = 0;
-    let mut out = Vec::with_capacity(input.len() / 4 * 3);
-    for byte in input.bytes() {
-        let value = match byte {
-            b'A'..=b'Z' => byte - b'A',
-            b'a'..=b'z' => byte - b'a' + 26,
-            b'0'..=b'9' => byte - b'0' + 52,
-            b'-' => 62,
-            b'_' => 63,
-            _ => return None,
-        } as u32;
-        bits = (bits << 6) | value;
-        nbits += 6;
-        if nbits >= 8 {
-            nbits -= 8;
-            out.push((bits >> nbits) as u8);
-            bits &= (1u32 << nbits) - 1;
-        }
-    }
-    if nbits > 0 && bits != 0 {
-        return None;
-    }
-    Some(out)
 }
 
 /// List notes for the authenticated user, keyset-paginated.

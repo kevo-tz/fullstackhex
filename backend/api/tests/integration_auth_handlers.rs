@@ -33,7 +33,7 @@ async fn full_state() -> Option<AppState> {
     let redis_url = std::env::var("REDIS_URL").ok()?;
 
     let pool = sqlx::postgres::PgPoolOptions::new()
-        .max_connections(2)
+        .max_connections(5)
         .acquire_timeout(Duration::from_secs(3))
         .connect(&database_url)
         .await
@@ -59,6 +59,8 @@ async fn full_state() -> Option<AppState> {
         sidecar_shared_secret: None,
         fail_open_on_redis_error: true,
         rate_limits: auth::RateLimitConfig {
+            register_max: 50,
+            register_window_secs: 10,
             forgot_max: 20,
             forgot_window_secs: 10,
             oauth_callback_max: 20,
@@ -120,6 +122,113 @@ async fn cleanup_user(database_url: &str, email: &str) {
         .bind(email)
         .execute(&pool)
         .await;
+}
+
+/// Issue one POST /auth/register request and return the status code.
+async fn register_once(app: axum::Router, email: &str, password: &str, name: &str) -> StatusCode {
+    app.oneshot(
+        Request::builder()
+            .method("POST")
+            .uri("/auth/register")
+            .header("content-type", "application/json")
+            .body(axum::body::Body::from(
+                serde_json::to_vec(&serde_json::json!({
+                    "email": email,
+                    "password": password,
+                    "name": name,
+                }))
+                .unwrap(),
+            ))
+            .unwrap(),
+    )
+    .await
+    .unwrap()
+    .status()
+}
+
+// ─── register ───────────────────────────────────────────────────────────
+
+#[tokio::test]
+#[serial]
+async fn register_duplicate_email_returns_409() {
+    let Some(state) = full_state().await else {
+        eprintln!("SKIP: DATABASE_URL or REDIS_URL not set");
+        return;
+    };
+    let app = router_with_state(state);
+
+    let email = unique_email("register-duplicate");
+
+    // 1. First registration succeeds
+    let first = register_once(
+        app.clone(),
+        &email,
+        "DuplicateP@ss1",
+        "Duplicate Email Tester",
+    )
+    .await;
+    assert_eq!(first, StatusCode::CREATED);
+
+    // 2. Second registration with the same email is rejected with 409, not 500.
+    let second = register_once(
+        app.clone(),
+        &email,
+        "DuplicateP@ss1",
+        "Duplicate Email Tester",
+    )
+    .await;
+    assert_eq!(second, StatusCode::CONFLICT);
+
+    // Cleanup
+    if let Ok(db_url) = std::env::var("DATABASE_URL") {
+        cleanup_user(&db_url, &email).await;
+    }
+}
+
+#[tokio::test]
+#[serial]
+async fn register_concurrent_duplicate_email_never_returns_500() {
+    let Some(state) = full_state().await else {
+        eprintln!("SKIP: DATABASE_URL or REDIS_URL not set");
+        return;
+    };
+    let app = router_with_state(state);
+
+    let email = unique_email("register-race");
+
+    // Five concurrent registrations for the same email. Exactly one wins; the
+    // losers hit either the SELECT fast path or the INSERT's unique-violation
+    // branch — never a 500.
+    let (a, b, c, d, e) = tokio::join!(
+        register_once(app.clone(), &email, "RaceP@ss1234", "Race Tester"),
+        register_once(app.clone(), &email, "RaceP@ss1234", "Race Tester"),
+        register_once(app.clone(), &email, "RaceP@ss1234", "Race Tester"),
+        register_once(app.clone(), &email, "RaceP@ss1234", "Race Tester"),
+        register_once(app.clone(), &email, "RaceP@ss1234", "Race Tester"),
+    );
+    let statuses = [a, b, c, d, e];
+
+    let created = statuses
+        .iter()
+        .filter(|s| **s == StatusCode::CREATED)
+        .count();
+    let conflicts = statuses
+        .iter()
+        .filter(|s| **s == StatusCode::CONFLICT)
+        .count();
+    assert_eq!(
+        created, 1,
+        "exactly one registration must succeed: {statuses:?}"
+    );
+    assert_eq!(
+        conflicts, 4,
+        "the other four must be 409, never 500: {statuses:?}"
+    );
+
+    // Cleanup
+    if let Ok(db_url) = std::env::var("DATABASE_URL") {
+        cleanup_user(&db_url, &email).await;
+    }
 }
 
 // ─── forgot_password ───────────────────────────────────────────────────

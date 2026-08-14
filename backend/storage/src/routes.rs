@@ -129,7 +129,16 @@ pub async fn presign(
     auth_user: AuthUser,
     Json(body): Json<PresignRequest>,
 ) -> Result<impl IntoResponse, ApiError> {
-    let method = body.method.unwrap_or_else(|| "GET".to_string());
+    let method = body
+        .method
+        .as_deref()
+        .map(str::to_ascii_uppercase)
+        .unwrap_or_else(|| "GET".to_string());
+    if method != "GET" && method != "PUT" {
+        return Err(ApiError::ValidationError(
+            "method must be GET or PUT".into(),
+        ));
+    }
     let expiry_secs = body.expiry_secs.unwrap_or(3600);
     validate_storage_key(&body.key)?;
     let key = user_key(&auth_user.user_id, &body.key);
@@ -186,16 +195,17 @@ pub async fn upload_part(
     State(state): State<StorageState>,
     auth_user: AuthUser,
     Path((key, upload_id, part_number)): Path<(String, String, u32)>,
-    body: axum::body::Bytes,
+    body: Body,
 ) -> Result<impl IntoResponse, ApiError> {
     let key = user_key(&auth_user.user_id, &key);
-    let part = super::client::upload_part(
+    let stream = body.into_data_stream();
+    let part = super::client::upload_part_streaming(
         &state.client,
         &state.config,
         &key,
         &upload_id,
         part_number,
-        body.to_vec(),
+        reqwest::Body::wrap_stream(stream),
     )
     .await?;
     Ok((StatusCode::OK, Json(part)))

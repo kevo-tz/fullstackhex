@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.14.7] - 2026-08-14
+
+### Security
+- **Password reset tokens no longer logged**: `forgot-password` logs only the `user_id`, not the reset token — previously anyone with log access could reset a user's password
+- **Client IP now derived from the connection peer**: rate limiting uses the real peer address instead of collapsing to `"unknown"` when `TRUST_PROXY` is unset. Forwarded headers (`X-Forwarded-For`/`X-Real-IP`) are only trusted when the direct peer is loopback/private (the reverse proxy), preventing IP spoofing from public clients
+- **Presign method allowlist**: `/storage/presign` now accepts only `GET`/`PUT` and rejects other methods with a validation error
+
+### Fixed
+- **Register race returns 409 instead of 500**: a concurrent registration for an already-taken email now maps the database unique-violation to `409 Conflict` instead of a `500 Internal Server Error`
+
+### Changed
+- **Multipart upload parts now stream**: `upload_part` streams the request body with `UNSIGNED-PAYLOAD` instead of buffering the full part in memory before signing
+- **base64 crate replaces hand-rolled base64url** for keyset pagination cursors (removes ~60 lines of custom encode/decode)
+
+### Added
+- Tests for streaming multipart upload (success + error status) and concurrent duplicate registration (asserts exactly one `201` and the rest `409`, never `500`)
+
 ## [0.14.6] - 2026-05-27
 
 ### Added

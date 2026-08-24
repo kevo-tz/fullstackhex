@@ -386,16 +386,19 @@ pub async fn create_multipart_upload(
     let mut buf = Vec::new();
     loop {
         match reader.read_event_into(&mut buf) {
-            Ok(Event::Start(ref e)) if e.name().as_ref() == b"UploadId" => {
+            Ok(Event::Start(ref e)) if e.name().as_ref() == "UploadId" => {
                 upload_id = Some(
-                    String::from_utf8_lossy(&reader.read_text(e.name()).map_err(|e| {
-                        ApiError::InternalError(format!("Failed to read UploadId text: {e}"))
-                    })?)
-                    .to_string(),
+                    reader
+                        .read_text(e.name())
+                        .map_err(|e| {
+                            ApiError::InternalError(format!("Failed to read UploadId text: {e}"))
+                        })?
+                        .into_inner()
+                        .into_owned(),
                 );
             }
             Ok(Event::Eof) => break,
-            Ok(Event::Start(ref e)) if e.name().as_ref() == b"Key" => {
+            Ok(Event::Start(ref e)) if e.name().as_ref() == "Key" => {
                 // Read key text but don't store — just consume it
                 let _ = reader.read_text(e.name());
             }

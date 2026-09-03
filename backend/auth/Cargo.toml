@@ -18,7 +18,7 @@ uuid = { workspace = true }
 thiserror = "2"
 jsonwebtoken = { version = "11", features = ["rust_crypto"] }
 oauth2 = { version = "5", features = ["reqwest"] }
-argon2 = "0.5"
+argon2 = "0.6"
 hmac = "0.13"
 sha2 = "0.11"
 hex = "0.4"

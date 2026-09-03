@@ -1,17 +1,14 @@
 //! Password hashing with Argon2.
 
-use argon2::Argon2;
-use argon2::password_hash::rand_core::OsRng;
-use argon2::password_hash::{PasswordHash, PasswordHasher, PasswordVerifier, SaltString};
+use argon2::{Argon2, PasswordHash, PasswordHasher, PasswordVerifier};
 use domain::error::ApiError;
 
 /// Hash a password using Argon2id.
 pub fn hash_password(password: &str) -> Result<String, ApiError> {
-    let salt = SaltString::generate(&mut OsRng);
     let argon2 = Argon2::default();
 
     let hash = argon2
-        .hash_password(password.as_bytes(), &salt)
+        .hash_password(password.as_bytes())
         .map_err(|e| ApiError::InternalError(format!("Password hash error: {e}")))?
         .to_string();
 

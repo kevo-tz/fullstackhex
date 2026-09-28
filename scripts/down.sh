@@ -36,7 +36,9 @@ fuser -k 4321/tcp 2>/dev/null || true
 
 # Docker compose services
 $COMPOSE_DEV down 2>/dev/null || true
-$COMPOSE_MON ps -q 2>/dev/null | grep -q . && $COMPOSE_MON down 2>/dev/null || true
+if $COMPOSE_MON ps -q 2>/dev/null | grep -q .; then
+    $COMPOSE_MON down 2>/dev/null || true
+fi
 
 # Cleanup socket and PID dir
 rm -f "$PYTHON_SOCK"

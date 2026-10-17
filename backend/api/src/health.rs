@@ -75,10 +75,7 @@ pub(crate) async fn health(State(state): State<std::sync::Arc<AppState>>) -> imp
                 &LiveEvent::HealthUpdate {
                     service: "db".into(),
                     status: db_clone["status"].as_str().unwrap_or("unknown").into(),
-                    detail: db_clone
-                        .get("error")
-                        .and_then(|v| v.as_str())
-                        .map(&truncate),
+                    detail: db_clone.get("error").and_then(|v| v.as_str()).map(truncate),
                 },
             ),
             broadcast_event(
@@ -89,7 +86,7 @@ pub(crate) async fn health(State(state): State<std::sync::Arc<AppState>>) -> imp
                     detail: redis_clone
                         .get("error")
                         .and_then(|v| v.as_str())
-                        .map(&truncate),
+                        .map(truncate),
                 },
             ),
             broadcast_event(
@@ -100,7 +97,7 @@ pub(crate) async fn health(State(state): State<std::sync::Arc<AppState>>) -> imp
                     detail: storage_clone
                         .get("error")
                         .and_then(|v| v.as_str())
-                        .map(&truncate),
+                        .map(truncate),
                 },
             ),
             broadcast_event(
@@ -111,7 +108,7 @@ pub(crate) async fn health(State(state): State<std::sync::Arc<AppState>>) -> imp
                     detail: python_clone
                         .get("error")
                         .and_then(|v| v.as_str())
-                        .map(&truncate),
+                        .map(truncate),
                 },
             ),
             broadcast_event(

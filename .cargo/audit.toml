@@ -2,6 +2,7 @@
 ignore = [
     "RUSTSEC-2020-0128",  # false positive — our local cache crate, not the published one
     "RUSTSEC-2021-0006",  # same false positive
-    "RUSTSEC-2023-0071",  # rsa Marvin Attack — transitive via jsonwebtoken, only used
-                          # for localhost auth tokens, network timing not exploitable
+    "RUSTSEC-2023-0071",  # rsa Marvin Attack — only reachable through the optional
+                          # sqlx-mysql driver (we use Postgres only); the crate is
+                          # present in Cargo.lock but is not built for this workspace
 ]

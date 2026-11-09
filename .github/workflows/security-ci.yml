@@ -14,7 +14,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
-      - uses: EmbarkStudios/cargo-deny-action@08f29ebbc9295095546acaf37220058f628a4720  # v2
+      - uses: EmbarkStudios/cargo-deny-action@9c67a826e39827395bfa619cd85cb2aaeb43cfaa  # v2
         with:
           command: check advisories
           manifest-path: backend/Cargo.toml

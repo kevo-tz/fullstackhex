@@ -41,9 +41,16 @@ impl JwtService {
     pub fn new(secret: String, issuer: String, expiry: u64) -> Self {
         let mut validation = Validation::default();
         validation.set_issuer(&[&issuer]);
+        // jsonwebtoken 12 rejects empty HMAC keys. AuthConfig::from_env already
+        // refuses to build a service without a non-empty JWT_SECRET, so this is
+        // a programming-error guard rather than a runtime configuration path.
+        let encoding_key =
+            EncodingKey::from_secret(secret.as_bytes()).expect("JWT secret must not be empty");
+        let decoding_key =
+            DecodingKey::from_secret(secret.as_bytes()).expect("JWT secret must not be empty");
         Self {
-            encoding_key: EncodingKey::from_secret(secret.as_bytes()),
-            decoding_key: DecodingKey::from_secret(secret.as_bytes()),
+            encoding_key,
+            decoding_key,
             issuer,
             expiry,
             validation,

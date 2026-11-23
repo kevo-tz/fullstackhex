@@ -1,2 +1,11 @@
 [advisories]
-ignore = ["RUSTSEC-2023-0071"]
+ignore = [
+    "RUSTSEC-2023-0071",  # rsa Marvin Attack — only reachable through the optional
+                          # sqlx-mysql driver (we use Postgres only); the crate is
+                          # present in Cargo.lock but is not built for this workspace
+    "RUSTSEC-2026-0543",  # chrono is unmaintained (INFO, no known vulnerability).
+                          # oauth2 5.x (the latest release) depends on chrono
+                          # unconditionally, so it cannot be removed from the
+                          # lockfile, and no patched chrono version exists.
+                          # Revisit when oauth2 drops chrono.
+]
